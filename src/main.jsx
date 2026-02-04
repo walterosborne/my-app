@@ -11,6 +11,7 @@ import Planning from './Planning.jsx'
 import Results from './Results.jsx'
 import Nonconformaties from './Nonconformaties.jsx'
 import TableTest from './TableTest.jsx'
+import Headers from './Headers.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -26,6 +27,7 @@ createRoot(document.getElementById('root')).render(
         <Route path="/results" element={<Results />} />
         <Route path="/nonconformaties" element={<Nonconformaties />} />
         <Route path="/tabletest" element={<TableTest />} />
+        <Route path="/headers" element={<Headers />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,
