@@ -1,0 +1,144 @@
+#root {
+  /* border: 2px solid red; */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-family: 'Source Sans Pro', sans-serif;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  background-color: #0066cc;
+}
+
+.section,
+.peq {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  align-items: start;
+  justify-content: start;
+  border: 1px lightgray solid;
+  border-radius: 6px;
+  margin-top: 10px;
+}
+
+.peq {
+  width: 98%;
+}
+
+.sectiontitle {
+  font-weight: 600;
+  font-size: 1.5em;
+  margin-bottom: 5px;
+  margin-left: 3px;
+}
+
+.sectionrow {
+  display: flex;
+  flex-direction: row;
+  align-items: start;
+  justify-content: space-between;
+  margin-top: 5px;
+  margin-bottom: 5px;
+  width: 100%;
+}
+
+.fieldboxwhole,
+.fieldboxhalf,
+.fieldboxthird,
+.fieldboxquarter {
+  display: flex;
+  flex-direction: column;
+  padding: 2px;
+}
+
+.fieldboxwhole {
+  width: 100%;
+}
+
+.fieldboxhalf {
+  width: 48%;
+}
+
+.fieldboxthird {
+  width: 31%;
+}
+
+.fieldboxquarter {
+  width: 23%;
+}
+
+.fieldboxwhole label,
+.fieldboxhalf label,
+.fieldboxthird label,
+.fieldboxquarter label {
+  margin-bottom: 0.5rem;
+  font-weight: 400;
+  align-self: flex-start;
+}
+
+.fieldboxwhole input,
+.fieldboxhalf input,
+.fieldboxthird input,
+.fieldboxquarter input,
+.fieldboxwhole textarea,
+.fieldboxhalf textarea,
+.fieldboxthird textarea,
+.fieldboxquarter textarea {
+  background-color: whitesmoke;
+}
+
+.fielderror {
+  color: red;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+}
+
+h1,
+h2 {
+  font-weight: 600;
+}
+
+.textfield,
+.datefield {
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  padding: 4px 10px;
+  box-sizing: border-box;
+  font-size: 15px;
+  height: 38px;
+  font-family: 'Source Sans Pro', sans-serif;
+  color: #000;
+}
+
+.datefield::-webkit-datetime-edit-text,
+.datefield::-webkit-datetime-edit-month-field,
+.datefield::-webkit-datetime-edit-day-field,
+.datefield::-webkit-datetime-edit-year-field {
+  font-family: 'Source Sans Pro', sans-serif;
+  color: #000;
+}
+
+.datefield::placeholder {
+  color: #999;
+  opacity: 1;
+}
+
+.button {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  color: white;
+  width: 48%;
+  height: 38px;
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 15px;
+}
+
+.button:hover {
+  border-color: #646cff;
+}
+
+.button:disabled {
+  background-color: gray;
+  cursor: not-allowed;
+}
