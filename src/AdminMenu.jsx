@@ -12,6 +12,7 @@ import DelayCausesSection from './components/admin/DelayCausesSection';
 import EveryTimeQuestionsSection from './components/admin/EveryTimeQuestionsSection';
 import FunctionsSection from './components/admin/FunctionsSection';
 import ProgramsSection from './components/admin/ProgramsSection';
+import DivisionsSection from './components/admin/DivisionsSection';
 import SitesSection from './components/admin/SitesSection';
 import PropsSection from './components/admin/PropsSection';
 import TrainingRequirementsSection from './components/admin/TrainingRequirementsSection';
@@ -135,6 +136,14 @@ const AdminMenu = () => {
     const [programError, setProgramError] = React.useState('');
     const [programSubmitting, setProgramSubmitting] = React.useState(false);
     const [programFieldErrors, setProgramFieldErrors] = React.useState({});
+    const [divisionNameInput, setDivisionNameInput] = React.useState('');
+    const [divisionSectorId, setDivisionSectorId] = React.useState('');
+    const [editingDivision, setEditingDivision] = React.useState(null);
+    const [includeArchivedDivisions, setIncludeArchivedDivisions] = React.useState(false);
+    const [divisionMessage, setDivisionMessage] = React.useState('');
+    const [divisionError, setDivisionError] = React.useState('');
+    const [divisionSubmitting, setDivisionSubmitting] = React.useState(false);
+    const [divisionFieldErrors, setDivisionFieldErrors] = React.useState({});
     const [sitesList, setSitesList] = React.useState([]);
     const [siteAddressInput, setSiteAddressInput] = React.useState('');
     const [siteCityInput, setSiteCityInput] = React.useState('');
@@ -242,6 +251,13 @@ const AdminMenu = () => {
         active: typeof row.active === 'number' ? row.active : row.active ?? 1
     }), []);
 
+    const normalizeDivisionRow = React.useCallback((row) => ({
+        divisionId: row.divisionId ?? row.divisionid ?? row.id,
+        divisionName: row.divisionName ?? row.divisionname ?? '',
+        sectorId: row.sectorId ?? row.sectorid ?? null,
+        active: typeof row.active === 'number' ? row.active : row.active ?? 1
+    }), []);
+
     const normalizeSiteRow = React.useCallback((row) => ({
         siteId: row.siteId ?? row.siteid ?? row.id,
         address: row.address ?? row.addressline ?? '',
@@ -303,7 +319,7 @@ const AdminMenu = () => {
                     setCurrentUser(userData);
                     setRosterList(rosterData);
                     setAuditorList(auditorsData.map(normalizeAuditorRow));
-                    setDivisionsList(divisionsData);
+                    setDivisionsList(divisionsData.map(normalizeDivisionRow));
                     setAuditTypesList(auditTypesData.map(normalizeAuditTypeRow));
                     setBusinessUnitsList(businessUnitsData.map(normalizeBusinessUnitRow));
                     setOperatingUnitsList(operatingUnitsData.map(normalizeOperatingUnitRow));
@@ -327,7 +343,7 @@ const AdminMenu = () => {
         return () => {
             mounted = false;
         };
-    }, [normalizeAuditorRow, normalizeAuditTypeRow, normalizeBusinessUnitRow, normalizeOperatingUnitRow, normalizeDelayCauseRow, normalizeEveryTimeQuestionRow, normalizeFunctionRow, normalizeProgramRow, normalizeSiteRow, normalizePropRow, normalizeTrainingRequirementRow, normalizeSafetyEquipmentRow]);
+    }, [normalizeAuditorRow, normalizeAuditTypeRow, normalizeBusinessUnitRow, normalizeOperatingUnitRow, normalizeDelayCauseRow, normalizeEveryTimeQuestionRow, normalizeFunctionRow, normalizeProgramRow, normalizeDivisionRow, normalizeSiteRow, normalizePropRow, normalizeTrainingRequirementRow, normalizeSafetyEquipmentRow]);
 
     React.useEffect(() => {
         if (loading) return;
@@ -388,6 +404,12 @@ const AdminMenu = () => {
             setProgramError('');
             setProgramMessage('');
             setProgramFieldErrors({});
+            setEditingDivision(null);
+            setDivisionNameInput('');
+            setDivisionSectorId('');
+            setDivisionError('');
+            setDivisionMessage('');
+            setDivisionFieldErrors({});
             setEditingSite(null);
             setSiteAddressInput('');
             setSiteCityInput('');
@@ -506,6 +528,15 @@ const AdminMenu = () => {
             return nameA.localeCompare(nameB);
         });
     }, [divisionsList]);
+
+    const sortedSectors = React.useMemo(() => {
+        if (!sectorsList.length) return [];
+        return [...sectorsList].sort((a, b) => {
+            const nameA = (a.sectorName || '').toLowerCase();
+            const nameB = (b.sectorName || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    }, [sectorsList]);
 
     const sortedAuditors = React.useMemo(() => {
         const list = [...auditorList];
@@ -715,6 +746,8 @@ const AdminMenu = () => {
     const isFunctionEditMode = selectedAction === 'Edit' && selectedOption === 'Functions';
     const isProgramNewMode = selectedAction === 'New' && selectedOption === 'Programs';
     const isProgramEditMode = selectedAction === 'Edit' && selectedOption === 'Programs';
+    const isDivisionNewMode = selectedAction === 'New' && selectedOption === 'Divisions';
+    const isDivisionEditMode = selectedAction === 'Edit' && selectedOption === 'Divisions';
     const isSiteNewMode = selectedAction === 'New' && selectedOption === 'Sites';
     const isSiteEditMode = selectedAction === 'Edit' && selectedOption === 'Sites';
     const showFields = isEditMode ? Boolean(editingAuditor) : manualEntry || (isNewMode && rosterMatch && !auditorMatch);
@@ -774,6 +807,13 @@ const AdminMenu = () => {
         }
         return sortedPrograms;
     }, [sortedPrograms, includeArchivedPrograms, isProgramEditMode]);
+
+    const visibleDivisions = React.useMemo(() => {
+        if (isDivisionEditMode && !includeArchivedDivisions) {
+            return sortedDivisions.filter((division) => (division.active ?? 1) === 1);
+        }
+        return sortedDivisions;
+    }, [sortedDivisions, includeArchivedDivisions, isDivisionEditMode]);
 
     const visibleSites = React.useMemo(() => {
         if (isSiteEditMode && !includeArchivedSites) {
@@ -858,6 +898,12 @@ const AdminMenu = () => {
             setIncludeArchivedPrograms(false);
         }
     }, [isProgramEditMode]);
+
+    React.useEffect(() => {
+        if (!isDivisionEditMode) {
+            setIncludeArchivedDivisions(false);
+        }
+    }, [isDivisionEditMode]);
 
     React.useEffect(() => {
         if (!isSiteEditMode) {
@@ -1824,6 +1870,117 @@ const AdminMenu = () => {
             setProgramSubmitting(false);
         }
     }, [programInput, programDivisionId, editingProgram, normalizeProgramRow]);
+
+    const handleDivisionSubmit = React.useCallback(async () => {
+        const errors = {};
+        if (!divisionNameInput.trim()) {
+            errors.divisionName = 'Division is required.';
+        }
+        if (!divisionSectorId) {
+            errors.sectorId = 'Sector is required.';
+        }
+        if (Object.keys(errors).length > 0) {
+            setDivisionFieldErrors(errors);
+            const msg = 'Please fill out all required fields.';
+            toast.error(msg, TOAST_OPTIONS);
+            setDivisionError(msg);
+            setDivisionMessage('');
+            return;
+        }
+
+        const payload = {
+            divisionName: divisionNameInput.trim(),
+            sectorId: Number(divisionSectorId),
+            active: editingDivision?.active ?? 1
+        };
+
+        setDivisionSubmitting(true);
+        setDivisionError('');
+        setDivisionMessage('');
+        setDivisionFieldErrors({});
+
+        try {
+            const endpoint = isDivisionEditMode && editingDivision
+                ? `${API_BASE}/divisions/${editingDivision.divisionId}`
+                : `${API_BASE}/divisions`;
+            const method = isDivisionEditMode && editingDivision ? 'PUT' : 'POST';
+            const response = await fetch(endpoint, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => null);
+                throw new Error(errorBody?.error || 'Failed to save division.');
+            }
+            const saved = normalizeDivisionRow(await response.json());
+            const successMsg = isDivisionEditMode && editingDivision
+                ? 'Division updated successfully.'
+                : 'Division added successfully.';
+            if (isDivisionEditMode && editingDivision) {
+                setDivisionsList((prev) =>
+                    prev.map((division) =>
+                        division.divisionId === editingDivision.divisionId ? saved : division
+                    )
+                );
+            } else {
+                setDivisionsList((prev) => [...prev, saved]);
+            }
+            setDivisionMessage(successMsg);
+            toast.success('Submitted!', SUCCESS_TOAST_OPTIONS);
+            setDivisionNameInput('');
+            setDivisionSectorId('');
+            setEditingDivision(null);
+        } catch (error) {
+            const errMsg = error.message || 'Failed to save division.';
+            toast.error(errMsg, TOAST_OPTIONS);
+            setDivisionError(errMsg);
+            setDivisionMessage('');
+        } finally {
+            setDivisionSubmitting(false);
+        }
+    }, [divisionNameInput, divisionSectorId, editingDivision, isDivisionEditMode, normalizeDivisionRow]);
+
+    const handleDivisionArchive = React.useCallback(async () => {
+        if (!editingDivision) return;
+        const newActive = editingDivision.active === 1 ? 0 : 1;
+        setDivisionSubmitting(true);
+        try {
+            const payload = {
+                divisionName: divisionNameInput.trim() || editingDivision.divisionName,
+                sectorId: Number(divisionSectorId || editingDivision.sectorId),
+                active: newActive
+            };
+            const response = await fetch(`${API_BASE}/divisions/${editingDivision.divisionId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) {
+                const errorBody = await response.json().catch(() => null);
+                throw new Error(errorBody?.error || 'Failed to update division.');
+            }
+            const saved = normalizeDivisionRow(await response.json());
+            setDivisionsList((prev) =>
+                prev.map((division) =>
+                    division.divisionId === saved.divisionId ? saved : division
+                )
+            );
+            setEditingDivision(saved);
+            setDivisionNameInput(saved.divisionName || '');
+            setDivisionSectorId(saved.sectorId ?? '');
+            const successMsg = saved.active === 1 ? 'Division reactivated.' : 'Division archived.';
+            setDivisionMessage(successMsg);
+            toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
+        } catch (error) {
+            const errMsg = error.message || 'Failed to update division.';
+            toast.error(errMsg, TOAST_OPTIONS);
+            setDivisionError(errMsg);
+            setDivisionMessage('');
+        } finally {
+            setDivisionSubmitting(false);
+        }
+    }, [divisionNameInput, divisionSectorId, editingDivision, normalizeDivisionRow]);
 
     const handleSiteSubmit = React.useCallback(async () => {
         const errors = {};
@@ -2844,6 +3001,71 @@ const AdminMenu = () => {
                         submitting={programSubmitting}
                         programMessage={programMessage}
                         programError={programError}
+                    />
+                )}
+                {selectedOption === 'Divisions' && (
+                    <DivisionsSection
+                        actionOptions={ACTION_OPTIONS}
+                        selectedAction={selectedAction}
+                        onActionChange={(event) => setSelectedAction(event.target.value)}
+                        isDivisionEditMode={isDivisionEditMode}
+                        isDivisionNewMode={isDivisionNewMode}
+                        includeArchived={includeArchivedDivisions}
+                        onIncludeArchivedChange={(event) => setIncludeArchivedDivisions(event.target.checked)}
+                        visibleDivisions={visibleDivisions}
+                        editingDivision={editingDivision}
+                        onSelectDivision={(division) => {
+                            setEditingDivision(division);
+                            setDivisionNameInput(division.divisionName || '');
+                            setDivisionSectorId(division.sectorId ?? '');
+                            setDivisionMessage('');
+                            setDivisionError('');
+                        }}
+                        getSectorName={getSectorName}
+                        divisionInput={divisionNameInput}
+                        onDivisionInputChange={(event) => {
+                            setDivisionNameInput(event.target.value);
+                            if (divisionFieldErrors.divisionName) {
+                                setDivisionFieldErrors((prev) => {
+                                    const { divisionName, ...rest } = prev;
+                                    return rest;
+                                });
+                            }
+                        }}
+                        divisionSectorId={divisionSectorId}
+                        onSectorChange={(event) => {
+                            setDivisionSectorId(event.target.value);
+                            if (divisionFieldErrors.sectorId) {
+                                setDivisionFieldErrors((prev) => {
+                                    const { sectorId, ...rest } = prev;
+                                    return rest;
+                                });
+                            }
+                        }}
+                        sortedSectors={sortedSectors}
+                        onClearSector={() => {
+                            setDivisionSectorId('');
+                            if (divisionFieldErrors.sectorId) {
+                                setDivisionFieldErrors((prev) => {
+                                    const { sectorId, ...rest } = prev;
+                                    return rest;
+                                });
+                            }
+                        }}
+                        divisionFieldErrors={divisionFieldErrors}
+                        onSubmit={handleDivisionSubmit}
+                        onArchiveToggle={handleDivisionArchive}
+                        onReset={() => {
+                            setDivisionNameInput('');
+                            setDivisionSectorId('');
+                            setEditingDivision(null);
+                            setDivisionError('');
+                            setDivisionMessage('');
+                            setDivisionFieldErrors({});
+                        }}
+                        submitting={divisionSubmitting}
+                        divisionMessage={divisionMessage}
+                        divisionError={divisionError}
                     />
                 )}
                 {selectedOption === 'Sites' && (

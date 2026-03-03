@@ -29,9 +29,9 @@ const smtpTransport = nodemailer.createTransport({
 //const HARD_CODED_NETWORK_ID = 'B00002'; // auditor test Jennifer Brown, has audits
 //const HARD_CODED_NETWORK_ID = 'R12345'; // roster non-auditor approver test Alex Nguyen
 //const HARD_CODED_NETWORK_ID = 'A00001'; // roster non-auditor auditee test Anderson Michael
-//const HARD_CODED_NETWORK_ID = 'E00001'; // Auditor and admin John Smith
+const HARD_CODED_NETWORK_ID = 'E00001'; // Auditor and admin John Smith
 //const HARD_CODED_NETWORK_ID = 'A00003'// David Chen
-const HARD_CODED_NETWORK_ID = 'E00017'// Brown Michael
+//const HARD_CODED_NETWORK_ID = 'E00017'// Brown Michael
 
 const getNetworkIdFromRequest = (req) => {
     // const networkId = req.get('X-Auth-Header');
@@ -1103,6 +1103,60 @@ app.put('/api/programs/:programId', async (req, res) => {
         res.json(update.rows[0]);
     } catch (error) {
         console.error('Error updating program:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Create division
+app.post('/api/divisions', async (req, res) => {
+    const { divisionName, sectorId, active = 1 } = req.body;
+    if (!divisionName || !sectorId) {
+        return res.status(400).json({ success: false, error: 'divisionName and sectorId are required.' });
+    }
+    try {
+        const conflict = await pool.query(
+            'SELECT divisionId FROM divisions_r WHERE LOWER(TRIM(divisionName)) = LOWER(TRIM($1))',
+            [divisionName]
+        );
+        if (conflict.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'A division with that name already exists.' });
+        }
+        const insert = await pool.query(
+            'INSERT INTO divisions_r (divisionName, sectorId, active) VALUES ($1, $2, $3) RETURNING divisionId, divisionName, sectorId, active',
+            [divisionName, sectorId, active]
+        );
+        res.json(insert.rows[0]);
+    } catch (error) {
+        console.error('Error creating division:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update division
+app.put('/api/divisions/:divisionId', async (req, res) => {
+    const { divisionId } = req.params;
+    const { divisionName, sectorId, active = 1 } = req.body;
+    if (!divisionName || !sectorId) {
+        return res.status(400).json({ success: false, error: 'divisionName and sectorId are required.' });
+    }
+    try {
+        const conflict = await pool.query(
+            'SELECT divisionId FROM divisions_r WHERE LOWER(TRIM(divisionName)) = LOWER(TRIM($1)) AND divisionId <> $2',
+            [divisionName, divisionId]
+        );
+        if (conflict.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'A division with that name already exists.' });
+        }
+        const update = await pool.query(
+            'UPDATE divisions_r SET divisionName = $1, sectorId = $2, active = $3 WHERE divisionId = $4 RETURNING divisionId, divisionName, sectorId, active',
+            [divisionName, sectorId, active, divisionId]
+        );
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Division not found.' });
+        }
+        res.json(update.rows[0]);
+    } catch (error) {
+        console.error('Error updating division:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });

@@ -178,6 +178,7 @@ CREATE TABLE dbo.divisions_r (
   divisionid INT IDENTITY(1,1) NOT NULL,
   divisionname NVARCHAR(100) NOT NULL,
   sectorid INT,
+  active INT DEFAULT 1,
   leadid INT,
   PRIMARY KEY (divisionid)
 );

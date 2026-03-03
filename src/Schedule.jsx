@@ -403,9 +403,10 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     programs: getProgramNames(audit.programIds)
   }));
 
+  const activeDivisionsList = divisionsList.filter(d => (d.active ?? 1) === 1);
   const filteredDivisionsList = parsedSectorId
-    ? divisionsList.filter(d => d.sectorId === parsedSectorId)
-    : divisionsList;
+    ? activeDivisionsList.filter(d => d.sectorId === parsedSectorId)
+    : activeDivisionsList;
 
   const activeProgramsList = programsList.filter(p => (p.active ?? 1) === 1);
 

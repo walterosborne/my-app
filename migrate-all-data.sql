@@ -68,7 +68,8 @@ CREATE TABLE IF NOT EXISTS programs (
 CREATE TABLE IF NOT EXISTS divisions (
     divisionId SERIAL PRIMARY KEY,
     divisionName VARCHAR(100) NOT NULL UNIQUE,
-    sectorId INTEGER
+    sectorId INTEGER,
+    active INT DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS sectors (
