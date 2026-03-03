@@ -2,25 +2,77 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import teamImage from './assets/placeholder.jpg';
+import { getAuditsAll, getAuditors, getCurrentUser } from './assets/data/apiData';
 
 const Home = () => {
     const navigate = useNavigate();
-    const upcomingAudits = [
-        { id: '8176', date: '2026-03-15', auditor: 'Smith, John' },
-        { id: '3245', date: '2026-03-08', auditor: 'Johnson, Sarah' },
-        { id: '7892', date: '2026-03-08', auditor: 'Williams, Michael' },
-        { id: '4521', date: '2026-03-12', auditor: 'Brown, Jennifer' },
-        { id: '6034', date: '2026-03-20', auditor: 'Davis, Robert' },
-        { id: '9187', date: '2026-03-25', auditor: 'Miller, Emily' },
-        { id: '2658', date: '2026-03-28', auditor: 'Wilson, David' }
-    ];
+    const [upcomingAudits, setUpcomingAudits] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [currentUser, setCurrentUser] = React.useState({ name: 'User', myId: null });
+
+    // Load audits from API and format for display
+    React.useEffect(() => {
+        async function loadAudits() {
+            try {
+                const [auditsData, auditorsData, userData] = await Promise.all([
+                    getAuditsAll(true),
+                    getAuditors(),
+                    getCurrentUser()
+                ]);
+                setCurrentUser(userData?.name ? userData : { name: 'User', myId: null });
+
+                // Calculate date range for 30-day lookahead
+                const now = new Date();
+                const thirtyDaysFromNow = new Date();
+                thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+                // Transform audit data to match the display format
+                const formatted = auditsData
+                    .filter(a => {
+                        if (!a.expectedStartDate) return false;
+                        const startDate = new Date(a.expectedStartDate);
+                        // Only include audits with expected start date within next 30 days
+                        return startDate >= now && startDate <= thirtyDaysFromNow;
+                    })
+                    .map(a => {
+                        // Format date as MM-DD-YYYY
+                        const date = new Date(a.expectedStartDate);
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        const year = date.getFullYear();
+                        const formattedDate = `${month}-${day}-${year}`;
+
+                        // Get auditor name from leadAuditorId
+                        const auditor = auditorsData.find(aud => aud.auditorId === a.leadAuditorId);
+                        const auditorName = auditor ? auditor.auditorName : 'TBD';
+
+                        const title = a.title || 'Untitled Audit';
+                        return {
+                            id: String(a.scheduleId),
+                            date: formattedDate,
+                            auditor: auditorName,
+                            title,
+                            scheduleLabel: `Schedule ID: ${a.scheduleId}`,
+                            rawDate: a.expectedStartDate // Keep for sorting
+                        };
+                    })
+                    .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate)); // Sort by date
+                setUpcomingAudits(formatted);
+                setLoading(false);
+            } catch (error) {
+                console.error('Error loading audits:', error);
+                setLoading(false);
+            }
+        }
+        loadAudits();
+    }, []);
 
     return (
         <div className="home-container">
             <div className="home-content">
                 <div className="home-header">
                     <h1 className="home-title">Northrop Grumman Audit Tool (NGAT)</h1>
-                    <p className="welcome-text">Welcome Osborne,Walter W!</p>
+                    <p className="welcome-text">Welcome {currentUser.name}!</p>
                 </div>
 
                 <div className="main-section">
@@ -64,6 +116,21 @@ const Home = () => {
                     </div>
                 </div>
 
+                <div className="home-quick-links">
+                    <button
+                        className="home-link-button"
+                        onClick={() => navigate('/audit')}
+                    >
+                        My Audits
+                    </button>
+                    <button
+                        className="home-link-button"
+                        onClick={() => navigate('/audit-statuses')}
+                    >
+                        My Audit/Approval Statuses
+                    </button>
+                </div>
+
                 <div className="home-description">
                     <p>
                         NGAT is a sector-wide application for DS internal and external audits. It streamlines the audit process by
@@ -88,8 +155,12 @@ const Home = () => {
                                 onClick={() => navigate(`/audit/${audit.id}`)}
                                 style={{ cursor: 'pointer' }}
                             >
-                                <div className="audit-id">Schedule ID: <em>{audit.id}</em></div>
-                                <div className="audit-details">{audit.date} {audit.auditor}</div>
+                                <div className="audit-id">
+                                    {audit.scheduleLabel} <em>({audit.title})</em>
+                                </div>
+                                <div className="audit-details">
+                                    <span className="audit-date">{audit.date}</span> {audit.auditor}
+                                </div>
                             </div>
                         ))}
                     </div>

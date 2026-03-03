@@ -1,7 +1,7 @@
 .entry-page {
     width: 97%;
     min-height: calc(100vh - 60px);
-    background-color: var(--color-primary, #0066cc);
+    background-color: var(--color-primary, #000080);
     padding: 2rem;
     display: flex;
     justify-content: center;
@@ -31,4 +31,52 @@
 .entry-message p {
     color: var(--color-text-secondary, #555);
     font-size: 1.1rem;
+}
+
+.entry-section {
+    padding: 1.5rem;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    background-color: #f9fafb;
+    margin-top: 1.5rem;
+}
+
+.entry-section h3 {
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+}
+
+.tool-page-header {
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.tool-page-subtitle {
+    text-transform: uppercase;
+    letter-spacing: 0.2em;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin: 0 0 0.25rem;
+}
+
+.tool-page-title {
+    margin: 0;
+    font-size: 1.8rem;
+    color: #0f172a;
+}
+
+.admin-input {
+    font-size: 1rem;
+}
+
+.admin-input::placeholder {
+    color: #9ca3af;
+    opacity: 1;
+}
+
+.admin-field-error {
+    color: #dc2626;
+    font-size: 0.85rem;
+    margin: 0.35rem 0 0;
 }

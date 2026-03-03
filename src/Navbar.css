@@ -17,6 +17,7 @@
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    text-decoration: none;
 }
 
 .navbar-logo {
@@ -28,10 +29,12 @@
 }
 
 .navbar-title {
-    color: #2c3e50;
+    color: var(--color-primary);
     font-size: 1.8rem;
     font-weight: 600;
     letter-spacing: 0.05em;
+    font-family: "Times New Roman", Times, serif;
+
 }
 
 .navbar-right {
@@ -105,7 +108,7 @@
     font-size: 2rem;
     cursor: pointer;
     padding: 0.5rem;
-    transition: background-color 0.3s;
+    transition: background-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
     width: 50px;
     height: 50px;
     display: flex;
@@ -115,5 +118,8 @@
 }
 
 .icon-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: transparent;
+    color: var(--color-primary-dark);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
+    transform: translateY(-1px) scale(1.03);
 }

@@ -1,0 +1,175 @@
+.audit-statuses-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 2rem;
+}
+
+.audit-statuses-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.95rem;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+}
+
+.audit-statuses-title {
+    margin: 0;
+    font-size: 2.2rem;
+    color: var(--color-section-heading);
+}
+
+.audit-statuses-subtitle {
+    margin: 0.4rem 0 0;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+}
+
+.audit-statuses-section {
+    margin-top: 2rem;
+}
+
+.audit-statuses-sections {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2rem;
+    align-items: start;
+}
+
+.audit-statuses-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.audit-statuses-section-header h3 {
+    margin: 0;
+    color: var(--color-section-heading);
+}
+
+.audit-statuses-count {
+    background-color: var(--color-grey-200);
+    color: var(--color-text-secondary);
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.audit-statuses-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.25rem;
+}
+
+.audit-status-card-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+.audit-status-card {
+    border-radius: 18px;
+    border: 1px solid var(--color-border-grey);
+    padding: 1.25rem;
+    background: #ffffff;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.audit-status-card-link:hover .audit-status-card {
+    background-color: #f3f4f6;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+    transform: translateY(-3px);
+}
+
+.audit-status-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.audit-status-card-header > div {
+    min-width: 0;
+}
+
+.audit-status-id {
+    color: var(--color-text-secondary);
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.audit-status-title {
+    margin-top: 0.35rem;
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--color-section-heading);
+    max-width: 240px;
+    word-break: break-word;
+}
+
+.audit-status-chip {
+    padding: 0.45rem 1rem;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    background-color: var(--color-audit-blue);
+    color: var(--color-white);
+    white-space: nowrap;
+}
+
+.audit-status-chip.pending {
+    background-color: var(--color-warning);
+    color: var(--color-section-heading);
+}
+
+.audit-status-chip.approved {
+    background-color: var(--color-success);
+    color: var(--color-white);
+}
+
+.audit-status-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.audit-status-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.audit-status-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-secondary);
+}
+
+.audit-status-value {
+    font-size: 0.95rem;
+    color: var(--color-text-primary);
+}
+
+.audit-statuses-empty {
+    border: 1px dashed var(--color-border-grey);
+    border-radius: 16px;
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--color-text-secondary);
+    background: #f9fafb;
+}
+
+@media (max-width: 1100px) {
+    .audit-statuses-sections {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,0 +1,61 @@
+/* CSS Variables from colors.js - Auto-generated */
+:root {
+    /* Primary colors */
+    --color-primary: #000080;
+    --color-primary-dark: #0052a3;
+    --color-primary-light: #3385d6;
+
+    /* Semantic colors */
+    --color-success: #28a745;
+    --color-success-light: #d4edda;
+    --color-danger: #f44336;
+    --color-danger-light: #ffebee;
+    --color-danger-dark: #d32f2f;
+    --color-warning: #ea820c;
+    --color-warning-light: #fff3cd;
+    --color-info: #1976d2;
+    --color-info-light: #d1ecf1;
+
+    /* Button colors */
+    --color-button-green: green;
+    --color-button-red: red;
+    --color-button-blue: blue;
+
+    /* Neutral colors */
+    --color-white: #ffffff;
+    --color-black: #000000;
+    --color-grey-100: #f8f9fa;
+    --color-grey-200: #e9ecef;
+    --color-grey-300: #dee2e6;
+    --color-grey-400: #ced4da;
+    --color-grey-500: #adb5bd;
+    --color-grey-600: #6c757d;
+    --color-grey-700: #495057;
+    --color-grey-800: #343a40;
+    --color-grey-900: #212529;
+
+    /* Background colors */
+    --color-background: #000080;
+    --color-background-light: #f5f5f5;
+    --color-background-whitesmoke: whitesmoke;
+
+    /* Border colors */
+    --color-border-light: lightgray;
+    --color-border-grey: #e0e0e0;
+
+    /* Text colors */
+    --color-text-primary: #000000;
+    --color-text-secondary: #666666;
+    --color-text-error: red;
+    --color-text-danger: #d32f2f;
+    --color-text-link: #1976d2;
+
+    /* Additional audit-specific colors */
+    --color-section-heading: #2c3e50;
+    --color-audit-blue: #0066cc;
+    --color-audit-blue-dark: #0052a3;
+
+    /* Gradient colors */
+    --gradient-purple-start: #667eea;
+    --gradient-purple-end: #764ba2;
+}

@@ -51,3 +51,6 @@ build
 # macOS
 .AppleDouble
 .LSOverride
+
+DATABASE-ARCHITECHTURE.md
+DATABASE-README.md

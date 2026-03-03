@@ -1,23 +1,128 @@
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './Audit.css';
-import { audits } from './assets/data/audits';
-import { programs as programsList } from './assets/data/programs';
-import { divisions as divisionsList } from './assets/data/divisions';
-import { sectors as sectorsList } from './assets/data/sectors';
-import { sites as sitesList } from './assets/data/sites';
-import { businessUnits as businessUnitsList } from './assets/data/businessUnits';
-import { operatingUnits as operatingUnitsList } from './assets/data/operatingUnits';
-import { auditors as auditorsList } from './assets/data/auditors';
-import { auditTypes as auditTypesList } from './assets/data/auditTypes';
-import { statuses as statusesList } from './assets/data/statuses';
-import { functions as functionsList } from './assets/data/functions';
-import { intExt as intExtList } from './assets/data/intExt';
-import { standards as standardsList } from './assets/data/standards';
+import * as XLSX from 'xlsx';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import {
+    getAuditsReport,
+    getPrograms,
+    getDivisions,
+    getSectors,
+    getSites,
+    getBusinessUnits,
+    getOperatingUnits,
+    getAuditors,
+    getAuditTypes,
+    getStatuses,
+    getFunctions,
+    getIntExt,
+    getStandards,
+    getSeverities,
+    getRoster,
+    getSafetyEquipment,
+    getTrainingRequirements,
+    getRiskFactors,
+    getSubcategories,
+    getRiskRatings,
+    getCauses,
+    getProps,
+    getCurrentUser
+} from './assets/data/apiData';
 
 const Audit = () => {
     const { id } = useParams();
     const navigate = useNavigate();
+
+    // State for all data from API
+    const [audits, setAudits] = React.useState([]);
+    const [programsList, setProgramsList] = React.useState([]);
+    const [divisionsList, setDivisionsList] = React.useState([]);
+    const [sectorsList, setSectorsList] = React.useState([]);
+    const [sitesList, setSitesList] = React.useState([]);
+    const [businessUnitsList, setBusinessUnitsList] = React.useState([]);
+    const [operatingUnitsList, setOperatingUnitsList] = React.useState([]);
+    const [auditorsList, setAuditorsList] = React.useState([]);
+    const [auditTypesList, setAuditTypesList] = React.useState([]);
+    const [statusesList, setStatusesList] = React.useState([]);
+    const [functionsList, setFunctionsList] = React.useState([]);
+    const [intExtList, setIntExtList] = React.useState([]);
+    const [standardsList, setStandardsList] = React.useState([]);
+    const [severitiesList, setSeveritiesList] = React.useState([]);
+    const [rosterList, setRosterList] = React.useState([]);
+    const [safetyEquipmentList, setSafetyEquipmentList] = React.useState([]);
+    const [trainingRequirementsList, setTrainingRequirementsList] = React.useState([]);
+    const [riskFactorsList, setRiskFactorsList] = React.useState([]);
+    const [subcategoriesList, setSubcategoriesList] = React.useState([]);
+    const [riskRatings, setRiskRatings] = React.useState([]);
+    const [nonconformances, setNonconformances] = React.useState([]);
+    const [cars, setCars] = React.useState([]);
+    const [causesList, setCausesList] = React.useState([]);
+    const [approvals, setApprovals] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [propsList, setPropsList] = React.useState([]);
+    const [accessErrorShown, setAccessErrorShown] = React.useState(false);
+    const [currentUser, setCurrentUser] = React.useState(null);
+
+    // Load all data from API on mount
+    React.useEffect(() => {
+        async function loadAllData() {
+            try {
+                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster, safetyEquipment, trainingRequirements, props, riskFactors, subcategories, causes, userData] = await Promise.all([
+                    getAuditsReport(true),
+                    getPrograms(),
+                    getDivisions(),
+                    getSectors(),
+                    getSites(),
+                    getBusinessUnits(),
+                    getOperatingUnits(),
+                    getAuditors(),
+                    getAuditTypes(),
+                    getStatuses(),
+                    getFunctions(),
+                    getIntExt(),
+                    getStandards(),
+                    getSeverities(),
+                    getRoster(),
+                    getSafetyEquipment(),
+                    getTrainingRequirements(),
+                    getProps(),
+                    getRiskFactors(),
+                    getSubcategories(),
+                    getCauses(),
+                    getCurrentUser()
+                ]);
+
+                setAudits(auditsData);
+                setCurrentUser(userData);
+                setProgramsList(programs);
+                setDivisionsList(divisions);
+                setSectorsList(sectors);
+                setSitesList(sites);
+                setBusinessUnitsList(businessUnits);
+                setOperatingUnitsList(operatingUnits);
+                setAuditorsList(auditors);
+                setAuditTypesList(auditTypes);
+                setStatusesList(statuses);
+                setFunctionsList(functions);
+                setIntExtList(intExt);
+                setStandardsList(standards);
+                setSeveritiesList(severities);
+                setRosterList(roster);
+                setSafetyEquipmentList(safetyEquipment);
+                setTrainingRequirementsList(trainingRequirements);
+                setRiskFactorsList(riskFactors);
+                setSubcategoriesList(subcategories);
+                setCausesList(causes);
+                setLoading(false);
+                setPropsList(props);
+            } catch (error) {
+                console.error('Error loading data:', error);
+                setLoading(false);
+            }
+        }
+        loadAllData();
+    }, []);
 
     // Helper function to get program names from programIds
     const getProgramNames = (programIds) => {
@@ -39,10 +144,23 @@ const Audit = () => {
         return sector ? sector.sectorName : sectorId;
     };
 
-    // Helper function to get site name from siteId
+    const getSiteLabel = (site) => {
+        if (!site) return '';
+        const city = site.city || '';
+        const address = site.address || '';
+        if (city && address) {
+            return `${city} (${address})`;
+        }
+        if (city) {
+            return city;
+        }
+        return address || site.siteId;
+    };
+
+    // Helper function to get site label from siteId
     const getSiteName = (siteId) => {
         const site = sitesList.find(s => s.siteId === siteId);
-        return site ? site.siteName : siteId;
+        return site ? getSiteLabel(site) : siteId;
     };
 
     // Helper function to get business unit names from businessUnitIds
@@ -72,7 +190,7 @@ const Audit = () => {
         return additionalAuditorIds.map(auditorId => {
             const auditor = auditorsList.find(a => a.auditorId === auditorId);
             return auditor ? auditor.auditorName : auditorId;
-        }).join(', ');
+        }).join('; ');
     };
 
     // Helper function to get audit type name from auditTypeId
@@ -107,105 +225,1108 @@ const Audit = () => {
         }).join(', ');
     };
 
-    // EXAMPLE FUNCTION - NOT CURRENTLY IN USE
-    // This function demonstrates how to fetch audit data from a SQL Server database
-    // Requires a backend API endpoint (e.g., Express.js with mssql package)
-    const fetchAuditsFromSQLServer = async () => {
-        try {
-            // Call your backend API endpoint that connects to SQL Server
-            const response = await fetch('/api/audits', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // Add authentication headers if needed
-                    // 'Authorization': `Bearer ${token}`
+    const getStandardTypeLabel = (typeValue) => {
+        if (!typeValue && typeValue !== 0) return '';
+        if (typeValue === 'PEQ' || typeValue === 'ETQ') return typeValue;
+        const parsed = Number(typeValue);
+        if (Number.isFinite(parsed)) {
+            const standard = standardsList.find((s) => s.standardId === parsed);
+            return standard ? standard.standardName : `Standard ${parsed}`;
+        }
+        return String(typeValue);
+    };
+
+    const standardFindingsSorted = React.useMemo(() => {
+        const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
+        return nonconformances
+            .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
+            .slice()
+            .sort((a, b) => {
+                const labelA = getStandardTypeLabel(a.type);
+                const labelB = getStandardTypeLabel(b.type);
+                if (labelA !== labelB) {
+                    return (labelA || '').localeCompare(labelB || '');
                 }
+                const sectionA = Number(a.section ?? 0);
+                const sectionB = Number(b.section ?? 0);
+                if (sectionA !== sectionB) return sectionA - sectionB;
+                const subA = Number(a.subsection ?? 0);
+                const subB = Number(b.subsection ?? 0);
+                if (subA !== subB) return subA - subB;
+                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
             });
+    }, [nonconformances, standardsList]);
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const data = await response.json();
-            return data; // Returns array of audit objects from SQL Server
-        } catch (error) {
-            console.error('Error fetching audits from SQL Server:', error);
-            throw error;
-        }
+    // Helper function to get roster names from MyIDs
+    const getRosterNames = (myIds) => {
+        return myIds.map(myId => {
+            const rosterMember = rosterList.find(r => r.myId === myId);
+            return rosterMember ? rosterMember.rosterName : myId;
+        }).join(', ');
     };
 
-    // Backend API endpoint would look something like this (Node.js/Express):
-    /*
-    const express = require('express');
-    const sql = require('mssql');
-    const router = express.Router();
-
-    const sqlConfig = {
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        server: process.env.DB_SERVER,
-        options: {
-            encrypt: true,
-            trustServerCertificate: false
-        }
+    const getRosterName = (myId) => {
+        if (myId === null || myId === undefined) return '';
+        const rosterMember = rosterList.find(r => r.myId === myId);
+        return rosterMember ? rosterMember.rosterName : myId;
     };
 
-    router.get('/api/audits', async (req, res) => {
-        try {
-            await sql.connect(sqlConfig);
-            const result = await sql.query`
-                SELECT 
-                    scheduleId,
-                    title,
-                    auditType,
-                    function,
-                    standards,
-                    status,
-                    stage,
-                    scheduleDate,
-                    startDate,
-                    endDate,
-                    reportDueDate,
-                    division,
-                    programs,
-                    sector,
-                    site,
-                    businessUnit,
-                    operatingUnit,
-                    leadAuditor,
-                    additionalAuditors,
-                    scope,
-                    processElements,
-                    findings
-                FROM Audits
-                ORDER BY scheduleId DESC
-            `;
-            res.json(result.recordset);
-        } catch (err) {
-            console.error('SQL error:', err);
-            res.status(500).json({ error: 'Database query failed' });
+    const getPropName = (propId) => {
+        if (propId === null || propId === undefined) return '';
+        const prop = propsList.find(p => p.propId === propId);
+        return prop ? prop.PrOP : propId;
+    };
+
+    const getPropDocumentsList = () => {
+        const propIds = new Set();
+        nonconformances.forEach(nc => {
+            ['division', 'sector', 'qma', 'other'].forEach((field) => {
+                const entries = Array.isArray(nc[field]) ? nc[field] : [];
+                entries.forEach((value) => {
+                    if (value !== null && value !== undefined && value !== '') {
+                        propIds.add(Number(value));
+                    }
+                });
+            });
+        });
+        const names = Array.from(propIds)
+            .map((id) => getPropName(id))
+            .filter(Boolean);
+        return [...new Set(names)];
+    };
+
+    const getStandardClauses = () => {
+        const clauseMap = new Map();
+        nonconformances.forEach(nc => {
+            if (!nc.section) return;
+            const section = nc.section;
+            const subsection = nc.subsection;
+            const question = nc.question;
+            const key = `${section}-${subsection || ''}`;
+            if (clauseMap.has(key)) return;
+            const label = `Clause ${section}${subsection ? '.' + subsection : ''}${question ? ` - ${question}` : ''}`;
+            clauseMap.set(key, label);
+        });
+        return Array.from(clauseMap.values());
+    };
+
+    const escapeHtml = (unsafe) => {
+        if (unsafe === null || unsafe === undefined) return '';
+        return String(unsafe)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+
+    const getLocationsText = () => {
+        if (!auditData?.siteIds || auditData.siteIds.length === 0) {
+            return '<span class="muted">No response provided.</span>';
         }
-    });
-    */
+        const names = auditData.siteIds
+            .map(siteId => escapeHtml(getSiteName(siteId)))
+            .filter(Boolean);
+        return names.length > 0 ? names.join('; ') : '<span class="muted">No response provided.</span>';
+    };
+
+    const getCarLines = () => {
+        if (!cars || cars.length === 0) {
+            return ['No CARs reviewed.'];
+        }
+        return cars.map(car => {
+            const reviewer = car.reviewer ? ` (Reviewer: ${getRosterName(car.reviewer)})` : '';
+            return `${car.car}${reviewer}`;
+        });
+    };
+
+    const getApproverList = () => {
+        const entries = getApprovalEntries();
+        if (entries.length === 0) return ['No approvers assigned.'];
+        return entries.map((entry) => {
+            const name = getRosterName(entry.approvermyid);
+            const status = entry.approvedat ? 'Approved' : 'Pending';
+            return `${name} - ${status}`;
+        });
+    };
+
+    const getLeadAuditorMyId = () => {
+        const auditor = auditorsList.find(a => a.auditorId === auditData?.leadAuditorId);
+        if (!auditor) return null;
+        return auditor.myId || null;
+    };
+
+    const getApprovalEntries = () => {
+        const approvalMap = new Map();
+        approvals.forEach((approval) => {
+            approvalMap.set(approval.approvermyid, approval);
+        });
+
+        const approverIds = auditData?.approver ? [auditData.approver] : [];
+        const additionalApproverIds = Array.isArray(auditData?.additionalAuditors)
+            ? auditData.additionalAuditors.filter(Boolean)
+            : (Array.isArray(auditData?.additionalauditors) ? auditData.additionalauditors.filter(Boolean) : []);
+        const leadMyId = getLeadAuditorMyId();
+        const requiredIds = [...new Set([
+            ...approverIds,
+            ...(leadMyId ? [leadMyId] : []),
+            ...additionalApproverIds
+        ])];
+
+        if (requiredIds.length === 0 && approvalMap.size === 0) {
+            return [];
+        }
+
+        const entries = [];
+        const allIds = new Set([...requiredIds, ...approvalMap.keys()]);
+        allIds.forEach((myId) => {
+            const approval = approvalMap.get(myId);
+            entries.push({
+                approvermyid: myId,
+                approvedat: approval?.approvedat || (isApproved ? new Date().toISOString() : null),
+                approvalid: approval?.approvalid || `fallback-${myId}`
+            });
+        });
+        return entries;
+    };
+
+    const getCauseName = (causeId) => {
+        if (causeId === null || causeId === undefined) return '';
+        const cause = causesList.find(c => c.causeId === causeId);
+        return cause ? cause.cause : causeId;
+    };
+
+    // Helper function to get safety equipment names from safetyEquipmentIds
+    const getSafetyEquipmentNames = (safetyEquipmentIds) => {
+        return safetyEquipmentIds.map(seId => {
+            const equipment = safetyEquipmentList.find(se => se.safetyEquipmentId === seId);
+            return equipment ? equipment.safetyEquipmentName : seId;
+        }).join(', ');
+    };
+
+    // Helper function to get training requirement names from trainingRequirementIds
+    const getTrainingRequirementNames = (trainingRequirementIds) => {
+        return trainingRequirementIds.map(trId => {
+            const training = trainingRequirementsList.find(tr => tr.trainingRequirementId === trId);
+            return training ? training.trainingRequirementName : trId;
+        }).join(', ');
+    };
+
+    // Helper function to get risk factor name from riskFactorId
+    const getRiskFactorName = (riskFactorId) => {
+        const riskFactor = riskFactorsList.find(rf => rf.riskfactorid === riskFactorId);
+        return riskFactor ? riskFactor.riskfactorname : riskFactorId;
+    };
+
+    // Helper function to get severity label from severity integer
+    const getSeverityLabel = (severity) => {
+        if (severity == null) return 'N/A';
+        const match = severitiesList.find((item) => item.severityId === severity);
+        return match ? match.severity : 'N/A';
+    };
+
+    // Helper function to format date as MM-DD-YYYY
+    const formatDate = (dateString) => {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${month}-${day}-${year}`;
+    };
+
 
     // Find the audit based on URL param or default to highest numbered
     const getAuditData = () => {
         if (id) {
             const audit = audits.find(a => a.scheduleId === parseInt(id));
-            return audit || audits[0]; // Fallback to first if not found
+            return audit || null;
         }
         // Default to highest numbered audit (sort by scheduleId numerically)
         const sorted = [...audits].sort((a, b) => b.scheduleId - a.scheduleId);
-        return sorted[0];
+        return sorted[0] || null;
     };
 
     const auditData = getAuditData();
+    const stageValue = Number(auditData?.stage);
+    const isLocked = auditData?.locked === 1;
+    const isApproved = Boolean(auditData?.approvedAt);
+    const showNcDetailFallbacks = Boolean(isLocked || auditData?.submittedAt || stageValue >= 4);
+    const auditNotFound = Boolean(id) && !auditData;
+    const isRosterNonAuditor = currentUser?.myId && !currentUser?.auditorId;
+    const additionalApproverIds = Array.isArray(auditData?.additionalAuditors)
+        ? auditData.additionalAuditors
+        : (Array.isArray(auditData?.additionalauditors) ? auditData.additionalauditors : []);
+    const isLeadAuditor = currentUser?.auditorId && auditData?.leadAuditorId === currentUser.auditorId;
+    const isApprover = currentUser?.myId && auditData?.approver === currentUser.myId;
+    const isAdditionalApprover = currentUser?.myId && additionalApproverIds.includes(currentUser.myId);
+    const canApprove = isLeadAuditor || isApprover || isAdditionalApprover;
+
+    const getStageLabel = (stage, locked, approved) => {
+        if (approved) return 'Approved';
+        if (locked) return 'Pending Approval';
+        switch (stage) {
+            case 1:
+                return 'Planning';
+            case 2:
+                return 'Conduct Audit';
+            case 3:
+                return 'Nonconformaties';
+            case 4:
+                return 'Nonconformaties';
+            default:
+                return 'Unknown Stage';
+        }
+    };
+
+    // Load nonconformances for the selected audit
+    React.useEffect(() => {
+        async function loadNonconformances() {
+            if (auditData?.scheduleId) {
+                try {
+                    const response = await fetch(`http://localhost:3001/api/nonconformances/${auditData.scheduleId}`);
+                    const data = await response.json();
+                    setNonconformances(data);
+                } catch (error) {
+                    console.error('Error loading nonconformances:', error);
+                    setNonconformances([]);
+                }
+            }
+        }
+        loadNonconformances();
+    }, [auditData?.scheduleId]);
+
+    React.useEffect(() => {
+        async function loadApprovals() {
+            if (!auditData?.scheduleId) {
+                setApprovals([]);
+                return;
+            }
+            try {
+                const response = await fetch(`http://localhost:3001/api/approvals/${auditData.scheduleId}`);
+                if (!response.ok) {
+                    setApprovals([]);
+                    return;
+                }
+                const data = await response.json();
+                setApprovals(data.approvals || []);
+            } catch (error) {
+                console.error('Error loading approvals:', error);
+                setApprovals([]);
+            }
+        }
+        loadApprovals();
+    }, [auditData?.scheduleId]);
+
+    // Load CARs for the selected audit
+    React.useEffect(() => {
+        async function loadCars() {
+            if (auditData?.scheduleId) {
+                try {
+                    const response = await fetch(`http://localhost:3001/api/cars/${auditData.scheduleId}`);
+                    const data = await response.json();
+                    setCars(data);
+                } catch (error) {
+                    console.error('Error loading CARs:', error);
+                    setCars([]);
+                }
+            }
+        }
+        loadCars();
+    }, [auditData?.scheduleId]);
+
+    // Load risk ratings for the selected audit
+    React.useEffect(() => {
+        async function loadRiskRatings() {
+            if (auditData?.scheduleId && subcategoriesList.length > 0) {
+                try {
+                    const ratings = await getRiskRatings(auditData.scheduleId);
+                    setRiskRatings(ratings);
+                } catch (error) {
+                    console.error('Error loading risk ratings:', error);
+                    setRiskRatings([]);
+                }
+            }
+        }
+        loadRiskRatings();
+    }, [auditData?.scheduleId, subcategoriesList]);
+
+    React.useEffect(() => {
+        if (loading) return;
+        if (!id) return;
+        if (auditNotFound && !accessErrorShown) {
+            toast.error('You either do not have access to this audit or it does not exist.');
+            setAccessErrorShown(true);
+        }
+    }, [auditNotFound, accessErrorShown, id, loading]);
+
+    // Show loading state while data is being fetched
+    if (loading) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container">
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        Loading audit data...
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (auditNotFound) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container">
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        {isRosterNonAuditor ? 'You are not listed as an auditor, approver, or auditee on any audits, and are not an NGAT auditor. You may request NGAT auditor access below, otherwise contact your auditor.' : 'You either do not have access to this audit or it does not exist.'}
+                        <div style={{ marginTop: '1rem' }}>
+                            {isRosterNonAuditor ? (
+                                <button
+                                    type="button"
+                                    className="button"
+                                    style={{ backgroundColor: '#0066cc', width: '220px' }}
+                                    onClick={() => navigate('/request-auditor-access')}
+                                >
+                                    Request Access
+                                </button>
+                            ) : (
+                                <button
+                                    className="button"
+                                    onClick={() => navigate('/audit')}
+                                    style={{ backgroundColor: '#0066cc', width: '220px' }}
+                                >
+                                    Return to My Audits
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (isRosterNonAuditor && audits.length === 0) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container">
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        You are not listed as an auditor, approver, or auditee on any audits, and are not an NGAT auditor. You may request NGAT auditor access below, otherwise contact your auditor.                        <div style={{ marginTop: '1rem' }}>
+                            <button
+                                type="button"
+                                className="button"
+                                style={{ backgroundColor: '#0066cc', width: '220px' }}
+                                onClick={() => navigate('/request-auditor-access')}
+                            >
+                                Request Access
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (audits.length === 0) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container">
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        You do not have any audits yet. Create one to get started.
+                        <div style={{ marginTop: '1rem' }}>
+                            <button
+                                className="button"
+                                onClick={() => navigate('/entry?type=schedule')}
+                                style={{ backgroundColor: '#0066cc', width: '220px' }}
+                            >
+                                Create an Audit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     const handleAuditChange = (event) => {
         const selectedId = event.target.value;
         navigate(`/audit/${selectedId}`);
     };
+
+    const getPreviousCarsEffectiveLabel = (value) => {
+        const parsed = Number(value);
+        if (parsed === 0) return 'Yes';
+        if (parsed === 1) return 'No';
+        if (parsed === 2) return 'Unknown';
+        return 'No response provided';
+    };
+
+    const getFindingTypeLabel = (findingType) => {
+        switch (findingType) {
+            case 1:
+                return 'Nonconformity';
+            case 2:
+                return 'Conformity';
+            case 3:
+                return 'OFI';
+            case 4:
+                return 'Observation';
+            default:
+                return 'Unknown';
+        }
+    };
+
+    const handleExportXlsx = () => {
+        const formatArray = (ids, list, idKey, nameKey) => {
+            if (!ids || ids.length === 0) return '';
+            return ids.map((id) => {
+                const item = list.find((entry) => entry[idKey] === id);
+                return item ? item[nameKey] : id;
+            }).join(', ');
+        };
+        const formatSiteArray = (ids) => {
+            if (!ids || ids.length === 0) return '';
+            return ids.map((id) => {
+                const site = sitesList.find((entry) => entry.siteId === id);
+                return site ? getSiteLabel(site) : id;
+            }).join(', ');
+        };
+
+        const formatSingle = (id, list, idKey, nameKey) => {
+            if (!id) return '';
+            const item = list.find((entry) => entry[idKey] === id);
+            return item ? item[nameKey] : id;
+        };
+
+        const applyHeaderStyle = (worksheet, headerCount) => {
+            for (let col = 0; col < headerCount; col++) {
+                const cellAddress = XLSX.utils.encode_cell({ r: 0, c: col });
+                if (!worksheet[cellAddress]) continue;
+                worksheet[cellAddress].s = { font: { bold: true } };
+            }
+        };
+
+        const setColumnWidths = (worksheet, headers, rows) => {
+            const widths = headers.map((header, idx) => {
+                const maxCell = rows.reduce((max, row) => {
+                    const cell = row[idx] ?? '';
+                    return Math.max(max, cell.toString().length);
+                }, header.length);
+                return { wch: maxCell + 2 };
+            });
+            worksheet['!cols'] = widths;
+        };
+
+        const addSheet = (workbook, name, headers, rows) => {
+            const data = [headers, ...rows];
+            const sheet = XLSX.utils.aoa_to_sheet(data);
+            applyHeaderStyle(sheet, headers.length);
+            setColumnWidths(sheet, headers, rows);
+            XLSX.utils.book_append_sheet(workbook, sheet, name);
+        };
+
+        const auditorsTimeValue = auditData.auditorsTime ?? auditData.auditorstime;
+        const previousCarsEffectiveValue = auditData.previousCarsEffective ?? auditData.previouscarseffective;
+
+        const wb = XLSX.utils.book_new();
+
+        // Schedule sheet (match Schedule export)
+        const scheduleHeaders = [
+            'Schedule ID', 'Title', 'Sector', 'Division', 'Program(s)', 'Site(s)',
+            'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
+            'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
+            'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
+            'Status', 'Function', 'Comment'
+        ];
+        const scheduleValues = [
+            auditData.scheduleId || '',
+            auditData.title || '',
+            formatSingle(auditData.sectorId, sectorsList, 'sectorId', 'sectorName'),
+            formatSingle(auditData.divisionId, divisionsList, 'divisionId', 'divisionName'),
+            formatArray(auditData.programIds, programsList, 'programId', 'programName'),
+            formatSiteArray(auditData.siteIds),
+            formatArray(auditData.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+            formatArray(auditData.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+            formatSingle(auditData.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+            formatSingle(auditData.leadAuditorId, auditorsList, 'auditorId', 'auditorName'),
+            formatArray(auditData.additionalAuditorIds, auditorsList, 'auditorId', 'auditorName'),
+            formatDate(auditData.expectedStartDate),
+            formatDate(auditData.expectedCompletionDate),
+            formatSingle(auditData.intExtId, intExtList, 'intExtId', 'intExtName'),
+            formatArray(auditData.standardIds, standardsList, 'standardId', 'standardName'),
+            formatSingle(auditData.statusId, statusesList, 'statusId', 'statusName'),
+            formatSingle(auditData.functionId, functionsList, 'functionId', 'functionName'),
+            auditData.comment || ''
+        ];
+        addSheet(wb, 'Schedule', scheduleHeaders, [scheduleValues]);
+
+        // Risk factors sheet
+        const riskHeaders = ['Risk Factor', 'Subcategory', 'Rating'];
+        const riskRows = [];
+        riskFactorsList.forEach((riskFactor) => {
+            const subcategories = subcategoriesList.filter(
+                (sub) => sub.riskfactorid === riskFactor.riskfactorid
+            );
+            subcategories.forEach((sub) => {
+                const rating = riskRatings.find((r) => r.subcategoryid === sub.subcategoryid);
+                if (!rating) return;
+                const ratingLabel = rating.rating === 1 ? 'Low' : rating.rating === 2 ? 'Medium' : rating.rating === 3 ? 'High' : 'Very High';
+                riskRows.push([
+                    riskFactor.riskfactor,
+                    sub.subcategory || sub.subcategoryname || sub.name || sub.label || '',
+                    ratingLabel
+                ]);
+            });
+        });
+        addSheet(wb, 'Risk Factors', riskHeaders, riskRows);
+
+        // Planning sheet
+        const planningHeaders = [
+            'Scope',
+            'Functional Area Managers/Auditees',
+            'Safety Equipment Required',
+            'Required Equipment',
+            'Clearance Required',
+            'Training Requirements',
+            'Special Considerations'
+        ];
+        const planningValues = [
+            auditData.scope || '',
+            auditData.famaIds ? getRosterNames(auditData.famaIds) : '',
+            auditData.safety === 0 ? 'Yes' : auditData.safety === 1 ? 'No' : 'Unknown',
+            auditData.safety === 0 ? getSafetyEquipmentNames(auditData.safetyEquipmentIds || []) : '',
+            auditData.clearance === 0 ? 'Yes' : auditData.clearance === 1 ? 'No' : 'Unknown',
+            getTrainingRequirementNames(auditData.trainingRequirementIds || []),
+            auditData.specialConsiderations || ''
+        ];
+        addSheet(wb, 'Planning', planningHeaders, [planningValues]);
+
+        // Results sheet (background info only)
+        const resultsHeaders = [
+            'Actual Start Date',
+            'Interviewees',
+            'Audit Overview',
+            'Evaluator',
+            'Program Manager',
+            'MA Lead Manager',
+            'Related Items',
+            'Auditor\'s Time (Hours)',
+            'Previous CARs Effective',
+            'Delay Cause'
+        ];
+        const resultsValues = [
+            formatDate(auditData.startDate),
+            auditData.intervieweeIds ? getRosterNames(auditData.intervieweeIds) : '',
+            auditData.overview || '',
+            auditData.evaluator || '',
+            auditData.programManager || '',
+            auditData.maLeadManager || '',
+            auditData.relatedItems || '',
+            auditorsTimeValue ?? '',
+            getPreviousCarsEffectiveLabel(previousCarsEffectiveValue),
+            auditData.delayCause != null ? getCauseName(auditData.delayCause) : ''
+        ];
+        addSheet(wb, 'Results', resultsHeaders, [resultsValues]);
+
+        // PEQs sheet
+        const peqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+        const peqRows = nonconformances
+            .filter((nc) => nc.type === 'PEQ')
+            .map((nc) => [
+                nc.ncId,
+                getFindingTypeLabel(nc.findingType),
+                getSeverityLabel(nc.severity),
+                nc.question || '',
+                nc.response || '',
+                nc.auditorComment || '',
+                nc.details || '',
+                nc.ncDetails || '',
+                nc.AIN || ''
+            ]);
+        addSheet(wb, 'PEQs', peqHeaders, peqRows);
+
+        // ETQs sheet
+        const etqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+        const etqRows = nonconformances
+            .filter((nc) => nc.type === 'ETQ')
+            .map((nc) => [
+                nc.ncId,
+                getFindingTypeLabel(nc.findingType),
+                getSeverityLabel(nc.severity),
+                nc.question || '',
+                nc.response || '',
+                nc.auditorComment || '',
+                nc.details || '',
+                nc.ncDetails || '',
+                nc.AIN || ''
+            ]);
+        addSheet(wb, 'ETQs', etqHeaders, etqRows);
+
+        // Standard-based questions sheet
+        const standardHeaders = ['NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'NC Details', 'Action Item Number'];
+        const standardRows = nonconformances
+            .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
+            .map((nc) => [
+                nc.ncId,
+                getStandardTypeLabel(nc.type),
+                nc.section ?? '',
+                nc.subsection ?? '',
+                getFindingTypeLabel(nc.findingType),
+                getSeverityLabel(nc.severity),
+                nc.question || '',
+                nc.response || '',
+                nc.auditorComment || '',
+                nc.details || '',
+                nc.ncDetails || '',
+                nc.AIN || ''
+            ]);
+        addSheet(wb, 'Standard Questions', standardHeaders, standardRows);
+
+        // CARs sheet
+        const carHeaders = ['CAR', 'Reviewer'];
+        const carRows = cars.map((car) => [
+            car.car || '',
+            car.reviewer ? getRosterName(car.reviewer) : ''
+        ]);
+        addSheet(wb, 'CARs', carHeaders, carRows);
+
+        XLSX.writeFile(wb, `audit-${auditData.scheduleId}.xlsx`);
+    };
+
+    const handleExportPdf = () => {
+        if (!auditData) return;
+
+        const additionalAuditorIds = Array.isArray(auditData.additionalAuditorIds)
+            ? auditData.additionalAuditorIds
+            : Array.isArray(auditData.additionalauditors)
+                ? auditData.additionalauditors
+                : [];
+
+        const additionalAuditorNames = additionalAuditorIds
+            .map((id) => {
+                const auditor = auditorsList.find((a) => a.auditorId === id);
+                return auditor ? auditor.auditorName : id;
+            })
+            .filter(Boolean);
+
+        const auditorNamesList = [
+            getLeadAuditorName(auditData.leadAuditorId),
+            ...additionalAuditorNames
+        ].filter((name) => name && name !== '');
+
+        const auditorsText = auditorNamesList.length
+            ? auditorNamesList.map((name) => escapeHtml(name)).join('; ')
+            : '<span class="muted">No response provided.</span>';
+
+        const propDocs = getPropDocumentsList();
+        const propDocsHtml = propDocs.length
+            ? propDocs.map((doc) => escapeHtml(doc)).join('; ')
+            : '<span class="muted">No response provided.</span>';
+
+        const clauseEntries = getStandardClauses();
+        const clauseHtml = clauseEntries.length
+            ? clauseEntries.map((entry) => escapeHtml(entry)).join('<br>')
+            : '<span class="muted">No response provided.</span>';
+
+        const programsText = auditData.programIds && auditData.programIds.length > 0
+            ? escapeHtml(getProgramNames(auditData.programIds))
+            : '<span class="muted">No response provided.</span>';
+
+        const expectedStartHtml = auditData.expectedStartDate
+            ? escapeHtml(formatDate(auditData.expectedStartDate))
+            : '<span class="muted">No response provided.</span>';
+
+        const actualStartValue = auditData.startDate ?? auditData.startdate;
+        const actualStartHtml = actualStartValue
+            ? escapeHtml(formatDate(actualStartValue))
+            : '<span class="muted">No response provided.</span>';
+        const submittedHtml = auditData.submittedAt
+            ? escapeHtml(formatDate(auditData.submittedAt))
+            : '';
+        const approvedHtml = auditData.approvedAt
+            ? escapeHtml(formatDate(auditData.approvedAt))
+            : '';
+        const submissionRowHtml = (() => {
+            if (!submittedHtml && !approvedHtml) return '';
+            if (submittedHtml && approvedHtml) {
+                return `
+        <tr>
+          <td><strong>Submitted Date:</strong> ${submittedHtml}</td>
+          <td><strong>Approval Date:</strong> ${approvedHtml}</td>
+        </tr>`;
+            }
+            if (submittedHtml) {
+                return `
+        <tr>
+          <td colspan="2"><strong>Submitted Date:</strong> ${submittedHtml}</td>
+        </tr>`;
+            }
+            return `
+        <tr>
+          <td colspan="2"><strong>Approval Date:</strong> ${approvedHtml}</td>
+        </tr>`;
+        })();
+
+        const delayCauseHtml = auditData.delayCause != null
+            ? escapeHtml(getCauseName(auditData.delayCause))
+            : '';
+        const delayCauseSuffix = auditData.delayCause != null
+            ? ` (Delay cause: ${delayCauseHtml})`
+            : ' (No delay cause provided.)';
+
+        const carLines = getCarLines();
+        const carLinesHtml = carLines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
+
+        const counts = {
+            total: nonconformances.length,
+            nonconformities: nonconformances.filter((nc) => nc.findingType === 1).length,
+            ofis: nonconformances.filter((nc) => nc.findingType === 3).length,
+            observations: nonconformances.filter((nc) => nc.findingType === 4).length,
+            conformities: nonconformances.filter((nc) => nc.findingType === 2).length
+        };
+
+        const summaryHtml = auditData.overview
+            ? escapeHtml(auditData.overview)
+            : '<span class="muted">No response provided.</span>';
+
+        const preparedByRoster = rosterList.find((r) => {
+            if (!r.networkId || !currentUser?.networkId) return false;
+            return r.networkId.toLowerCase() === currentUser.networkId?.toLowerCase();
+        });
+        const preparedByName = preparedByRoster?.rosterName || currentUser?.name || 'Unknown Auditor';
+        const preparedOnValue = formatDate(new Date().toISOString()) || new Date().toLocaleDateString();
+
+        const approvalEntries = getApprovalEntries();
+        const leadMyId = getLeadAuditorMyId();
+        const approverRoleMap = new Map();
+        if (leadMyId) approverRoleMap.set(leadMyId, 'Lead Auditor');
+        if (auditData.approver) approverRoleMap.set(auditData.approver, 'Approver');
+        additionalApproverIds.forEach((id) => approverRoleMap.set(id, 'Additional Approver'));
+        const approvalCards = approvalEntries.map((entry) => {
+            const name = getRosterName(entry.approvermyid) || 'Unnamed Approver';
+            const statusLabel = entry.approvedat ? 'Approved' : 'Pending';
+            const role = approverRoleMap.get(entry.approvermyid) || 'Approver';
+            const statusClass = entry.approvedat ? 'status-approved' : 'status-pending';
+            const approvedOn = entry.approvedat ? formatDate(entry.approvedat) : 'Pending';
+            return `
+                <div class="approver-row">
+                    <div class="approver-cell role-cell">
+                        <div class="approver-cell-label">Role</div>
+                        <span>${escapeHtml(role)}</span>
+                    </div>
+                    <div class="approver-cell name-cell">
+                        <div class="approver-cell-label">Approver</div>
+                        <span>${escapeHtml(name)}</span>
+                    </div>
+                    <div class="approver-cell status-cell">
+                        <div class="approver-cell-label">Status</div>
+                        <span class="approver-status ${statusClass}">${statusLabel}</span>
+                    </div>
+                    <div class="approver-cell date-cell">
+                        <div class="approver-cell-label">Approved On</div>
+                        <span>${entry.approvedat ? escapeHtml(approvedOn) : '<span class="muted">Pending approval</span>'}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        const approvalsHtml = approvalEntries.length
+            ? `<div class="approver-rows">${approvalCards}</div>`
+            : '<p class="muted">No approvers assigned.</p>';
+
+        const peqNcs = nonconformances.filter((nc) => nc.type === 'PEQ' && nc.findingType === 1);
+        const etqNcs = nonconformances.filter((nc) => nc.type === 'ETQ' && nc.findingType === 1);
+        const standardNcs = nonconformances.filter(
+            (nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ' && nc.findingType === 1
+        );
+
+        const renderNcEntry = (nc) => {
+            const clauseLabel = nc.section
+                ? `Clause ${nc.section}${nc.subsection ? `.${nc.subsection}` : ''}`
+                : '';
+            const questionHtml = nc.question ? escapeHtml(nc.question) : '<span class="muted">No response provided.</span>';
+            const responseHtml = nc.response ? escapeHtml(nc.response) : '<span class="muted">No response provided.</span>';
+            const auditorCommentHtml = nc.auditorComment
+                ? escapeHtml(nc.auditorComment)
+                : '<span class="muted">No response provided.</span>';
+            const hasNcDetailContent = Boolean(nc.details || nc.ncDetails || nc.AIN);
+            const detailsHtml = nc.details
+                ? escapeHtml(nc.details)
+                : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
+            const ncDetailsHtml = nc.ncDetails
+                ? escapeHtml(nc.ncDetails)
+                : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
+            const ainHtml = nc.AIN
+                ? escapeHtml(nc.AIN)
+                : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
+            return `
+                <div class="nc-card">
+                    <div class="nc-card-header">
+                        <span class="nc-id">NC-${nc.ncId}</span>
+                        ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
+                    </div>
+                    <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>
+                    <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
+                    <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
+                    ${(showNcDetailFallbacks || hasNcDetailContent) ? `
+                    <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
+                    <div class="nc-field"><strong>NC Details:</strong> ${ncDetailsHtml}</div>
+                    <div class="nc-field"><strong>Action Item Number:</strong> ${ainHtml}</div>
+                    ` : ''}
+                </div>
+            `;
+        };
+
+        const renderNcSection = (heading, entries) => {
+            if (entries.length === 0) {
+                return `
+                    <div class="nc-section">
+                        <h3>${escapeHtml(heading)}</h3>
+                        <p class="muted">No nonconformities recorded.</p>
+                    </div>
+                `;
+            }
+            return `
+                <div class="nc-section">
+                    <h3>${escapeHtml(heading)}</h3>
+                    ${entries.map((nc) => renderNcEntry(nc)).join('')}
+                </div>
+            `;
+        };
+
+        const renderStandardNcGroups = (entries) => {
+            if (entries.length === 0) {
+                return '<p class="muted">No nonconformities recorded.</p>';
+            }
+
+            const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
+            const sorted = entries.slice().sort((a, b) => {
+                const labelA = getStandardTypeLabel(a.type);
+                const labelB = getStandardTypeLabel(b.type);
+                if (labelA !== labelB) {
+                    return (labelA || '').localeCompare(labelB || '');
+                }
+                const sectionA = Number(a.section ?? 0);
+                const sectionB = Number(b.section ?? 0);
+                if (sectionA !== sectionB) return sectionA - sectionB;
+                const subA = Number(a.subsection ?? 0);
+                const subB = Number(b.subsection ?? 0);
+                if (subA !== subB) return subA - subB;
+                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
+            });
+
+            const grouped = new Map();
+            sorted.forEach((nc) => {
+                const label = getStandardTypeLabel(nc.type) || 'Standard';
+                if (!grouped.has(label)) {
+                    grouped.set(label, []);
+                }
+                grouped.get(label).push(nc);
+            });
+
+            return Array.from(grouped.entries())
+                .map(([label, items]) => `
+                    <div class="nc-standard-group">
+                        <div class="nc-standard-label">${escapeHtml(label)}</div>
+                        ${items.map((nc) => renderNcEntry(nc)).join('')}
+                    </div>
+                `)
+                .join('');
+        };
+
+        const standardSectionHtml = `
+            <div class="nc-section">
+                <h3>Standard-Based Questions</h3>
+                ${renderStandardNcGroups(standardNcs)}
+            </div>
+        `;
+
+        const ncSectionsHtml = [
+            renderNcSection('Process Evaluation Questions (PEQs)', peqNcs),
+            renderNcSection('Every Time Questions (ETQs)', etqNcs),
+            standardSectionHtml
+        ].join('');
+
+        const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>Internal Audit Report ${escapeHtml(auditData.scheduleId)}</title>
+<style>
+  body { font-family: "Times New Roman", serif; margin: 0; padding: 0; }
+  .pdf-page { page-break-after: always; }
+  .pdf-page:last-child { page-break-after: auto; }
+  .report-container { width: 800px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+  .report-header h1, .report-header h2 { text-align: center; margin: 0 0 12px; }
+  .info-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+  .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 14px; }
+  .info-table td strong { font-weight: 700; }
+  .section-box { border: 1px solid #000; padding: 12px; margin-bottom: 12px; font-size: 13px; }
+  .section-box, .nc-card, .counts-card, .approver-row, .nc-section, .nc-standard-group { page-break-inside: avoid; break-inside: avoid; }
+  .section-box strong { display: block; font-size: 14px; margin-bottom: 6px; }
+  .counts-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 10px; margin-bottom: 12px; }
+  .counts-card { border: 1px solid #000; padding: 8px; text-align: center; }
+  .counts-number { font-size: 20px; font-weight: 700; }
+  .counts-label { font-size: 12px; }
+  .prepared-row { display: flex; gap: 20px; margin-bottom: 12px; flex-wrap: wrap; }
+  .prepared-row .prep-column { flex: 1 1 200px; }
+  .prepared-row .prep-column strong { display: block; margin-bottom: 4px; }
+  .approver-rows { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .approver-row { border: 1px solid #000; padding: 8px; display: grid; grid-template-columns: 120px 1fr 110px 120px; gap: 12px; align-items: center; font-size: 13px; }
+  .approver-cell-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
+  .approver-status { padding: 4px 6px; border-radius: 3px; font-size: 12px; font-weight: 700; display: inline-block; }
+  .status-approved { background: #0f9d58; color: #fff; }
+  .status-pending { background: #f9a825; color: #000; }
+  .nc-section { margin-bottom: 10px; }
+  .nc-section h3 { margin: 0 0 6px; font-size: 16px; }
+  .nc-standard-label { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+  .nc-card { border: 1px solid #000; padding: 10px; margin-bottom: 8px; font-size: 13px; }
+  .nc-card-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  .nc-id { font-weight: 700; }
+  .nc-field { margin-bottom: 4px; }
+  .muted { color: #6b7280; font-style: italic; }
+</style>
+</head>
+<body>
+  <div class="pdf-page">
+    <div class="report-container">
+      <div class="report-header">
+        <h1>Internal Audit Report</h1>
+      </div>
+      <table class="info-table">
+        <tr>
+          <td><strong>Schedule ID:</strong> ${escapeHtml(auditData.scheduleId)}</td>
+          <td><strong>Title:</strong> ${escapeHtml(auditData.title)}</td>
+        </tr>
+        <tr>
+          <td><strong>Lead:</strong> ${escapeHtml(getLeadAuditorName(auditData.leadAuditorId))}</td>
+          <td><strong>Audit Type:</strong> ${escapeHtml(getAuditTypeName(auditData.auditTypeId))}</td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Auditor(s):</strong> ${auditorsText}</td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Scope:</strong> ${auditData.scope ? escapeHtml(auditData.scope) : '<span class="muted">No response provided.</span>'}</td>
+        </tr>
+        <tr>
+          <td colspan="2"><strong>Program(s):</strong> ${programsText}</td>
+        </tr>
+        <tr>
+          <td><strong>Audit Start Date:</strong> ${expectedStartHtml}</td>
+          <td><strong>Actual Start Date:</strong> ${actualStartHtml}${delayCauseSuffix}</td>
+        </tr>
+        ${submissionRowHtml}
+      </table>
+
+      <div class="section-box">
+        <strong>Functional Area Managers/Auditees:</strong>
+        <p>${auditData.famaIds && auditData.famaIds.length > 0 ? escapeHtml(getRosterNames(auditData.famaIds)) : '<span class="muted">No response provided.</span>'}</p>
+      </div>
+
+      <div class="section-box">
+        <strong>Locations/Areas visited during the audit:</strong>
+        <p>${getLocationsText()}</p>
+      </div>
+
+      <div class="section-box">
+        <strong>PrOP criteria/documents reviewed during audit (including revision):</strong>
+        <p>${propDocsHtml}</p>
+      </div>
+
+      <div class="section-box">
+        <strong>${escapeHtml(getStandardNames(auditData.standardIds) || 'Standards not listed')} criteria/requirements reviewed:</strong>
+        <p>${clauseHtml}</p>
+      </div>
+
+      <div class="section-box">
+        <strong>Was previous CAR deemed effective?</strong>
+        <p class="answer">${escapeHtml(getPreviousCarsEffectiveLabel(auditData.previousCarsEffective ?? auditData.previouscarseffective))}</p>
+        <strong>CARs Reviewed:</strong>
+        ${carLinesHtml}
+      </div>
+    </div>
+  </div>
+
+  <div class="pdf-page">
+    <div class="report-container">
+      <div class="report-header">
+        <h2>Audit Results</h2>
+      </div>
+      <div class="section-box">
+        <strong>Overall Observations</strong>
+        <p>${summaryHtml}</p>
+      </div>
+      <div class="counts-grid">
+        <div class="counts-card">
+          <div class="counts-number">${counts.total}</div>
+          <div class="counts-label">Total Findings</div>
+        </div>
+        <div class="counts-card">
+          <div class="counts-number">${counts.nonconformities}</div>
+          <div class="counts-label">Nonconformities</div>
+        </div>
+        <div class="counts-card">
+          <div class="counts-number">${counts.ofis}</div>
+          <div class="counts-label">OFIs</div>
+        </div>
+        <div class="counts-card">
+          <div class="counts-number">${counts.observations}</div>
+          <div class="counts-label">Observations</div>
+        </div>
+        <div class="counts-card">
+          <div class="counts-number">${counts.conformities}</div>
+          <div class="counts-label">Conformities</div>
+        </div>
+      </div>
+      ${ncSectionsHtml}
+      <div class="section-box">
+        <strong>Approvers</strong>
+        ${approvalsHtml}
+      </div>
+      <div class="section-box prepared-row">
+        <div class="prep-column">
+          <strong>Report Prepared By</strong>
+          <p>${escapeHtml(preparedByName)}</p>
+        </div>
+        <div class="prep-column">
+          <strong>Report Prepared On</strong>
+          <p>${escapeHtml(preparedOnValue)}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+        const printIframe = document.createElement('iframe');
+        printIframe.style.position = 'fixed';
+        printIframe.style.right = '0';
+        printIframe.style.bottom = '0';
+        printIframe.style.width = '0';
+        printIframe.style.height = '0';
+        printIframe.style.border = '0';
+        printIframe.setAttribute('aria-hidden', 'true');
+        printIframe.srcdoc = html;
+        document.body.appendChild(printIframe);
+        printIframe.onload = () => {
+            const printWindow = printIframe.contentWindow;
+            printWindow.focus();
+            printWindow.print();
+            setTimeout(() => {
+                document.body.removeChild(printIframe);
+            }, 500);
+        };
+    };
+
+    const handleDownloadObjectiveEvidence = () => {
+        if (!auditData?.scheduleId) {
+            toast.error('No audit selected.');
+            return;
+        }
+        const downloadUrl = `http://localhost:3001/api/audits/${auditData.scheduleId}/objective-evidence.zip`;
+        window.location.href = downloadUrl;
+    };
+
+    const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
+    const stageBadgeText = stageLabel === 'Approved' ? stageLabel : `Next step: ${stageLabel}`;
 
     return (
         <div className="audit-page">
@@ -231,18 +1352,18 @@ const Audit = () => {
                 <div className="audit-header">
                     <div className="audit-id">Schedule ID: {auditData.scheduleId}</div>
                     <h1 className="audit-title">{auditData.title}</h1>
-                    <div className="audit-status-badge">
-                        {auditData.stage.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+                    <div style={(stageLabel === 'Approved' ? { backgroundColor: 'green', color: 'white' } : {})} className="audit-status-badge">
+                        {stageBadgeText}
                     </div>
                 </div>
 
                 {/* Action Buttons */}
                 <div className="action-buttons">
                     {/* Always show Export XLSX */}
-                    <button className="action-btn export-xlsx">Export XLSX</button>
+                    <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
 
                     {/* Stage-specific buttons */}
-                    {auditData.stage === 'planning' && (
+                    {!isLocked && stageValue === 1 && (
                         <>
                             <button
                                 className="action-btn"
@@ -259,7 +1380,7 @@ const Audit = () => {
                         </>
                     )}
 
-                    {auditData.stage === 'conduct audit' && (
+                    {!isLocked && stageValue === 2 && (
                         <>
                             <button
                                 className="action-btn"
@@ -282,7 +1403,7 @@ const Audit = () => {
                         </>
                     )}
 
-                    {auditData.stage === 'nonconformaties' && (
+                    {!isLocked && (stageValue === 3 || stageValue === 4) && (
                         <>
                             <button
                                 className="action-btn"
@@ -311,10 +1432,44 @@ const Audit = () => {
                         </>
                     )}
 
-                    {(auditData.stage === 'pending approval' || auditData.stage === 'approved') && (
-                        <button className="action-btn export-pdf">Export PDF</button>
+                    {isLocked && canApprove && (
+                        <a
+                            className="action-btn"
+                            href={`/approve/${auditData.scheduleId}`}
+                            style={{ textDecoration: 'none', textAlign: 'center', fontSize: '18px', color: 'white' }}
+                        >
+                            Approve Audit
+                        </a>
+                    )}
+
+                    {isLocked && (
+                        <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
                     )}
                 </div>
+
+                {(isLocked || isApproved) && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Approval Status</h2>
+                        {getApprovalEntries().length === 0 ? (
+                            <p>No approvers assigned.</p>
+                        ) : (
+                            <div className="approval-grid">
+                                {getApprovalEntries().map((approval) => {
+                                    const approverName = getRosterName(approval.approvermyid);
+                                    const approvedLabel = approval.approvedat ? 'Approved' : 'Pending';
+                                    return (
+                                        <div className="approval-card" key={approval.approvalid}>
+                                            <span className="approval-name">{approverName}</span>
+                                            <span className={`finding-type ${approval.approvedat ? 'approved' : 'pending'}`}>
+                                                {approvedLabel}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Two Column Layout for Basic Info */}
                 <div className="audit-section-row">
@@ -338,19 +1493,35 @@ const Audit = () => {
 
                     <div className="audit-section">
                         <h2 className="section-title">Schedule & Dates</h2>
-                        <div className="info-grid">
+                        <div className="info-grid-two">
                             <div className="info-item">
-                                <label>Schedule Date:</label>
-                                <span>{auditData.scheduleDate}</span>
+                                <label>Created At:</label>
+                                <span>{formatDate(auditData.createdAt)}</span>
                             </div>
                             <div className="info-item">
                                 <label>Expected Start Date:</label>
-                                <span>{auditData.expectedStartDate}</span>
+                                <span>{formatDate(auditData.expectedStartDate)}</span>
                             </div>
                             <div className="info-item">
                                 <label>Expected Completion Date:</label>
-                                <span>{auditData.expectedCompletionDate}</span>
+                                <span>{formatDate(auditData.expectedCompletionDate)}</span>
                             </div>
+                            {auditData.stage > 2 && (<div className="info-item">
+                                <label>Actual Start Date:</label>
+                                <span>{formatDate(auditData.startDate)}</span>
+                            </div>)}
+                            {auditData.submittedAt && (
+                                <div className="info-item">
+                                    <label>Submitted Date:</label>
+                                    <span>{formatDate(auditData.submittedAt)}</span>
+                                </div>
+                            )}
+                            {auditData.approvedAt && (
+                                <div className="info-item">
+                                    <label>Approval Date:</label>
+                                    <span>{formatDate(auditData.approvedAt)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -373,15 +1544,24 @@ const Audit = () => {
                         </div>
                         <div className="info-item">
                             <label>Business Unit:</label>
-                            <span>{getBusinessUnitNames(auditData.businessUnitIds)}</span>
+                            <span>
+                                {getBusinessUnitNames(auditData.businessUnitIds)
+                                    || <span className="no-response">No response provided</span>}
+                            </span>
                         </div>
                         <div className="info-item">
                             <label>Operating Unit:</label>
-                            <span>{getOperatingUnitNames(auditData.operatingUnitIds)}</span>
+                            <span>
+                                {getOperatingUnitNames(auditData.operatingUnitIds)
+                                    || <span className="no-response">No response provided</span>}
+                            </span>
                         </div>
                         <div className="info-item">
                             <label>Programs:</label>
-                            <span>{getProgramNames(auditData.programIds)}</span>
+                            <span>
+                                {getProgramNames(auditData.programIds)
+                                    || <span className="no-response">No response provided</span>}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -393,129 +1573,488 @@ const Audit = () => {
                         <label>Lead Auditor:</label>
                         <span className="lead-auditor">{getLeadAuditorName(auditData.leadAuditorId)}</span>
                     </div>
-                    <div className="info-item">
+                    <div style={{ marginTop: '1rem' }} className="info-item">
                         <label>Additional Auditors:</label>
                         <span>{getAdditionalAuditorNames(auditData.additionalAuditorIds)}</span>
                     </div>
                 </div>
 
-                {/* Planning Details */}
+                {/* Schedule Details Section */}
                 <div className="audit-section">
-                    <h2 className="section-title">Planning Details</h2>
-                    <div className="planning-content">
-                        <div className="planning-item">
-                            <h3>Scope</h3>
-                            <p>{auditData.scope}</p>
+                    <h2 className="section-title">Schedule Details</h2>
+                    <div className="info-grid">
+                        <div className="info-item">
+                            <label>Internal/External:</label>
+                            <span>{getIntExtName(auditData.intExtId)}</span>
                         </div>
-                        <div className="planning-item">
-                            <h3>Safety Considerations</h3>
-                            <p>{auditData.safetyConsiderations}</p>
+                        <div className="info-item">
+                            <label>Status:</label>
+                            <span>{getStatusName(auditData.statusId)}</span>
                         </div>
-                        <div className="planning-item">
-                            <h3>Special Equipment</h3>
-                            <p>{auditData.specialEquipment}</p>
-                        </div>
+                        {auditData.comment && (
+                            <div className="info-item" style={{ gridColumn: '1 / -1' }}>
+                                <label>Comment:</label>
+                                <span>{auditData.comment}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
+
+                {/* Risk Factors Section */}
+                {riskRatings && riskRatings.length > 0 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Risk Assessment</h2>
+                        <div className="risk-factors">
+                            {riskFactorsList.map(riskFactor => {
+                                // Get subcategories for this risk factor
+                                const subcategories = subcategoriesList.filter(
+                                    sub => sub.riskfactorid === riskFactor.riskfactorid
+                                );
+
+                                // Get ratings for these subcategories
+                                const subcategoryRatings = subcategories
+                                    .map(sub => {
+                                        const rating = riskRatings.find(r => r.subcategoryid === sub.subcategoryid);
+                                        return rating ? { ...sub, rating: rating.rating } : null;
+                                    })
+                                    .filter(item => item !== null);
+
+                                // Only show risk factor if it has ratings
+                                if (subcategoryRatings.length === 0) return null;
+
+                                return (
+                                    <div key={riskFactor.riskfactorid} className="risk-factor-group">
+                                        <h3>{riskFactor.riskfactor}</h3>
+                                        <div className="risk-subcategories">
+                                            {subcategoryRatings.map(item => (
+                                                <div key={item.subcategoryid} className="risk-subcategory">
+                                                    <span className="risk-subcategory-name">{item.subcategory || item.subcategoryname || item.name || item.label || 'No subcategory name'}</span>
+                                                    <span className={`risk-rating risk-rating-${item.rating}`}>
+                                                        {item.rating === 1 ? 'Low' : item.rating === 2 ? 'Medium' : item.rating === 3 ? 'High' : 'Very High'}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Planning Details */}
+                {auditData.stage > 1 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Planning Details</h2>
+                        <div className="planning-content">
+                            <div className="planning-item">
+                                <h3>Scope</h3>
+                                <p>{auditData.scope || <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Functional Area Managers/Auditees</h3>
+                                <p>{auditData.famaIds && auditData.famaIds.length > 0 ? getRosterNames(auditData.famaIds) : <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Safety Equipment Required</h3>
+                                <p>{auditData.safety === 0 ? auditData.safetyEquipmentIds && auditData.safetyEquipmentIds.length > 0 ? getSafetyEquipmentNames(auditData.safetyEquipmentIds) : <span className="no-response">No response provided</span> : (auditData.safety === 1 ? 'No' : (auditData.safety === 2 ? 'Unknown' : 'No response provided'))}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Clearance Required</h3>
+                                <p>{auditData.clearance === 0 ? 'Yes' : auditData.clearance === 1 ? 'No' : (auditData.clearance === 2 ? 'Unknown' : 'No response provided')}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Training Requirements</h3>
+                                <p>{auditData.trainingRequirementIds && auditData.trainingRequirementIds.length > 0 ? getTrainingRequirementNames(auditData.trainingRequirementIds) : <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Special Considerations</h3>
+                                <p>{auditData.specialConsiderations || <span className="no-response">No response provided</span>}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Results/Conduct Information */}
+                {auditData.stage > 2 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Conduct Audit Details</h2>
+                        <div className="planning-item">
+                            <h3>Audit Overview</h3>
+                            <p>{auditData.overview || <span className="no-response">No response provided</span>}</p>
+                        </div>
+                        <div className="planning-content">
+                            <div className="planning-item">
+                                <h3>Interviewees</h3>
+                                <p>{auditData.intervieweeIds && auditData.intervieweeIds.length > 0 ? getRosterNames(auditData.intervieweeIds) : <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Evaluator</h3>
+                                <p>{auditData.evaluator || <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Program Manager</h3>
+                                <p>{auditData.programManager || <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>MA Lead Manager</h3>
+                                <p>{auditData.maLeadManager || <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Related Items</h3>
+                                <p>{auditData.relatedItems || <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Auditor's Time (Hours)</h3>
+                                <p>{auditData.auditorsTime != null || auditData.auditorstime != null ? (auditData.auditorsTime ?? auditData.auditorstime) : <span className="no-response">No response provided</span>}</p>
+                            </div>
+
+                            <div className="planning-item">
+                                <h3>Delay Cause</h3>
+                                <p>{auditData.delayCause != null ? getCauseName(auditData.delayCause) : <span className="no-response">No response provided</span>}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                )}
+
+                {/* CARs Section */}
+                {(cars.length > 0 || auditData.previousCarsEffective != null || auditData.previouscarseffective != null) && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Corrective Action Requests (CARs)</h2>
+                        <div className="planning-content" style={{ marginBottom: '1rem' }}>
+                            <div className="planning-item">
+                                <h3>Previous CARs Effective?</h3>
+                                <p>{getPreviousCarsEffectiveLabel(auditData.previousCarsEffective ?? auditData.previouscarseffective)}</p>
+                            </div>
+                        </div>
+                        {cars.length > 0 && (
+                            <div className="risk-factors">
+                                <div className="risk-factor-group">
+                                    <h3>Associated CARs</h3>
+                                    <div className="risk-subcategories">
+                                        {cars.map((car, index) => (
+                                            <div key={car.carid || index} className="risk-subcategory">
+                                                <span className="risk-subcategory-name">{car.car || `CAR ${index + 1}`}</span>
+                                                <span className="risk-rating">{car.reviewer ? getRosterName(car.reviewer) : 'No reviewer'}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Results Summary */}
-                <div className="audit-section summary-section">
-                    <h2 className="section-title">Results Summary</h2>
-                    <div className="summary-grid">
-                        <div className="summary-card">
-                            <div className="summary-number">3</div>
-                            <div className="summary-label">Total PEQs</div>
-                        </div>
-                        <div className="summary-card compliant">
-                            <div className="summary-number">3</div>
-                            <div className="summary-label">Compliant</div>
-                        </div>
-                        <div className="summary-card partial">
-                            <div className="summary-number">3</div>
-                            <div className="summary-label">Partially Compliant</div>
-                        </div>
-                        <div className="summary-card major-nc">
-                            <div className="summary-number">3</div>
-                            <div className="summary-label">Major NCs</div>
-                        </div>
-                        <div className="summary-card observation">
-                            <div className="summary-number">3</div>
-                            <div className="summary-label">Observations</div>
+                {nonconformances.length > 0 && (
+                    <div className="audit-section summary-section">
+                        <h2 className="section-title">Findings Summary</h2>
+                        <div className="summary-grid">
+                            <div className="summary-card">
+                                <div className="summary-number">{nonconformances.length}</div>
+                                <div className="summary-label">Total Findings</div>
+                            </div>
+                            <div className="summary-card major-nc">
+                                <div className="summary-number">{nonconformances.filter(nc => nc.findingType === 1).length}</div>
+                                <div className="summary-label">Nonconformities</div>
+                            </div>
+                            <div className="summary-card partial">
+                                <div className="summary-number">{nonconformances.filter(nc => nc.findingType === 3).length}</div>
+                                <div className="summary-label">OFIs</div>
+                            </div>
+                            <div className="summary-card observation">
+                                <div className="summary-number">{nonconformances.filter(nc => nc.findingType === 4).length}</div>
+                                <div className="summary-label">Observations</div>
+                            </div>
+                            <div className="summary-card compliant">
+                                <div className="summary-number">{nonconformances.filter(nc => nc.findingType === 2).length}</div>
+                                <div className="summary-label">Conformities</div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
 
-                {/* Findings and Nonconformances */}
-                <div className="audit-section">
-                    <h2 className="section-title">Findings & Nonconformances</h2>
-                    {auditData.findings.map((finding, index) => (
-                        <div key={index} className={`finding-card ${finding.type.toLowerCase().replace(/\s+/g, '-')}`}>
-                            <div className="finding-header">
-                                <div className="finding-id-type">
-                                    <span className="finding-id">{finding.id}</span>
-                                    <span className={`finding-type ${finding.severity?.toLowerCase()}`}>
-                                        {finding.type} {finding.severity && `- ${finding.severity}`}
-                                    </span>
-                                </div>
-                                <span className={`finding-status ${finding.status?.toLowerCase()}`}>{finding.status}</span>
-                            </div>
+                {nonconformances.length > 0 && (
+                    <button
+                        type="button"
+                        onClick={handleDownloadObjectiveEvidence}
+                        style={{
+                            width: '100%',
+                            backgroundColor: '#1976d2',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            fontSize: '16px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            marginBottom: '36px'
+                        }}
+                    >
+                        Download Objective Evidence (ZIP)
+                    </button>
+                )}
 
-                            {finding.question && (
-                                <div className="finding-item">
-                                    <strong>Related Question:</strong>
-                                    <p>{finding.question}</p>
-                                </div>
-                            )}
-
-                            {finding.requirement && (
-                                <div className="finding-item">
-                                    <strong>Requirement:</strong>
-                                    <p>{finding.requirement}</p>
-                                </div>
-                            )}
-
-                            <div className="finding-item">
-                                <strong>Description:</strong>
-                                <p>{finding.description}</p>
-                            </div>
-
-                            {finding.rootCause && (
-                                <div className="finding-item">
-                                    <strong>Root Cause:</strong>
-                                    <p>{finding.rootCause}</p>
-                                </div>
-                            )}
-
-                            {finding.correctiveAction && (
-                                <div className="finding-item">
-                                    <strong>Corrective Action:</strong>
-                                    <p>{finding.correctiveAction}</p>
-                                </div>
-                            )}
-
-                            {finding.benefit && (
-                                <div className="finding-item">
-                                    <strong>Benefit:</strong>
-                                    <p>{finding.benefit}</p>
-                                </div>
-                            )}
-
-                            {finding.targetCloseDate && (
-                                <div className="finding-footer">
-                                    <div className="finding-footer-item">
-                                        <strong>Responsible:</strong> {finding.responsiblePerson}
+                {/* Process Evaluation Questions (PEQs) */}
+                {nonconformances.filter(nc => nc.type === 'PEQ').length > 0 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Process Evaluation Questions (PEQs)</h2>
+                        {nonconformances
+                            .filter(nc => nc.type === 'PEQ')
+                            .sort((a, b) => {
+                                // Sort by finding type: NC(1) -> OFI(3) -> OBS(4) -> Conformity(2)
+                                const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
+                                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
+                            })
+                            .map((finding, index) => (
+                                <div key={index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                                    <div className="finding-header">
+                                        <div className="finding-id-type">
+                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {finding.findingType === 1 && (
+                                                <>
+                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    {finding.severity && (
+                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
+                                                            Severity: {getSeverityLabel(finding.severity)}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="finding-footer-item">
-                                        <strong>Target Close:</strong> {finding.targetCloseDate}
+
+                                    <div className="finding-item">
+                                        <strong>Question:</strong>
+                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
                                     </div>
-                                    <div className="finding-footer-item">
-                                        <strong>Reviewer:</strong> {finding.reviewer}
+
+                                    <div className="finding-item">
+                                        <strong>Auditee Response:</strong>
+                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
                                     </div>
+
+                                    <div className="finding-item">
+                                        <strong>Auditor Comment:</strong>
+                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    {finding.findingType === 1 && (
+                                        <>
+                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                                <>
+                                                    <div className="finding-item">
+                                                        <strong>Details:</strong>
+                                                        <p>
+                                                            {finding.details
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>NC Details:</strong>
+                                                        <p>
+                                                            {finding.ncDetails
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>Action Item Number:</strong>
+                                                        <p>
+                                                            {finding.AIN
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
+                            ))}
+                    </div>
+                )}
+
+                {/* Every Time Questions (ETQs) */}
+                {nonconformances.filter(nc => nc.type === 'ETQ').length > 0 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Every Time Questions (ETQs)</h2>
+                        {nonconformances
+                            .filter(nc => nc.type === 'ETQ')
+                            .sort((a, b) => {
+                                // Sort by finding type: NC(1) -> OFI(3) -> OBS(4) -> Conformity(2)
+                                const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
+                                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
+                            })
+                            .map((finding, index) => (
+                                <div key={index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                                    <div className="finding-header">
+                                        <div className="finding-id-type">
+                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {finding.findingType === 1 && (
+                                                <>
+                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    {finding.severity && (
+                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
+                                                            Severity: {getSeverityLabel(finding.severity)}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="finding-item">
+                                        <strong>Question:</strong>
+                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    <div className="finding-item">
+                                        <strong>Auditee Response:</strong>
+                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    <div className="finding-item">
+                                        <strong>Auditor Comment:</strong>
+                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    {finding.findingType === 1 && (
+                                        <>
+                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                                <>
+                                                    <div className="finding-item">
+                                                        <strong>Details:</strong>
+                                                        <p>
+                                                            {finding.details
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>NC Details:</strong>
+                                                        <p>
+                                                            {finding.ncDetails
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>Action Item Number:</strong>
+                                                        <p>
+                                                            {finding.AIN
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                    </div>
+                )}
+
+                {/* Standard-Based Questions */}
+                {standardFindingsSorted.length > 0 && (
+                    <div className="audit-section">
+                        <h2 className="section-title">Standard-Based Questions</h2>
+                        {standardFindingsSorted.map((finding, index) => {
+                            const standardLabel = getStandardTypeLabel(finding.type);
+                            const sectionLabel = finding.section !== null && finding.section !== undefined
+                                ? `${finding.section}${finding.subsection !== null && finding.subsection !== undefined ? `.${finding.subsection}` : ''}`
+                                : null;
+
+                            return (
+                                <div key={finding.ncId || index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                                    <div className="finding-header">
+                                        <div className="finding-id-type">
+                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {finding.findingType === 1 && (
+                                                <>
+                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    {standardLabel && (
+                                                        <span className="finding-type">{standardLabel}</span>
+                                                    )}
+                                                    {finding.severity && (
+                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
+                                                            Severity: {getSeverityLabel(finding.severity)}
+                                                        </span>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {sectionLabel && (
+                                        <div className="finding-item">
+                                            <strong>Standard Section:</strong>
+                                            <p>{sectionLabel}</p>
+                                        </div>
+                                    )}
+
+                                    <div className="finding-item">
+                                        <strong>Question:</strong>
+                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    <div className="finding-item">
+                                        <strong>Auditee Response:</strong>
+                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    <div className="finding-item">
+                                        <strong>Auditor Comment:</strong>
+                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
+                                    {finding.findingType === 1 && (
+                                        <>
+                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                                <>
+                                                    <div className="finding-item">
+                                                        <strong>Details:</strong>
+                                                        <p>
+                                                            {finding.details
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>NC Details:</strong>
+                                                        <p>
+                                                            {finding.ncDetails
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="finding-item">
+                                                        <strong>Action Item Number:</strong>
+                                                        <p>
+                                                            {finding.AIN
+                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
+                                                        </p>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
         </div>
     );

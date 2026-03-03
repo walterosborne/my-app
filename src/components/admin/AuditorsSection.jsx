@@ -1,0 +1,322 @@
+import React from 'react';
+
+const AuditorsSection = ({
+    actionOptions,
+    selectedAction,
+    onActionChange,
+    isActiveEditMode,
+    includeArchived,
+    onIncludeArchivedChange,
+    isEditMode,
+    visibleAuditors,
+    editingAuditor,
+    onSelectAuditor,
+    sortField,
+    sortDirection,
+    onSort,
+    getDivisionName,
+    isNewMode,
+    showFields,
+    myIdInput,
+    onMyIdChange,
+    fieldErrors,
+    myIdWarning,
+    manualEntry,
+    onManualEntryChange,
+    firstName,
+    lastName,
+    divisionId,
+    sortedDivisions,
+    onFirstNameChange,
+    onLastNameChange,
+    onDivisionChange,
+    onClearDivision,
+    onSubmit,
+    submitting,
+    onArchiveToggle,
+    onReset,
+    submissionMessage,
+    submissionError
+}) => (
+    <section className="admin-section">
+        <div className="admin-section-header">
+            <div className="admin-section-title">
+                <div>
+                    <h3>Auditor Management</h3>
+                    <p className="admin-section-subhead">
+                        Add new auditors or refresh existing records.
+                    </p>
+                </div>
+                <div className="admin-section-action-inline">
+                    <div className="admin-action-select">
+                        <label htmlFor="action-dropdown" className="admin-label">
+                            Action
+                        </label>
+                        <select
+                            id="action-dropdown"
+                            value={selectedAction}
+                            onChange={onActionChange}
+                            className="admin-select admin-select-inline"
+                        >
+                            {actionOptions.map((action) => (
+                                <option key={action} value={action}>
+                                    {action}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    {isActiveEditMode && (
+                        <label className="admin-include-archived">
+                            <input
+                                type="checkbox"
+                                checked={includeArchived}
+                                onChange={onIncludeArchivedChange}
+                            />
+                            Include archived?
+                        </label>
+                    )}
+                </div>
+            </div>
+        </div>
+        {isEditMode && (
+            <div className="admin-edit-table-wrapper">
+                <p className="admin-editing-label">Select an auditor to edit</p>
+                <div className="admin-edit-table-scroll">
+                    <table className="admin-edit-table">
+                        <thead>
+                            <tr>
+                                <th>
+                                    <button
+                                        type="button"
+                                        className="admin-table-header"
+                                        onClick={() => onSort('myId')}
+                                    >
+                                        MyID
+                                        <span className="admin-sort-indicator">
+                                            {sortField === 'myId' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
+                                        </span>
+                                    </button>
+                                </th>
+                                <th>
+                                    <button
+                                        type="button"
+                                        className="admin-table-header"
+                                        onClick={() => onSort('firstName')}
+                                    >
+                                        First Name
+                                        <span className="admin-sort-indicator">
+                                            {sortField === 'firstName' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
+                                        </span>
+                                    </button>
+                                </th>
+                                <th>
+                                    <button
+                                        type="button"
+                                        className="admin-table-header"
+                                        onClick={() => onSort('lastName')}
+                                    >
+                                        Last Name
+                                        <span className="admin-sort-indicator">
+                                            {sortField === 'lastName' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
+                                        </span>
+                                    </button>
+                                </th>
+                                <th>
+                                    <button
+                                        type="button"
+                                        className="admin-table-header"
+                                        onClick={() => onSort('division')}
+                                    >
+                                        Division
+                                        <span className="admin-sort-indicator">
+                                            {sortField === 'division' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
+                                        </span>
+                                    </button>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {visibleAuditors.map((auditor) => {
+                                const first = auditor.firstName
+                                    ?? (auditor.auditorName || '').split(',')[1]?.trim()
+                                    ?? '';
+                                const last = auditor.lastName
+                                    ?? (auditor.auditorName || '').split(',')[0]?.trim()
+                                    ?? '';
+                                const isSelected = editingAuditor?.auditorId === auditor.auditorId;
+                                const isArchived = (auditor.active ?? 1) === 0;
+                                return (
+                                    <tr
+                                        key={auditor.auditorId}
+                                        className={[
+                                            isSelected ? 'selected' : '',
+                                            isArchived ? 'archived' : ''
+                                        ]
+                                            .filter(Boolean)
+                                            .join(' ')}
+                                        onClick={() => onSelectAuditor(auditor)}
+                                    >
+                                        <td>{auditor.myId ?? auditor.myid}</td>
+                                        <td>{first}</td>
+                                        <td>{last}</td>
+                                        <td>{getDivisionName(auditor.divisionId)}</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        )}
+        {isEditMode && editingAuditor && (
+            <p className="admin-editing-tag">
+                Currently editing: {editingAuditor.auditorName
+                    ?? [editingAuditor.lastName, editingAuditor.firstName].filter(Boolean).join(', ')}
+            </p>
+        )}
+        {(isNewMode || (isEditMode && editingAuditor)) && (
+            <div className="admin-form">
+                <div className="admin-form-row">
+                    <label htmlFor="myid-input" className="admin-label">
+                        MyID <span className="admin-required">*</span>
+                    </label>
+                    <input
+                        id="myid-input"
+                        type="text"
+                        className="admin-input"
+                        placeholder="Enter MyID"
+                        value={myIdInput}
+                        onChange={onMyIdChange}
+                    />
+                    {fieldErrors.myId && (
+                        <p className="admin-field-error">{fieldErrors.myId}</p>
+                    )}
+                    {!fieldErrors.myId && myIdWarning && (
+                        <p className="admin-field-error">{myIdWarning}</p>
+                    )}
+                </div>
+                {isNewMode && (
+                    <label className="admin-option-label">
+                        <input
+                            type="checkbox"
+                            checked={manualEntry}
+                            onChange={onManualEntryChange}
+                        />
+                        Manually enter details
+                    </label>
+                )}
+                {showFields && (
+                    <div className="admin-grid">
+                        <div className="admin-grid-item">
+                            <label htmlFor="first-name" className="admin-label">
+                                First Name <span className="admin-required">*</span>
+                            </label>
+                            <input
+                                id="first-name"
+                                type="text"
+                                className="admin-input"
+                                value={firstName}
+                                onChange={onFirstNameChange}
+                            />
+                            {fieldErrors.firstName && (
+                                <p className="admin-field-error">{fieldErrors.firstName}</p>
+                            )}
+                        </div>
+                        <div className="admin-grid-item">
+                            <label htmlFor="last-name" className="admin-label">
+                                Last Name <span className="admin-required">*</span>
+                            </label>
+                            <input
+                                id="last-name"
+                                type="text"
+                                className="admin-input"
+                                value={lastName}
+                                onChange={onLastNameChange}
+                            />
+                            {fieldErrors.lastName && (
+                                <p className="admin-field-error">{fieldErrors.lastName}</p>
+                            )}
+                        </div>
+                        <div className="admin-grid-item">
+                            <label htmlFor="division-select" className="admin-label">
+                                User Division <span className="admin-required">*</span>
+                            </label>
+                            <div className="admin-select-wrapper">
+                                <select
+                                    id="division-select"
+                                    value={divisionId}
+                                    onChange={onDivisionChange}
+                                    className="admin-input"
+                                >
+                                    <option value="" disabled hidden>
+                                        Select Division
+                                    </option>
+                                    {sortedDivisions.map((division) => (
+                                        <option key={division.divisionId} value={division.divisionId}>
+                                            {division.divisionName}
+                                        </option>
+                                    ))}
+                                </select>
+                                {divisionId && (
+                                    <button
+                                        type="button"
+                                        className="admin-clear-button"
+                                        onClick={onClearDivision}
+                                    >
+                                        &times;
+                                    </button>
+                                )}
+                            </div>
+                            {fieldErrors.divisionId && (
+                                <p className="admin-field-error">{fieldErrors.divisionId}</p>
+                            )}
+                        </div>
+                    </div>
+                )}
+                <div className="admin-button-row">
+                    <button
+                        type="button"
+                        onClick={onSubmit}
+                        disabled={submitting || !showFields}
+                        className="admin-primary"
+                    >
+                        {submitting
+                            ? isEditMode
+                                ? 'Submitting Changes...'
+                                : 'Adding Auditor...'
+                            : isEditMode
+                                ? 'Submit Changes'
+                                : 'Add Auditor'}
+                    </button>
+                    {isEditMode && editingAuditor && (
+                        <button
+                            type="button"
+                            onClick={onArchiveToggle}
+                            disabled={submitting}
+                            className={editingAuditor.active === 1 ? 'admin-warning' : 'admin-info'}
+                        >
+                            {editingAuditor.active === 1 ? 'Archive Auditor' : 'Reactivate Auditor'}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={onReset}
+                        className="admin-secondary"
+                    >
+                        Reset
+                    </button>
+                </div>
+                {submissionMessage && (
+                    <p className="admin-success">{submissionMessage}</p>
+                )}
+                {submissionError && (
+                    <p className="admin-field-error" style={{ marginTop: '0.2rem' }}>
+                        {submissionError}
+                    </p>
+                )}
+            </div>
+        )}
+    </section>
+);
+
+export default AuditorsSection;

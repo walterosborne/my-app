@@ -5,26 +5,98 @@ import { Box, Typography } from '@mui/material';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import ReactMarkdown from 'react-markdown';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import { grey } from '@mui/material/colors';
 import { customStyles } from './Utilities.jsx';
-import { programs as programsList } from './assets/data/programs';
-import { divisions as divisionsList } from './assets/data/divisions';
-import { sectors as sectorsList } from './assets/data/sectors';
-import { sites as sitesList } from './assets/data/sites';
-import { businessUnits as businessUnitsList } from './assets/data/businessUnits';
-import { operatingUnits as operatingUnitsList } from './assets/data/operatingUnits';
-import { auditors as auditorsList } from './assets/data/auditors';
-import { auditTypes as auditTypesList } from './assets/data/auditTypes';
-import { statuses as statusesList } from './assets/data/statuses';
-import { functions as functionsList } from './assets/data/functions';
-import { intExt as intExtList } from './assets/data/intExt';
-import { standards as standardsList } from './assets/data/standards';
+import {
+  getPrograms,
+  getDivisions,
+  getSectors,
+  getSites,
+  getBusinessUnits,
+  getOperatingUnits,
+  getAuditors,
+  getAuditTypes,
+  getStatuses,
+  getFunctions,
+  getIntExt,
+  getStandards,
+  getSeverities,
+  getRoster,
+  getCurrentUser
+} from './assets/data/apiData';
 
 
 function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
-  const userInfo = { name: "Walter Osborne" };
+  const [userInfo, setUserInfo] = useState({ name: 'User', myId: null });
+
+  // State for lookup data from API
+  const [programsList, setProgramsList] = useState([]);
+  const [divisionsList, setDivisionsList] = useState([]);
+  const [sectorsList, setSectorsList] = useState([]);
+  const [sitesList, setSitesList] = useState([]);
+  const [businessUnitsList, setBusinessUnitsList] = useState([]);
+  const [operatingUnitsList, setOperatingUnitsList] = useState([]);
+  const [auditorsList, setAuditorsList] = useState([]);
+  const [auditTypesList, setAuditTypesList] = useState([]);
+  const [statusesList, setStatusesList] = useState([]);
+  const [functionsList, setFunctionsList] = useState([]);
+  const [intExtList, setIntExtList] = useState([]);
+  const [standardsList, setStandardsList] = useState([]);
+  const [severitiesList, setSeveritiesList] = useState([]);
+  const [rosterList, setRosterList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load all lookup data from API on mount
+  useEffect(() => {
+    async function loadLookupData() {
+      try {
+        const userData = await getCurrentUser();
+        if (userData?.name) {
+          setUserInfo(userData);
+        }
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster] = await Promise.all([
+          getPrograms(),
+          getDivisions(),
+          getSectors(),
+          getSites(),
+          getBusinessUnits(),
+          getOperatingUnits(),
+          getAuditors(),
+          getAuditTypes(),
+          getStatuses(),
+          getFunctions(),
+          getIntExt(),
+          getStandards(),
+          getSeverities(),
+          getRoster()
+        ]);
+
+        setProgramsList(programs);
+        setDivisionsList(divisions);
+        setSectorsList(sectors);
+        setSitesList(sites);
+        setBusinessUnitsList(businessUnits);
+        setOperatingUnitsList(operatingUnits);
+        setAuditorsList(auditors);
+        setAuditTypesList(auditTypes);
+        setStatusesList(statuses);
+        setFunctionsList(functions);
+        setIntExtList(intExt);
+        setStandardsList(standards);
+        setSeveritiesList(severities);
+        setRosterList(roster);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading lookup data:', error);
+        setLoading(false);
+      }
+    }
+    loadLookupData();
+  }, []);
 
   // Helper function to get program names from programIds
   const getProgramNames = (programIds) => {
@@ -46,10 +118,23 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return sector ? sector.sectorName : sectorId;
   };
 
-  // Helper function to get site name from siteId
+  const getSiteLabel = (site) => {
+    if (!site) return '';
+    const city = site.city || '';
+    const address = site.address || '';
+    if (city && address) {
+      return `${city} (${address})`;
+    }
+    if (city) {
+      return city;
+    }
+    return address || site.siteId;
+  };
+
+  // Helper function to get site label from siteId
   const getSiteName = (siteId) => {
     const site = sitesList.find(s => s.siteId === siteId);
-    return site ? site.siteName : siteId;
+    return site ? getSiteLabel(site) : siteId;
   };
 
   // Helper function to get business unit names from businessUnitIds
@@ -114,11 +199,39 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     }).join(', ');
   };
 
+  const getQuestionTypeLabel = (typeValue) => {
+    if (!typeValue && typeValue !== 0) return 'No response provided';
+    if (typeValue === 'PEQ' || typeValue === 'ETQ') return typeValue;
+    const parsed = Number(typeValue);
+    if (Number.isFinite(parsed)) {
+      const standard = standardsList.find((s) => s.standardId === parsed);
+      return standard ? standard.standardName : `Standard ${parsed}`;
+    }
+    return typeValue;
+  };
+
   const [selectedAudit, setSelectedAudit] = useState(null);
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
   });
+  const isSameSelectionModel = (nextModel, currentModel) => {
+    if (!nextModel || !currentModel) return false;
+    if (nextModel.type !== currentModel.type) return false;
+    if (!nextModel.ids || !currentModel.ids) return false;
+    if (nextModel.ids.size !== currentModel.ids.size) return false;
+    for (const id of nextModel.ids) {
+      if (!currentModel.ids.has(id)) return false;
+    }
+    return true;
+  };
+  const [schedule, setSchedule] = useState(null);
+  const [locked, setLocked] = useState(false);
+  const [newCARs, setNewCARs] = useState([]);
+  const [carCounter, setCarCounter] = useState(0);
+  const [loadedAuditData, setLoadedAuditData] = useState(null);
+  const [loadedCARs, setLoadedCARs] = useState([]);
+  const [nonconformances, setNonconformances] = useState([]);
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
@@ -126,9 +239,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       const audit = allAudits.find(a => a.scheduleId === selectedAuditId);
       if (audit) {
         setSelectedAudit(audit);
-        setRowSelectionModel({
-          type: 'include',
-          ids: new Set([selectedAuditId])
+        setRowSelectionModel((prev) => {
+          const nextModel = { type: 'include', ids: new Set([selectedAuditId]) };
+          return isSameSelectionModel(nextModel, prev) ? prev : nextModel;
         });
         // Convert to schedule format that matches DataGrid rows
         const scheduleFormat = {
@@ -148,7 +261,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     setError,
     formState: { errors, isSubmitting },
     control,
+    getValues,
     reset,
+    clearErrors,
     setValue,
     watch
   } = useForm(
@@ -157,23 +272,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     }
   )
 
-  // Update form when audit is selected
-  useEffect(() => {
-    if (selectedAudit?.findings?.[0]) {
-      selectedAudit.findings.forEach((finding, idx) => {
-        setValue(`nc${idx}_id`, finding.id);
-        setValue(`nc${idx}_type`, finding.type);
-        setValue(`nc${idx}_severity`, finding.severity);
-        setValue(`nc${idx}_description`, finding.description);
-        setValue(`nc${idx}_rootCause`, finding.rootCause);
-        setValue(`nc${idx}_correctiveAction`, finding.correctiveAction);
-        setValue(`nc${idx}_responsible`, finding.responsiblePerson);
-        setValue(`nc${idx}_targetDate`, finding.targetCloseDate);
-      });
-    }
-  }, [selectedAudit, setValue]);
-
-  const [tableSize, setTableSize] = useState(10)
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10
+  });
 
   const columns = useMemo(() => [
     { field: 'scheduleId', headerName: 'Schedule ID', width: 150 },
@@ -183,60 +285,109 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     { field: 'programs', headerName: 'Program(s)', width: 150 },
   ], []);
 
-  const schedules = allAudits.map(audit => ({
+  const sortedAudits = useMemo(() => {
+    return [...allAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
+  }, [allAudits]);
+
+  const schedules = sortedAudits.map(audit => ({
     id: audit.scheduleId,
     scheduleId: audit.scheduleId,
     title: audit.title,
-    leadAuditor: audit.leadAuditor,
+    leadAuditor: getLeadAuditorName(audit.leadAuditorId),
     division: getDivisionName(audit.divisionId),
     programs: getProgramNames(audit.programIds)
   }));
 
-  // Use real findings data from selected audit
-  const nonconformaties = selectedAudit?.findings?.map((finding, idx) => ({
-    id: idx + 1,
-    NCID: finding.id,
-    Question: finding.question || finding.description,
-    Type: finding.type,
-    Severity: finding.severity || 'N/A'
-  })) || [];
+  // Map nonconformances from API to display format
+  const nonconformaties = nonconformances
+    .filter(nc => nc.findingType === 1) // Only show actual nonconformities (findingType = 1)
+    .map((nc, idx) => ({
+      id: idx + 1,
+      NCID: nc.ncId,
+      Question: nc.question,
+      Type: getQuestionTypeLabel(nc.type),
+      Severity: 'N/A'
+    }));
 
-  const severityOptions = [
-    { value: 'Low', label: 'Low' },
-    { value: 'Medium', label: 'Medium' },
-    { value: 'High', label: 'High' },
-    { value: 'Critical', label: 'Critical' },
-  ];
+  const standardBasedGroups = useMemo(() => {
+    const standardNcs = nonconformaties
+      .filter((nc) => nc.Type !== 'PEQ' && nc.Type !== 'ETQ')
+      .slice()
+      .sort((a, b) => {
+        const labelA = getQuestionTypeLabel(a.Type);
+        const labelB = getQuestionTypeLabel(b.Type);
+        if (labelA !== labelB) {
+          return (labelA || '').localeCompare(labelB || '');
+        }
+        const sectionA = Number(a.Section ?? a.section ?? 0);
+        const sectionB = Number(b.Section ?? b.section ?? 0);
+        if (sectionA !== sectionB) return sectionA - sectionB;
+        const subA = Number(a.Subsection ?? a.subsection ?? 0);
+        const subB = Number(b.Subsection ?? b.subsection ?? 0);
+        if (subA !== subB) return subA - subB;
+        return Number(a.NCID ?? 0) - Number(b.NCID ?? 0);
+      });
 
-  const reviewerOptions = [
-    { value: 'Reviewer 1', label: 'Reviewer 1' },
-    { value: 'Reviewer 2', label: 'Reviewer 2' },
-    { value: 'Reviewer 3', label: 'Reviewer 3' },
-  ];
+    const grouped = new Map();
+    standardNcs.forEach((nc) => {
+      const label = getQuestionTypeLabel(nc.Type) || 'Standard';
+      if (!grouped.has(label)) {
+        grouped.set(label, []);
+      }
+      grouped.get(label).push(nc);
+    });
 
-  const approverOptions = [
-    { value: 'Approver 1', label: 'Approver 1' },
-    { value: 'Approver 2', label: 'Approver 2' },
-    { value: 'Approver 3', label: 'Approver 3' },
-  ];
+    return Array.from(grouped.entries()).map(([label, items]) => ({
+      label,
+      items
+    }));
+  }, [nonconformaties, standardsList]);
 
-  const leadAuditorOptions = [
-    { value: 'Lead Auditor 1', label: 'Lead Auditor 1' },
-    { value: 'Lead Auditor 2', label: 'Lead Auditor 2' },
-    { value: 'Lead Auditor 3', label: 'Lead Auditor 3' },
-  ];
+  const severityOptions = useMemo(() => {
+    return [...severitiesList]
+      .sort((a, b) => (a.severityId ?? 0) - (b.severityId ?? 0))
+      .map(severity => ({
+        value: severity.severityId,
+        label: severity.severity
+      }));
+  }, [severitiesList]);
 
-  const additionalAuditorsOptions = [
-    { value: 'Auditor A', label: 'Auditor A' },
-    { value: 'Auditor B', label: 'Auditor B' },
-    { value: 'Auditor C', label: 'Auditor C' },
-  ];
+  // Generate options from API data
+  const reviewerOptions = useMemo(() => {
+    return [...rosterList]
+      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
+      .map(person => ({
+        value: person.myId,
+        label: person.rosterName
+      }));
+  }, [rosterList]);
 
+  const approverOptions = useMemo(() => {
+    return [...rosterList]
+      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
+      .map(person => ({
+        value: person.myId,
+        label: person.rosterName
+      }));
+  }, [rosterList]);
 
-  const [schedule, setSchedule] = useState(null);
-  const [locked, setLocked] = useState(false);
-  const [newCARs, setNewCARs] = useState([]);
-  const [carCounter, setCarCounter] = useState(0);
+  const leadAuditorOptions = useMemo(() => {
+    return [...auditorsList]
+      .sort((a, b) => (a.auditorName || '').localeCompare(b.auditorName || ''))
+      .map(auditor => ({
+        value: auditor.auditorId,
+        label: auditor.auditorName
+      }));
+  }, [auditorsList]);
+
+  const additionalAuditorsOptions = useMemo(() => {
+    return [...rosterList]
+      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
+      .map(person => ({
+        value: person.myId,
+        label: person.rosterName
+      }));
+  }, [rosterList]);
 
   function addCAR() {
     const newCarId = carCounter;
@@ -249,38 +400,317 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   }
 
   useEffect(() => {
-    if (schedule) {
-    } else {
-      reset()
-    }
-  }, [schedule]); // Runs effect whenever schedule changes
+    async function loadAuditData() {
+      if (schedule?.scheduleId) {
+        try {
+          // First reset the form to clear all previous data
+          reset();
+          setNewCARs([]);
+          setCarCounter(0);
 
-  async function onSubmit(data) {
+          // Fetch audit data
+          const auditResponse = await fetch(`http://localhost:3001/api/audits/${schedule.scheduleId}`);
+          const auditData = await auditResponse.json();
+          setLoadedAuditData(auditData);
+
+          // Fetch CARs for this audit
+          const carsResponse = await fetch(`http://localhost:3001/api/cars/${schedule.scheduleId}`);
+          const carsData = await carsResponse.json();
+          setLoadedCARs(carsData);
+
+          // Fetch nonconformances for this audit
+          const ncResponse = await fetch(`http://localhost:3001/api/nonconformances/${schedule.scheduleId}`);
+          const ncData = await ncResponse.json();
+          setNonconformances(ncData);
+
+          // Populate nonconformance form fields
+          ncData.forEach(nc => {
+            if (nc.details) setValue(`ncDetails${nc.ncId}`, nc.details);
+            if (nc.severity) setValue(`ncSeverity${nc.ncId}`, nc.severity);
+            if (nc.ncDetails) setValue(`ncNCDetails${nc.ncId}`, nc.ncDetails);
+            if (nc.AIN) setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN);
+          });
+
+          // Populate form with saved data
+          if (auditData.auditorstime !== null && auditData.auditorstime !== undefined) {
+            setValue('auditorsTime', auditData.auditorstime);
+          }
+          if (auditData.previouscarseffective !== null && auditData.previouscarseffective !== undefined) {
+            setValue('carEffective', String(auditData.previouscarseffective));
+          }
+          if (auditData.approver !== null && auditData.approver !== undefined) {
+            setValue('approver', auditData.approver);
+          }
+          if (auditData.leadauditorid !== null && auditData.leadauditorid !== undefined) {
+            setValue('leadAuditor', auditData.leadauditorid);
+          } else if (auditData.leadauditor !== null && auditData.leadauditor !== undefined) {
+            setValue('leadAuditor', auditData.leadauditor);
+          }
+          const existingAdditionalAuditors = Array.isArray(auditData.additionalAuditors)
+            ? auditData.additionalAuditors
+            : (Array.isArray(auditData.additionalauditors) ? auditData.additionalauditors : []);
+          if (existingAdditionalAuditors.length > 0) {
+            setValue('additionalAuditors', existingAdditionalAuditors);
+          } else {
+            setValue('additionalAuditors', []);
+          }
+
+          // Populate CARs
+          if (carsData && carsData.length > 0) {
+            const carIds = [];
+            carsData.forEach((car, idx) => {
+              const carId = idx;
+              carIds.push(carId);
+              setValue(`car${carId}`, car.car);
+              setValue(`carReviewer${carId}`, car.reviewer);
+            });
+            setNewCARs(carIds);
+            setCarCounter(carsData.length);
+          }
+        } catch (error) {
+          console.error('Error loading audit data:', error);
+        }
+      } else {
+        reset();
+        setNewCARs([]);
+        setCarCounter(0);
+        setLoadedAuditData(null);
+        setLoadedCARs([]);
+        setNonconformances([]);
+      }
+    }
+    loadAuditData();
+  }, [schedule, setValue, reset]);
+
+  async function onSubmit(data, lockedValue = false) {
     try {
-      //Waits 1000 ms to simulate async code
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const submissionData = { ...data, locked };
-      console.log(submissionData)
+      if (!selectedAudit?.scheduleId) {
+        throw new Error('No audit selected');
+      }
+
+      // Prepare audit data update
+      const auditUpdate = {
+        scheduleId: selectedAudit.scheduleId,
+        auditorsTime: data.auditorsTime ? parseInt(data.auditorsTime) : null,
+        previousCarsEffective: data.carEffective ? parseInt(data.carEffective) : null,
+        approver: data.approver || null,
+        leadAuditor: data.leadAuditor || null,
+        additionalAuditors: data.additionalAuditors || [],
+        locked: lockedValue ? 1 : 0,
+        stage: 4
+      };
+
+      // Prepare CARs data
+      const carsData = newCARs.map(carId => ({
+        scheduleId: selectedAudit.scheduleId,
+        car: data[`car${carId}`] || '',
+        reviewer: data[`carReviewer${carId}`] || null
+      })).filter(car => car.car); // Only include CARs with actual data
+
+      // Prepare nonconformance updates
+      const ncUpdates = nonconformances.map(nc => ({
+        ncId: nc.ncId,
+        details: data[`ncDetails${nc.ncId}`] || '',
+        severity: data[`ncSeverity${nc.ncId}`] || null,
+        ncDetails: data[`ncNCDetails${nc.ncId}`] || '',
+        actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
+      }));
+
+      console.log('Submitting audit data:', auditUpdate);
+      console.log('Submitting CARs data:', carsData);
+      console.log('Submitting nonconformance updates:', ncUpdates);
+
+      // Save to database
+      const response = await fetch('http://localhost:3001/api/save-nonconformities-data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          audit: auditUpdate,
+          cars: carsData
+        })
+      });
+
+      const result = await response.json();
+      console.log('Server response:', result);
+
+      if (result.success) {
+        // Update nonconformance details
+        for (const ncUpdate of ncUpdates) {
+          const ncResponse = await fetch('http://localhost:3001/api/update-nonconformance-details', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(ncUpdate)
+          });
+          const ncResult = await ncResponse.json();
+          if (!ncResult.success) {
+            console.error('Failed to update nonconformance:', ncUpdate.ncId, ncResult.error);
+          }
+        }
+
+        toast.success(lockedValue ? 'Nonconformities submitted successfully!' : 'Changes saved successfully!');
+
+        // Reload the audit data to refresh the form
+        const auditResponse = await fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`);
+        const auditData = await auditResponse.json();
+        setLoadedAuditData(auditData);
+
+        const carsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`);
+        const carsDataReloaded = await carsResponse.json();
+        setLoadedCARs(carsDataReloaded);
+      } else {
+        throw new Error(result.error || 'Failed to save data');
+      }
     }
     catch (error) {
-      //The root error is a form-level error not tied to a specific field
       setError("root",
         { message: error.message }
       )
     }
+  }
 
+  const handleSaveWithoutSubmitting = async () => {
+    clearErrors();
+    const data = getValues();
+    await onSubmit(data, false);
+  };
+
+  async function unlockAudit() {
+    try {
+      if (!schedule?.scheduleId) {
+        throw new Error('No audit selected');
+      }
+
+      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scheduleId: schedule.scheduleId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Audit unlocked successfully!');
+        // Reload the audit data to reflect the change
+        const auditResponse = await fetch(`http://localhost:3001/api/audits/${schedule.scheduleId}`);
+        const auditData = await auditResponse.json();
+        setLoadedAuditData(auditData);
+      } else {
+        throw new Error(result.error || 'Failed to unlock audit');
+      }
+    } catch (error) {
+      toast.error('Failed to unlock audit: ' + error.message);
+    }
   }
 
   function handleReset() {
-    setNewCARs(0)
-    reset();
+    if (loadedAuditData && schedule?.scheduleId) {
+      // Restore form to saved state
+      if (loadedAuditData.auditorstime !== null && loadedAuditData.auditorstime !== undefined) {
+        setValue('auditorsTime', loadedAuditData.auditorstime);
+      } else {
+        setValue('auditorsTime', '');
+      }
+
+      if (loadedAuditData.previouscarseffective !== null && loadedAuditData.previouscarseffective !== undefined) {
+        setValue('carEffective', String(loadedAuditData.previouscarseffective));
+      } else {
+        setValue('carEffective', '');
+      }
+
+      if (loadedAuditData.approver !== null && loadedAuditData.approver !== undefined) {
+        setValue('approver', loadedAuditData.approver);
+      } else {
+        setValue('approver', null);
+      }
+
+      if (loadedAuditData.leadauditorid !== null && loadedAuditData.leadauditorid !== undefined) {
+        setValue('leadAuditor', loadedAuditData.leadauditorid);
+      } else if (loadedAuditData.leadauditor !== null && loadedAuditData.leadauditor !== undefined) {
+        setValue('leadAuditor', loadedAuditData.leadauditor);
+      } else {
+        setValue('leadAuditor', null);
+      }
+
+      const existingAdditionalAuditors = Array.isArray(loadedAuditData.additionalAuditors)
+        ? loadedAuditData.additionalAuditors
+        : (Array.isArray(loadedAuditData.additionalauditors) ? loadedAuditData.additionalauditors : []);
+      if (existingAdditionalAuditors.length > 0) {
+        setValue('additionalAuditors', existingAdditionalAuditors);
+      } else {
+        setValue('additionalAuditors', []);
+      }
+
+      // Restore CARs
+      if (loadedCARs && loadedCARs.length > 0) {
+        const carIds = [];
+        loadedCARs.forEach((car, idx) => {
+          const carId = idx;
+          carIds.push(carId);
+          setValue(`car${carId}`, car.car);
+          setValue(`carReviewer${carId}`, car.reviewer);
+        });
+        setNewCARs(carIds);
+        setCarCounter(loadedCARs.length);
+      } else {
+        setNewCARs([]);
+        setCarCounter(0);
+      }
+
+      // Restore nonconformance fields
+      nonconformances.forEach(nc => {
+        setValue(`ncDetails${nc.ncId}`, nc.details || '');
+        setValue(`ncSeverity${nc.ncId}`, nc.severity || null);
+        setValue(`ncNCDetails${nc.ncId}`, nc.ncDetails || '');
+        setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN || '');
+      });
+    } else {
+      // No saved state, clear everything
+      reset();
+      setNewCARs([]);
+      setCarCounter(0);
+    }
   }
+
+  const stageGateMessage = (() => {
+    if (!loadedAuditData || loadedAuditData.locked === 1) return null;
+    const stage = Number(loadedAuditData.stage);
+    if (Number.isNaN(stage)) return null;
+    if (stage < 3) {
+      const scheduleId = loadedAuditData.scheduleId ?? loadedAuditData.scheduleid ?? 'Unknown';
+      return {
+        title: `Audit ${scheduleId} is not ready for Nonconformaties yet.`,
+        note: 'Please complete ' + (stage === 1 ? 'Planning' : stage === 2 ? 'Conduct Audit' : 'previous steps') + ' before entering findings.'
+      };
+    }
+    return null;
+  })();
 
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>Enter Nonconformaties</h1>
-        <h2 style={{ marginTop: '3px' }}>Welcome {userInfo.name}. <a href="mailto:walter.osborne@ngc.com" target='_blank'>Not you?</a></h2>
+        <h2 style={{ marginTop: '3px' }}>
+          Welcome {userInfo.name}.{' '}
+          <a
+            href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
+              userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
+            )}&body=${encodeURIComponent(
+              userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Not you?
+          </a>
+        </h2>
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
@@ -298,14 +728,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                 getRowId={(row) => row.scheduleId}
                 rowSelectionModel={rowSelectionModel}
                 pageSizeOptions={[5, 10, 20]}
-                paginationModel={{ pageSize: tableSize, page: 0 }}
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
                 getRowSpacing={(params) => ({
                   top: params.isFirstVisible ? 0 : 5,
                   bottom: params.isLastVisible ? 0 : 5,
                 })}
                 onRowSelectionModelChange={(selectionModel) => {
+                  if (!selectionModel?.ids) return;
+                  if (isSameSelectionModel(selectionModel, rowSelectionModel)) return;
                   setRowSelectionModel(selectionModel);
-                  // selectionModel.ids is a Set of selected row IDs
                   if (selectionModel.ids.size > 0) {
                     const scheduleID = Array.from(selectionModel.ids)[0];
                     const selectedSchedule = schedules.find(s => s.scheduleId === scheduleID);
@@ -326,381 +758,423 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               />
 
             </Box>
-            {schedule &&
-              <>
-                <h2 style={{ marginTop: '5px' }}>Currently Entering Nonconformaties for Schedule: {schedule.scheduleId}</h2>
-                <div className='section'>
-                  <label className='sectiontitle'>Overview</label>
-                  <div className='sectionrow'>
-                    <div className="fieldboxwhole">
-                      <label>Auditor's Time</label>
-                      <input
-                        type="number"
-                        {...register("auditorsTime", {
-                          validate: {
-                            isInteger: (value) => {
-                              if (value === '' || value === null) return true; // Allow empty
-                              return Number.isInteger(Number(value)) || "Please enter a whole number";
-                            },
-                            isNonNegative: (value) => {
-                              if (value === '' || value === null) return true; // Allow empty
-                              return Number(value) >= 0 || "Please enter a non-negative number";
-                            }
-                          }
-                        })}
-                        id='auditorsTime'
-                        className='textfield'
-                        placeholder='Enter a whole number here'
-                        min="0"
-                        step="1"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* PEQs */}
-                {nonconformaties.filter(nc => nc.Type === 'PEQ').length > 0 && (
-                  <>
-                    <h3 className='sectiontitle'>Process Evaluation Questions</h3>
-                    {nonconformaties.filter(nc => nc.Type === 'PEQ').map((nc, index) => (
-                      <div className='section' key={nc.NCID}>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <label>Details</label>
-                            <textarea
-                              {...register(`ncDetails${nc.NCID}`)}
-                              style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                              id={`ncDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxthird">
-                            <label>Severity</label>
-                            <Controller
-                              name={`ncSeverity${nc.NCID}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  options={severityOptions}
-                                  styles={customStyles}
-                                  placeholder="Severity"
-                                  value={severityOptions.find(s => s.value === field.value) || null}
-                                  onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>NC Details</label>
-                            <input
-                              type="text"
-                              {...register(`ncNCDetails${nc.NCID}`)}
-                              id={`ncNCDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>Action Item Number</label>
-                            <input
-                              type="text"
-                              {...register(`ncActionItemNumber${nc.NCID}`)}
-                              id={`ncActionItemNumber${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* ETQs */}
-                {nonconformaties.filter(nc => nc.Type === 'ETQ').length > 0 && (
-                  <>
-                    <h3 className='sectiontitle'>Every Time Questions</h3>
-                    {nonconformaties.filter(nc => nc.Type === 'ETQ').map((nc, index) => (
-                      <div className='section' key={nc.NCID}>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <label>Details</label>
-                            <textarea
-                              {...register(`ncDetails${nc.NCID}`)}
-                              style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                              id={`ncDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxthird">
-                            <label>Severity</label>
-                            <Controller
-                              name={`ncSeverity${nc.NCID}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  options={severityOptions}
-                                  styles={customStyles}
-                                  placeholder="Severity"
-                                  value={severityOptions.find(s => s.value === field.value) || null}
-                                  onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>NC Details</label>
-                            <input
-                              type="text"
-                              {...register(`ncNCDetails${nc.NCID}`)}
-                              id={`ncNCDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>Action Item Number</label>
-                            <input
-                              type="text"
-                              {...register(`ncActionItemNumber${nc.NCID}`)}
-                              id={`ncActionItemNumber${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {/* Standard-based Questions */}
-                {nonconformaties.filter(nc => nc.Type !== 'PEQ' && nc.Type !== 'ETQ').length > 0 && (
-                  <>
-                    <h3 className='sectiontitle'>Standard-Based Questions</h3>
-                    {nonconformaties.filter(nc => nc.Type !== 'PEQ' && nc.Type !== 'ETQ').map((nc, index) => (
-                      <div className='section' key={nc.NCID}>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <h3></h3> <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <label>Details</label>
-                            <textarea
-                              {...register(`ncDetails${nc.NCID}`)}
-                              style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                              id={`ncDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxthird">
-                            <label>Severity</label>
-                            <Controller
-                              name={`ncSeverity${nc.NCID}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  options={severityOptions}
-                                  styles={customStyles}
-                                  placeholder="Severity"
-                                  value={severityOptions.find(s => s.value === field.value) || null}
-                                  onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>NC Details</label>
-                            <input
-                              type="text"
-                              {...register(`ncNCDetails${nc.NCID}`)}
-                              id={`ncNCDetails${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                          <div className="fieldboxthird">
-                            <label>Action Item Number</label>
-                            <input
-                              type="text"
-                              {...register(`ncActionItemNumber${nc.NCID}`)}
-                              id={`ncActionItemNumber${nc.NCID}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                <div className='section'>
-                  <label className='sectiontitle'>CARs</label>
-                  <label>Previous CARs</label>
-                  <div className='sectionrow' style={{ flexDirection: 'column' }}>
-                    <button type='button' onClick={addCAR} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black' }}>Add New</button>
-                  </div>
-                  {newCARs.map((carId, index) => (
-                    <div className='sectionrow' key={carId} style={{ border: '1px solid #ccc', borderRadius: '8px', marginBottom: '10px', padding: '10px', boxSizing: 'border-box' }}>
-                      <div className="fieldboxthird">
-                        <label>CAR {index + 1}</label>
+            {schedule && loadedAuditData?.locked === 1 ?
+              (
+                <>
+                  <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                    Audit {loadedAuditData.scheduleid} has been submitted for final approval and cannot be edited.
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={unlockAudit}
+                    style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      marginBottom: '10px'
+                    }}
+                  >
+                    Undo Submission
+                  </button>
+                  <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                    Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
+                  </p>
+                </>
+              ) : stageGateMessage ? (
+                <>
+                  <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                    {stageGateMessage.title}
+                  </h2>
+                  <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                    {stageGateMessage.note}
+                  </p>
+                </>
+              ) : schedule ? (
+                <>
+                  <h2 style={{ marginTop: '5px' }}>Currently Entering Nonconformaties for Schedule: {schedule.scheduleId}</h2>
+                  <div className='section'>
+                    <label className='sectiontitle'>Overview</label>
+                    <div className='sectionrow'>
+                      <div className="fieldboxwhole">
+                        <label>Auditor's Time</label>
                         <input
-                          type="text"
-                          {...register(`car${carId}`)}
-                          id={`car${carId}`}
+                          type="number"
+                          {...register("auditorsTime", {
+                            validate: {
+                              isInteger: (value) => {
+                                if (value === '' || value === null) return true; // Allow empty
+                                return Number.isInteger(Number(value)) || "Please enter a whole number";
+                              },
+                              isNonNegative: (value) => {
+                                if (value === '' || value === null) return true; // Allow empty
+                                return Number(value) >= 0 || "Please enter a non-negative number";
+                              }
+                            }
+                          })}
+                          id='auditorsTime'
                           className='textfield'
+                          placeholder='Enter a whole number here'
+                          min="0"
+                          step="1"
                         />
                       </div>
-                      <div className="fieldboxthird">
-                        <label>Reviewer</label>
+                    </div>
+                  </div>
+
+                  {/* PEQs */}
+                  {nonconformaties.filter(nc => nc.Type === 'PEQ').length > 0 && (
+                    <>
+                      <h3 className='sectiontitle'>Process Evaluation Responses</h3>
+                      {nonconformaties.filter(nc => nc.Type === 'PEQ').map((nc, index) => (
+                        <div className='section' key={nc.NCID}>
+                          <div className='sectionrow'>
+                            <div className="fieldboxwhole">
+                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                            </div>
+                          </div>
+                          <div className='sectionrow'>
+                            <div className="fieldboxwhole">
+                              <label>Details</label>
+                              <textarea
+                                {...register(`ncDetails${nc.NCID}`)}
+                                style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                id={`ncDetails${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                          </div>
+                          <div className='sectionrow'>
+                            <div className="fieldboxthird">
+                              <label>Severity</label>
+                              <Controller
+                                name={`ncSeverity${nc.NCID}`}
+                                control={control}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={severityOptions}
+                                    styles={customStyles}
+                                    placeholder="Severity"
+                                    value={severityOptions.find(s => s.value === field.value) || null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                  />
+                                )}
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>NC Details</label>
+                              <input
+                                type="text"
+                                {...register(`ncNCDetails${nc.NCID}`)}
+                                id={`ncNCDetails${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>Action Item Number</label>
+                              <input
+                                type="text"
+                                {...register(`ncActionItemNumber${nc.NCID}`)}
+                                id={`ncActionItemNumber${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  {/* ETQs */}
+                  {nonconformaties.filter(nc => nc.Type === 'ETQ').length > 0 && (
+                    <>
+                      <h3 className='sectiontitle'>Every Time Question Responses</h3>
+                      {nonconformaties.filter(nc => nc.Type === 'ETQ').map((nc, index) => (
+                        <div className='section' key={nc.NCID}>
+                          <div className='sectionrow'>
+                            <div className="fieldboxwhole">
+                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                            </div>
+                          </div>
+                          <div className='sectionrow'>
+                            <div className="fieldboxwhole">
+                              <label>Details</label>
+                              <textarea
+                                {...register(`ncDetails${nc.NCID}`)}
+                                style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                id={`ncDetails${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                          </div>
+                          <div className='sectionrow'>
+                            <div className="fieldboxthird">
+                              <label>Severity</label>
+                              <Controller
+                                name={`ncSeverity${nc.NCID}`}
+                                control={control}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={severityOptions}
+                                    styles={customStyles}
+                                    placeholder="Severity"
+                                    value={severityOptions.find(s => s.value === field.value) || null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                  />
+                                )}
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>NC Details</label>
+                              <input
+                                type="text"
+                                {...register(`ncNCDetails${nc.NCID}`)}
+                                id={`ncNCDetails${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>Action Item Number</label>
+                              <input
+                                type="text"
+                                {...register(`ncActionItemNumber${nc.NCID}`)}
+                                id={`ncActionItemNumber${nc.NCID}`}
+                                className='textfield'
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+
+                  {/* Standard-based Questions */}
+                  {standardBasedGroups.length > 0 && (
+                    <>
+                      <h3 className='sectiontitle'>{selectedAudit?.standardIds ? getStandardNames(selectedAudit.standardIds).split(', ').join('; ') + ' Responses' : 'Standard Responses'}</h3>
+                      {standardBasedGroups.map((group) => (
+                        <div key={group.label}>
+                          <h4 style={{ margin: '12px 0 6px', fontSize: '0.95rem', fontWeight: 600 }}>{group.label}</h4>
+                          {group.items.map((nc) => (
+                            <div className='section' key={nc.NCID}>
+                              <div className='sectionrow'>
+                                <div className="fieldboxwhole">
+                                  <h3></h3> <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                                </div>
+                              </div>
+                              <div className='sectionrow'>
+                                <div className="fieldboxwhole">
+                                  <label>Details</label>
+                                  <textarea
+                                    {...register(`ncDetails${nc.NCID}`)}
+                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                    id={`ncDetails${nc.NCID}`}
+                                    className='textfield'
+                                  />
+                                </div>
+                              </div>
+                              <div className='sectionrow'>
+                                <div className="fieldboxthird">
+                                  <label>Severity</label>
+                                  <Controller
+                                    name={`ncSeverity${nc.NCID}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select
+                                        isClearable
+                                        options={severityOptions}
+                                        styles={customStyles}
+                                        placeholder="Severity"
+                                        value={severityOptions.find(s => s.value === field.value) || null}
+                                        onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                                <div className="fieldboxthird">
+                                  <label>NC Details</label>
+                                  <input
+                                    type="text"
+                                    {...register(`ncNCDetails${nc.NCID}`)}
+                                    id={`ncNCDetails${nc.NCID}`}
+                                    className='textfield'
+                                  />
+                                </div>
+                                <div className="fieldboxthird">
+                                  <label>Action Item Number</label>
+                                  <input
+                                    type="text"
+                                    {...register(`ncActionItemNumber${nc.NCID}`)}
+                                    id={`ncActionItemNumber${nc.NCID}`}
+                                    className='textfield'
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </>
+                  )}
+
+                  <div className='section'>
+                    <label className='sectiontitle'>CARs</label>
+                    <label>Previous CARs</label>
+                    <div className='sectionrow' style={{ flexDirection: 'column' }}>
+                      <button type='button' onClick={addCAR} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black' }}>Add New</button>
+                    </div>
+                    {newCARs.map((carId, index) => (
+                      <div className='sectionrow' key={carId} style={{ border: '1px solid #ccc', borderRadius: '8px', marginBottom: '10px', padding: '10px', boxSizing: 'border-box' }}>
+                        <div className="fieldboxthird">
+                          <label>CAR {index + 1}</label>
+                          <input
+                            type="text"
+                            {...register(`car${carId}`)}
+                            id={`car${carId}`}
+                            className='textfield'
+                          />
+                        </div>
+                        <div className="fieldboxthird">
+                          <label>Reviewer</label>
+                          <Controller
+                            name={`carReviewer${carId}`}
+                            control={control}
+                            render={({ field }) => (
+                              <Select
+                                isClearable
+                                options={reviewerOptions}
+                                styles={customStyles}
+                                placeholder="Reviewer"
+                                value={reviewerOptions.find(r => r.value === field.value) || null}
+                                onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                              />
+                            )}
+                          />
+                        </div>
+                        <div className="fieldboxthird">
+                          <button type='button' onClick={() => deleteCAR(carId)} className='button' style={{ backgroundColor: 'red', marginTop: '20px', width: 'auto', padding: '8px 16px' }}>
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className='sectionrow'>
+                      <div className="fieldboxwhole">
+                        <label>Was previous CAR(s) deemed effective?</label>
                         <Controller
-                          name={`carReviewer${carId}`}
+                          name="carEffective"
                           control={control}
+                          render={({ field }) => (
+                            <ToggleButtonGroup
+                              {...field}
+                              exclusive
+                              onChange={(event, newValue) => {
+                                if (newValue !== null) {
+                                  field.onChange(newValue);
+                                }
+                              }}
+                            >
+                              <ToggleButton value="0" sx={{ textTransform: 'none' }}>
+                                Yes
+                              </ToggleButton>
+                              <ToggleButton value="1" sx={{ textTransform: 'none' }}>
+                                No
+                              </ToggleButton>
+                              <ToggleButton value="2" sx={{ textTransform: 'none' }}>
+                                Unknown
+                              </ToggleButton>
+                            </ToggleButtonGroup>
+                          )}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className='section'>
+                    <label className='sectiontitle'>Approvers</label>
+                    <div className='sectionrow'>
+                      <div className="fieldboxthird">
+                        <label>Approver<label style={{ color: 'red' }}>*</label></label>
+                        <Controller
+                          name="approver"
+                          control={control}
+                          rules={{ required: "Approver is required" }}
                           render={({ field }) => (
                             <Select
                               isClearable
-                              options={reviewerOptions}
+                              options={approverOptions}
                               styles={customStyles}
-                              placeholder="Reviewer"
-                              value={reviewerOptions.find(r => r.value === field.value) || null}
+                              placeholder="Approver"
+                              value={approverOptions.find(a => a.value === field.value) || null}
                               onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                             />
                           )}
                         />
+                        {errors.approver && <p className='fielderror'>{errors.approver.message}</p>}
                       </div>
                       <div className="fieldboxthird">
-                        <button type='button' onClick={() => deleteCAR(carId)} className='button' style={{ backgroundColor: 'red', marginTop: '20px', width: 'auto', padding: '8px 16px' }}>
-                          Delete
-                        </button>
+                        <label>Lead Auditor<label style={{ color: 'red' }}>*</label></label>
+                        <Controller
+                          name="leadAuditor"
+                          control={control}
+                          rules={{ required: "Lead Auditor is required" }}
+                          render={({ field }) => (
+                            <Select
+                              isClearable
+                              options={leadAuditorOptions}
+                              styles={customStyles}
+                              placeholder="Lead Auditor"
+                              value={leadAuditorOptions.find(l => l.value === field.value) || null}
+                              onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                            />
+                          )}
+                        />
+                        {errors.leadAuditor && <p className='fielderror'>{errors.leadAuditor.message}</p>}
+                      </div>
+                      <div className="fieldboxthird">
+                        <label>Additional Approvers</label>
+                        <Controller
+                          name="additionalAuditors"
+                          control={control}
+                          render={({ field }) => (
+                            <Select
+                              isClearable
+                              isMulti
+                              options={additionalAuditorsOptions}
+                              styles={customStyles}
+                              placeholder="Additional Approvers"
+                              value={field.value ? additionalAuditorsOptions.filter(a => field.value.includes(a.value)) : []}
+                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                            />
+                          )}
+                        />
                       </div>
                     </div>
-                  ))}
-                  <div className='sectionrow'>
-                    <div className="fieldboxwhole">
-                      <label>Was previous CAR(s) deemed effective?</label>
-                      <Controller
-                        name="carEffective"
-                        control={control}
-                        render={({ field }) => (
-                          <ToggleButtonGroup
-                            {...field}
-                            exclusive
-                            onChange={(event, newValue) => {
-                              if (newValue !== null) {
-                                field.onChange(newValue);
-                              }
-                            }}
-                          >
-                            <ToggleButton value="Yes" sx={{ textTransform: 'none' }}>
-                              Yes
-                            </ToggleButton>
-                            <ToggleButton value="No" sx={{ textTransform: 'none' }}>
-                              No
-                            </ToggleButton>
-                            <ToggleButton value="N/A" sx={{ textTransform: 'none' }}>
-                              N/A
-                            </ToggleButton>
-                          </ToggleButtonGroup>
-                        )}
-                      />
-                    </div>
                   </div>
-                </div>
 
-                <div className='section'>
-                  <label className='sectiontitle'>Approvers</label>
-                  <div className='sectionrow'>
-                    <div className="fieldboxthird">
-                      <label>Approver<label style={{ color: 'red' }}>*</label></label>
-                      <Controller
-                        name="approver"
-                        control={control}
-                        rules={{ required: "Approver is required" }}
-                        render={({ field }) => (
-                          <Select
-                            isClearable
-                            options={approverOptions}
-                            styles={customStyles}
-                            placeholder="Approver"
-                            value={approverOptions.find(a => a.value === field.value) || null}
-                            onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                          />
-                        )}
-                      />
-                      {errors.approver && <p className='fielderror'>{errors.approver.message}</p>}
-                    </div>
-                    <div className="fieldboxthird">
-                      <label>Lead Auditor<label style={{ color: 'red' }}>*</label></label>
-                      <Controller
-                        name="leadAuditor"
-                        control={control}
-                        rules={{ required: "Lead Auditor is required" }}
-                        render={({ field }) => (
-                          <Select
-                            isClearable
-                            options={leadAuditorOptions}
-                            styles={customStyles}
-                            placeholder="Lead Auditor"
-                            value={leadAuditorOptions.find(l => l.value === field.value) || null}
-                            onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                          />
-                        )}
-                      />
-                      {errors.leadAuditor && <p className='fielderror'>{errors.leadAuditor.message}</p>}
-                    </div>
-                    <div className="fieldboxthird">
-                      <label>Additional Auditors</label>
-                      <Controller
-                        name="additionalAuditors"
-                        control={control}
-                        render={({ field }) => (
-                          <Select
-                            isClearable
-                            isMulti
-                            options={additionalAuditorsOptions}
-                            styles={customStyles}
-                            placeholder="Additional Auditors"
-                            value={field.value ? additionalAuditorsOptions.filter(a => field.value.includes(a.value)) : []}
-                            onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                          />
-                        )}
-                      />
-                    </div>
+                  <div style={{
+                    width: '100%', display: 'flex', justifyContent: 'space-between', boxSizing: 'border-box',
+                    padding: '2px', marginTop: '10px'
+                  }}>
+                    <button type="button" disabled={isSubmitting} onClick={handleSubmit((data) => onSubmit(data, true))} className='button' style={{ backgroundColor: 'green', width: '32%' }}>
+                      {isSubmitting ? "Submitting..." : "Submit"}
+                    </button>
+                    <button type="button" disabled={isSubmitting} onClick={handleSaveWithoutSubmitting} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
+                      {isSubmitting ? "Saving..." : "Save Changes Without Submitting"}
+                    </button>
+                    <button type="button" onClick={handleReset} disabled={isSubmitting} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', width: '32%' }}>
+                      Reset
+                    </button>
                   </div>
-                </div>
-
-                <div style={{
-                  width: '100%', display: 'flex', justifyContent: 'space-between', boxSizing: 'border-box',
-                  padding: '2px', marginTop: '10px'
-                }}>
-                  <button type="submit" disabled={isSubmitting} onClick={() => setLocked(true)} className='button' style={{ backgroundColor: 'green', width: '32%' }}>
-                    {isSubmitting ? (locked ? "Submitting..." : "Submit") : "Submit"}
-                  </button>
-                  <button type="submit" disabled={isSubmitting} onClick={() => setLocked(false)} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
-                    {isSubmitting ? (locked ? "Save Changes Without Submitting" : "Saving...") : "Save Changes Without Submitting"}
-                  </button>
-                  <button type="button" onClick={handleReset} disabled={isSubmitting} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', width: '32%' }}>
-                    Reset
-                  </button>
-                </div>
-              </>
-            }
+                </>
+              ) : null}
           </ form>
         </>
       }

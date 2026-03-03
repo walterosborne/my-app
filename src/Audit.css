@@ -1,7 +1,29 @@
+/* CSS Variables from colors.js */
+:root {
+    --color-primary: #000080;
+    --color-primary-dark: #0052a3;
+    --color-audit-blue: #0066cc;
+    --color-audit-blue-dark: #0052a3;
+    --color-success: #28a745;
+    --color-danger: #f44336;
+    --color-danger-dark: #d32f2f;
+    --color-warning: #ffc107;
+    --color-white: #ffffff;
+    --color-grey-100: #f8f9fa;
+    --color-grey-400: #ced4da;
+    --color-grey-600: #6c757d;
+    --color-grey-700: #495057;
+    --color-section-heading: #2c3e50;
+    --color-text-secondary: #666666;
+    --color-border-grey: #e0e0e0;
+    --gradient-purple-start: #667eea;
+    --gradient-purple-end: #764ba2;
+}
+
 .audit-page {
     width: 100%;
     min-height: 100vh;
-    background-color: #0066cc;
+    background-color: #000080 !important;
     padding: 2rem;
     box-sizing: border-box;
 }
@@ -10,7 +32,7 @@
     width: 95%;
     max-width: 1800px;
     margin: 0 auto;
-    background-color: white;
+    background-color: var(--color-white);
     border-radius: 12px;
     padding: 3rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
@@ -23,14 +45,14 @@
     gap: 1rem;
     margin-bottom: 2rem;
     padding: 1rem;
-    background-color: #f8f9fa;
+    background-color: var(--color-grey-100);
     border-radius: 8px;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--color-border-grey);
 }
 
 .audit-selector label {
     font-weight: 600;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     font-size: 1rem;
     white-space: nowrap;
 }
@@ -38,22 +60,22 @@
 .audit-select-dropdown {
     flex: 1;
     padding: 0.75rem 1rem;
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-grey-400);
     border-radius: 6px;
     font-size: 1rem;
-    background-color: white;
-    color: #2c3e50;
+    background-color: var(--color-white);
+    color: var(--color-section-heading);
     cursor: pointer;
     transition: border-color 0.3s, box-shadow 0.3s;
 }
 
 .audit-select-dropdown:hover {
-    border-color: #0052a3;
+    border-color: var(--color-primary-dark);
 }
 
 .audit-select-dropdown:focus {
     outline: none;
-    border-color: #0066cc;
+    border-color: var(--color-audit-blue);
     box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.1);
 }
 
@@ -61,21 +83,21 @@
 .audit-header {
     text-align: center;
     padding-bottom: 2rem;
-    border-bottom: 3px solid #0066cc;
+    border-bottom: 3px solid var(--color-audit-blue);
     margin-bottom: 2rem;
     position: relative;
 }
 
 .audit-id {
     font-size: 1rem;
-    color: #666;
+    color: var(--color-text-secondary);
     font-weight: 500;
     margin-bottom: 0.5rem;
 }
 
 .audit-title {
     font-size: 2.5rem;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     margin: 0.5rem 0;
     font-weight: 700;
 }
@@ -83,8 +105,8 @@
 .audit-status-badge {
     display: inline-block;
     padding: 0.5rem 1.5rem;
-    background-color: #ffc107;
-    color: #2c3e50;
+    background-color: var(--color-warning);
+    color: var(--color-section-heading);
     border-radius: 20px;
     font-weight: 600;
     font-size: 0.95rem;
@@ -96,10 +118,10 @@
     display: flex;
     justify-content: space-evenly;
     padding: 1.5rem;
-    background-color: #f8f9fa;
+    background-color: var(--color-grey-100);
     border-radius: 8px;
     margin-bottom: 2rem;
-    border: 1px solid #e0e0e0;
+    border: 1px solid var(--color-border-grey);
 }
 
 .action-btn {
@@ -111,13 +133,13 @@
     font-weight: 600;
     cursor: pointer;
     transition: all 0.3s;
-    background-color: #0066cc;
-    color: white;
+    background-color: var(--color-audit-blue);
+    color: var(--color-white);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .action-btn:hover {
-    background-color: #0052a3;
+    background-color: var(--color-audit-blue-dark);
     transform: translateY(-2px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
 }
@@ -127,7 +149,7 @@
 }
 
 .action-btn.export-xlsx {
-    background-color: #28a745;
+    background-color: var(--color-success);
 }
 
 .action-btn.export-xlsx:hover {
@@ -135,20 +157,20 @@
 }
 
 .action-btn.export-pdf {
-    background-color: #dc3545;
+    background-color: var(--color-danger);
 }
 
 .action-btn.export-pdf:hover {
-    background-color: #c82333;
+    background-color: var(--color-danger-dark);
 }
 
 /* Section Styles */
 .audit-section {
     margin-bottom: 2rem;
     padding: 1.5rem;
-    background-color: #f8f9fa;
+    background-color: var(--color-grey-100);
     border-radius: 8px;
-    border-left: 4px solid #0066cc;
+    border-left: 4px solid var(--color-audit-blue);
 }
 
 .audit-section-row {
@@ -163,7 +185,7 @@
 
 .section-title {
     font-size: 1.5rem;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     margin-top: 5px;
     margin-bottom: 1rem;
     font-weight: 600;
@@ -175,7 +197,7 @@
     content: '';
     width: 4px;
     height: 1.5rem;
-    background-color: #0066cc;
+    background-color: var(--color-audit-blue);
     margin-right: 0.75rem;
 }
 
@@ -192,6 +214,12 @@
     gap: 1rem;
 }
 
+.info-grid-two {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
 .info-item {
     display: flex;
     flex-direction: column;
@@ -200,30 +228,31 @@
 
 .info-item label {
     font-weight: 600;
-    color: #555;
+    color: var(--color-grey-600);
     font-size: 0.9rem;
 }
 
 .info-item span {
-    color: #2c3e50;
+    color: var(--color-section-heading);
     font-size: 1rem;
 }
 
 .lead-auditor {
-    color: #0066cc;
+    color: var(--color-audit-blue);
     font-weight: 600;
 }
 
 /* Planning Content */
 .planning-content {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 1.5rem;
+    margin-top: .5rem;
 }
 
 .planning-item h3 {
     font-size: 1.1rem;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     margin-top: 5px;
     margin-bottom: 0.5rem;
     font-weight: 600;
@@ -232,7 +261,7 @@
 .planning-item p {
     margin: 0;
     line-height: 1.6;
-    color: #444;
+    color: var(--color-grey-700);
 }
 
 .planning-item ul {
@@ -242,23 +271,23 @@
 }
 
 .planning-item li {
-    color: #444;
+    color: var(--color-grey-700);
     margin-bottom: 0.5rem;
 }
 
 /* Summary Section */
 .summary-section {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--color-primary-dark);
     border-left: none;
-    color: white;
+    color: var(--color-white);
 }
 
 .summary-section .section-title {
-    color: white;
+    color: var(--color-white);
 }
 
 .summary-section .section-title::before {
-    background-color: white;
+    background-color: var(--color-white);
 }
 
 .summary-grid {
@@ -278,26 +307,26 @@
 .summary-number {
     font-size: 2.5rem;
     font-weight: 700;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     margin-bottom: 0.5rem;
 }
 
 .summary-label {
     font-size: 0.9rem;
-    color: #666;
+    color: var(--color-text-secondary);
     font-weight: 600;
 }
 
 .summary-card.compliant .summary-number {
-    color: #28a745;
+    color: var(--color-success);
 }
 
 .summary-card.partial .summary-number {
-    color: #ffc107;
+    color: var(--color-warning);
 }
 
 .summary-card.major-nc .summary-number {
-    color: #dc3545;
+    color: var(--color-danger);
 }
 
 .summary-card.observation .summary-number {
@@ -308,15 +337,15 @@
 .introduction-text {
     font-size: 1.05rem;
     line-height: 1.8;
-    color: #444;
+    color: var(--color-grey-700);
     margin: 0;
     text-align: justify;
 }
 
 /* Process Element Cards */
 .pe-card {
-    background-color: white;
-    border: 2px solid #e0e0e0;
+    background-color: var(--color-white);
+    border: 2px solid var(--color-border-grey);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
@@ -335,8 +364,8 @@
 }
 
 .pe-id {
-    background-color: #0066cc;
-    color: white;
+    background-color: var(--color-audit-blue);
+    color: var(--color-white);
     padding: 0.25rem 0.75rem;
     border-radius: 4px;
     font-weight: 600;
@@ -345,7 +374,7 @@
 
 .pe-standard {
     background-color: #f0f0f0;
-    color: #555;
+    color: var(--color-grey-600);
     padding: 0.25rem 0.75rem;
     border-radius: 4px;
     font-weight: 500;
@@ -354,7 +383,7 @@
 
 .pe-question {
     font-size: 1.2rem;
-    color: #2c3e50;
+    color: var(--color-section-heading);
     margin-bottom: 1rem;
     font-weight: 600;
 }
@@ -366,21 +395,21 @@
 }
 
 .pe-item strong {
-    color: #0066cc;
+    color: var(--color-audit-blue);
     display: block;
     margin-bottom: 0.5rem;
 }
 
 .pe-item p {
     margin: 0;
-    color: #444;
+    color: var(--color-grey-700);
     line-height: 1.6;
 }
 
 /* Finding Cards */
 .finding-card {
-    background-color: white;
-    border-left: 6px solid #6c757d;
+    background-color: var(--color-white);
+    border-left: 6px solid var(--color-grey-600);
     border-radius: 8px;
     padding: 1.5rem;
     margin-bottom: 1.5rem;
@@ -388,7 +417,7 @@
 }
 
 .finding-card.nonconformance {
-    border-left-color: #dc3545;
+    border-left-color: var(--color-danger);
     background-color: #fff5f5;
 }
 
@@ -398,7 +427,7 @@
 }
 
 .finding-card.opportunity-for-improvement {
-    border-left-color: #28a745;
+    border-left-color: var(--color-success);
     background-color: #f0fff4;
 }
 
@@ -408,7 +437,7 @@
     align-items: center;
     margin-bottom: 1rem;
     padding-bottom: 0.75rem;
-    border-bottom: 2px solid #e0e0e0;
+    border-bottom: 2px solid var(--color-border-grey);
 }
 
 .finding-id-type {
@@ -418,8 +447,8 @@
 }
 
 .finding-id {
-    background-color: #2c3e50;
-    color: white;
+    background-color: var(--color-section-heading);
+    color: var(--color-white);
     padding: 0.35rem 0.85rem;
     border-radius: 4px;
     font-weight: 700;
@@ -431,21 +460,21 @@
     border-radius: 4px;
     font-weight: 600;
     font-size: 0.9rem;
-    background-color: #6c757d;
-    color: white;
+    background-color: var(--color-grey-600);
+    color: var(--color-white);
 }
 
 .finding-type.major {
-    background-color: #dc3545;
+    background-color: var(--color-danger);
 }
 
 .finding-type.minor {
-    background-color: #ffc107;
-    color: #2c3e50;
+    background-color: var(--color-warning);
+    color: var(--color-section-heading);
 }
 
 .finding-type.low {
-    background-color: #28a745;
+    background-color: var(--color-success);
 }
 
 .finding-status {
@@ -453,23 +482,23 @@
     border-radius: 4px;
     font-weight: 600;
     font-size: 0.85rem;
-    background-color: #ffc107;
-    color: #2c3e50;
+    background-color: var(--color-warning);
+    color: var(--color-section-heading);
 }
 
 .finding-status.open {
-    background-color: #dc3545;
-    color: white;
+    background-color: var(--color-danger);
+    color: var(--color-white);
 }
 
 .finding-status.closed {
-    background-color: #28a745;
-    color: white;
+    background-color: var(--color-success);
+    color: var(--color-white);
 }
 
 .finding-status.suggested {
     background-color: #17a2b8;
-    color: white;
+    color: var(--color-white);
 }
 
 .finding-item {
@@ -477,7 +506,7 @@
 }
 
 .finding-item strong {
-    color: #0066cc;
+    color: var(--color-audit-blue);
     display: block;
     margin-bottom: 0.5rem;
     font-size: 0.95rem;
@@ -485,7 +514,7 @@
 
 .finding-item p {
     margin: 0;
-    color: #444;
+    color: var(--color-grey-700);
     line-height: 1.7;
 }
 
@@ -495,7 +524,7 @@
     gap: 1rem;
     margin-top: 1.5rem;
     padding-top: 1rem;
-    border-top: 2px solid #e0e0e0;
+    border-top: 2px solid var(--color-border-grey);
 }
 
 .finding-footer-item {
@@ -503,7 +532,7 @@
 }
 
 .finding-footer-item strong {
-    color: #666;
+    color: var(--color-text-secondary);
     font-weight: 600;
 }
 
@@ -514,6 +543,10 @@
     }
 
     .info-grid-three {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .info-grid-two {
         grid-template-columns: repeat(2, 1fr);
     }
 }
@@ -535,7 +568,178 @@
         grid-template-columns: 1fr;
     }
 
+    .info-grid-two {
+        grid-template-columns: 1fr;
+    }
+
     .finding-footer {
         grid-template-columns: 1fr;
     }
+}
+
+/* Risk Assessment Section */
+.risk-factors {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.risk-factor-group {
+    padding: 1.5rem;
+    background-color: var(--color-grey-100);
+    border-radius: 8px;
+    border: 1px solid var(--color-border-grey);
+}
+
+.risk-factor-group h3 {
+    margin: 0 0 1rem 0;
+    color: var(--color-section-heading);
+    font-size: 1.2rem;
+    font-weight: 600;
+    border-bottom: 2px solid var(--color-audit-blue);
+    padding-bottom: 0.5rem;
+}
+
+.risk-subcategories {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.risk-subcategory {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background-color: var(--color-white);
+    border-radius: 6px;
+    border: 1px solid var(--color-grey-400);
+}
+
+.risk-subcategory-name {
+    font-size: 0.95rem;
+    color: var(--color-white);
+    font-weight: 700;
+    background-color: var(--color-section-heading);
+    padding: 0.35rem 0.85rem;
+    border-radius: 4px;
+    margin-right: 1rem;
+    display: inline-block;
+}
+
+.risk-rating {
+    padding: 0.4rem 1rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.risk-rating-1 {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.risk-rating-2 {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.risk-rating-3 {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.risk-rating-4 {
+    background-color: #dc3545;
+    color: white;
+}
+
+/* Finding Type Specific Styles */
+.finding-card.nonconformity {
+    border-left: 4px solid var(--color-danger);
+}
+
+.finding-card.conformity {
+    border-left: 4px solid var(--color-success);
+}
+
+.finding-card.ofi {
+    border-left: 4px solid #17a2b8;
+}
+
+.finding-card.observation {
+    border-left: 4px solid var(--color-warning);
+}
+
+/* Severity badge colors */
+.finding-type.low {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.finding-type.medium {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.finding-type.high {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.finding-type.critical {
+    background-color: var(--color-danger);
+    color: white;
+}
+
+.finding-type.pending {
+    background-color: var(--color-warning);
+    color: var(--color-section-heading);
+}
+
+.finding-type.approved {
+    background-color: var(--color-success);
+    color: var(--color-white);
+}
+
+.approval-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.approval-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    background-color: var(--color-white);
+    border: 1px solid var(--color-border-grey);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.approval-name {
+    font-weight: 600;
+    color: var(--color-section-heading);
+}
+
+@media (max-width: 1200px) {
+    .approval-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 700px) {
+    .approval-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* No Response Provided styling */
+.no-response {
+    color: #999;
+    font-style: italic;
 }

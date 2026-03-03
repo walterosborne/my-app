@@ -22,19 +22,34 @@ const Navbar = () => {
             { label: 'Nonconformities', path: '/entry?type=nonconformaties' }
         ],
         'Audit Reports': [
-            { label: 'Individual Audit Reports', path: '/audit' }
+            { label: 'Individual Audit Reports', path: '/audit' },
+            { label: 'All Reports', path: '/reports' },
+            { label: '30/60/90', path: '/reports-30-60-90' }
         ],
-        'FOE': [],
-        'Tools': [],
-        'Help': []
+        'FOE': [
+            { label: 'Metrics', path: 'https://www.yahoo.com', external: true },
+            { label: 'Audits', path: '/foe?type=audits' },
+            { label: 'Download Audit Info', path: '/foe?type=download' },
+            { label: 'Admin Menu', path: '/foe?type=admin' }
+        ],
+        'Tools': [
+            { label: 'Admin Menu', path: '/admin' },
+            { label: 'Audit Statuses', path: '/audit-statuses' },
+            { label: 'Calendar', path: '/calendar' },
+            { label: 'Metrics', path: '/metrics' }
+        ],
+        'Help': [
+            { label: 'Info/Support', path: '/info-support' },
+            { label: 'Request Auditor Access', path: '/request-auditor-access' }
+        ]
     };
 
     return (
         <nav className="navbar">
-            <div className="navbar-left">
+            <a className="navbar-left" href="/">
                 <img src={logo} alt="NG Logo" className="navbar-logo" />
                 <span className="navbar-title">NGAT</span>
-            </div>
+            </a>
 
             <div className="navbar-right">
                 <div className="nav-item-wrapper" onMouseEnter={() => handleMouseEnter('auditing')} onMouseLeave={handleMouseLeave}>
@@ -45,7 +60,13 @@ const Navbar = () => {
                         {openDropdown === 'auditing' && dropdownOptions['Auditing Steps'].length > 0 && (
                             <div className="dropdown-menu">
                                 {dropdownOptions['Auditing Steps'].map((item, index) => (
-                                    <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    item.external ? (
+                                        <a key={index} href={item.path} className="dropdown-item" target="_blank" rel="noreferrer">
+                                            {item.label}
+                                        </a>
+                                    ) : (
+                                        <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    )
                                 ))}
                             </div>
                         )}
@@ -60,7 +81,13 @@ const Navbar = () => {
                         {openDropdown === 'reports' && dropdownOptions['Audit Reports'].length > 0 && (
                             <div className="dropdown-menu">
                                 {dropdownOptions['Audit Reports'].map((item, index) => (
-                                    <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    item.external ? (
+                                        <a key={index} href={item.path} className="dropdown-item" target="_blank" rel="noreferrer">
+                                            {item.label}
+                                        </a>
+                                    ) : (
+                                        <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    )
                                 ))}
                             </div>
                         )}
@@ -75,7 +102,13 @@ const Navbar = () => {
                         {openDropdown === 'foe' && dropdownOptions['FOE'].length > 0 && (
                             <div className="dropdown-menu">
                                 {dropdownOptions['FOE'].map((item, index) => (
-                                    <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    item.external ? (
+                                        <a key={index} href={item.path} className="dropdown-item" target="_blank" rel="noreferrer">
+                                            {item.label}
+                                        </a>
+                                    ) : (
+                                        <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    )
                                 ))}
                             </div>
                         )}
@@ -90,7 +123,13 @@ const Navbar = () => {
                         {openDropdown === 'tools' && dropdownOptions['Tools'].length > 0 && (
                             <div className="dropdown-menu">
                                 {dropdownOptions['Tools'].map((item, index) => (
-                                    <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    item.external ? (
+                                        <a key={index} href={item.path} className="dropdown-item" target="_blank" rel="noreferrer">
+                                            {item.label}
+                                        </a>
+                                    ) : (
+                                        <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    )
                                 ))}
                             </div>
                         )}
@@ -105,14 +144,19 @@ const Navbar = () => {
                         {openDropdown === 'help' && dropdownOptions['Help'].length > 0 && (
                             <div className="dropdown-menu">
                                 {dropdownOptions['Help'].map((item, index) => (
-                                    <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    item.external ? (
+                                        <a key={index} href={item.path} className="dropdown-item" target="_blank" rel="noreferrer">
+                                            {item.label}
+                                        </a>
+                                    ) : (
+                                        <Link key={index} to={item.path} className="dropdown-item">{item.label}</Link>
+                                    )
                                 ))}
                             </div>
                         )}
                     </div>
                 </div>
 
-                <button className="icon-button" title="Refresh">⟳</button>
                 <Link to="/" className="icon-button" title="Home">⌂</Link>
             </div>
         </nav>

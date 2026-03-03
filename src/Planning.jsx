@@ -1,35 +1,69 @@
 import { React, useEffect, useMemo, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
-import { Box, Typography } from '@mui/material';
+import { Box } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
+import { toast } from 'react-toastify';
 import './App.css'
 import { grey } from '@mui/material/colors';
 import { customStyles } from './Utilities.jsx';
-import { programs as programsList } from './assets/data/programs';
-import { divisions as divisionsList } from './assets/data/divisions';
-import { sectors as sectorsList } from './assets/data/sectors';
-import { sites as sitesList } from './assets/data/sites';
-import { businessUnits as businessUnitsList } from './assets/data/businessUnits';
-import { operatingUnits as operatingUnitsList } from './assets/data/operatingUnits';
-import { auditors as auditorsList } from './assets/data/auditors';
-import { auditTypes as auditTypesList } from './assets/data/auditTypes';
-import { statuses as statusesList } from './assets/data/statuses';
-import { functions as functionsList } from './assets/data/functions';
-import { intExt as intExtList } from './assets/data/intExt';
-import { standards as standardsList } from './assets/data/standards';
-import { safetyEquipmentList } from './assets/data/safetyEquipment';
-import { trainingRequirementsList } from './assets/data/trainingRequirements';
-import { rosterList } from './assets/data/roster';
+import {
+  getPrograms,
+  getDivisions,
+  getAuditors,
+  getSafetyEquipment,
+  getTrainingRequirements,
+  getRoster,
+  getCurrentUser
+} from './assets/data/apiData';
 
 
-function Planning({ selectedAuditId, allAudits = [] }) {
+function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   console.log("Planning component loaded with selectedAuditId:", selectedAuditId);
 
-  const userInfo = { name: "Walter Osborne" };
+  const [userInfo, setUserInfo] = useState({ name: 'User', myId: null });
 
   const [schedule, setSchedule] = useState(null);
+  const [auditLocked, setAuditLocked] = useState(false);
+
+  // State for lookup data from API
+  const [programsList, setProgramsList] = useState([]);
+  const [divisionsList, setDivisionsList] = useState([]);
+  const [auditorsList, setAuditorsList] = useState([]);
+  const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
+  const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
+  const [rosterList, setRosterList] = useState([]);
+
+  // Load all lookup data from API on mount
+  useEffect(() => {
+    async function loadLookupData() {
+      try {
+        const userData = await getCurrentUser();
+        if (userData?.name) {
+          setUserInfo(userData);
+        }
+        const [programs, divisions, auditors, safetyEquipment, trainingRequirements, roster] = await Promise.all([
+          getPrograms(),
+          getDivisions(),
+          getAuditors(),
+          getSafetyEquipment(),
+          getTrainingRequirements(),
+          getRoster()
+        ]);
+
+        setProgramsList(programs);
+        setDivisionsList(divisions);
+        setAuditorsList(auditors);
+        setSafetyEquipmentList(safetyEquipment);
+        setTrainingRequirementsList(trainingRequirements);
+        setRosterList(roster);
+      } catch (error) {
+        console.error('Error loading lookup data:', error);
+      }
+    }
+    loadLookupData();
+  }, []);
 
   // Helper function to get program names from programIds
   const getProgramNames = (programIds) => {
@@ -45,85 +79,27 @@ function Planning({ selectedAuditId, allAudits = [] }) {
     return division ? division.divisionName : divisionId;
   };
 
-  // Helper function to get sector name from sectorId
-  const getSectorName = (sectorId) => {
-    const sector = sectorsList.find(s => s.sectorId === sectorId);
-    return sector ? sector.sectorName : sectorId;
-  };
-
-  // Helper function to get site name from siteId
-  const getSiteName = (siteId) => {
-    const site = sitesList.find(s => s.siteId === siteId);
-    return site ? site.siteName : siteId;
-  };
-
-  // Helper function to get business unit names from businessUnitIds
-  const getBusinessUnitNames = (businessUnitIds) => {
-    return businessUnitIds.map(businessUnitId => {
-      const businessUnit = businessUnitsList.find(bu => bu.businessUnitId === businessUnitId);
-      return businessUnit ? businessUnit.businessUnitName : businessUnitId;
-    }).join(', ');
-  };
-
-  // Helper function to get operating unit names from operatingUnitIds
-  const getOperatingUnitNames = (operatingUnitIds) => {
-    return operatingUnitIds.map(operatingUnitId => {
-      const operatingUnit = operatingUnitsList.find(ou => ou.operatingUnitId === operatingUnitId);
-      return operatingUnit ? operatingUnit.operatingUnitName : operatingUnitId;
-    }).join(', ');
-  };
-
-  // Helper function to get lead auditor name from leadAuditorId
   const getLeadAuditorName = (leadAuditorId) => {
     const auditor = auditorsList.find(a => a.auditorId === leadAuditorId);
     return auditor ? auditor.auditorName : leadAuditorId;
   };
 
-  // Helper function to get additional auditor names from additionalAuditorIds
-  const getAdditionalAuditorNames = (additionalAuditorIds) => {
-    return additionalAuditorIds.map(auditorId => {
-      const auditor = auditorsList.find(a => a.auditorId === auditorId);
-      return auditor ? auditor.auditorName : auditorId;
-    }).join(', ');
-  };
-
-  // Helper function to get audit type name from auditTypeId
-  const getAuditTypeName = (auditTypeId) => {
-    const auditType = auditTypesList.find(at => at.auditTypeId === auditTypeId);
-    return auditType ? auditType.auditTypeName : auditTypeId;
-  };
-
-  // Helper function to get status name from statusId
-  const getStatusName = (statusId) => {
-    const status = statusesList.find(s => s.statusId === statusId);
-    return status ? status.statusName : statusId;
-  };
-
-  // Helper function to get function name from functionId
-  const getFunctionName = (functionId) => {
-    const func = functionsList.find(f => f.functionId === functionId);
-    return func ? func.functionName : functionId;
-  };
-
-  // Helper function to get int/ext name from intExtId
-  const getIntExtName = (intExtId) => {
-    const intExtItem = intExtList.find(ie => ie.intExtId === intExtId);
-    return intExtItem ? intExtItem.intExtName : intExtId;
-  };
-
-  // Helper function to get standard names from standardIds
-  const getStandardNames = (standardIds) => {
-    return standardIds.map(standardId => {
-      const standard = standardsList.find(s => s.standardId === standardId);
-      return standard ? standard.standardName : standardId;
-    }).join(', ');
-  };
 
   const [selectedAudit, setSelectedAudit] = useState(null);
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
   });
+  const isSameSelectionModel = (nextModel, currentModel) => {
+    if (!nextModel || !currentModel) return false;
+    if (nextModel.type !== currentModel.type) return false;
+    if (!nextModel.ids || !currentModel.ids) return false;
+    if (nextModel.ids.size !== currentModel.ids.size) return false;
+    for (const id of nextModel.ids) {
+      if (!currentModel.ids.has(id)) return false;
+    }
+    return true;
+  };
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
@@ -131,16 +107,16 @@ function Planning({ selectedAuditId, allAudits = [] }) {
       const audit = allAudits.find(a => a.scheduleId === selectedAuditId);
       if (audit) {
         setSelectedAudit(audit);
-        setRowSelectionModel({
-          type: 'include',
-          ids: new Set([selectedAuditId])
+        setRowSelectionModel((prev) => {
+          const nextModel = { type: 'include', ids: new Set([selectedAuditId]) };
+          return isSameSelectionModel(nextModel, prev) ? prev : nextModel;
         });
         // Convert to schedule format that matches DataGrid rows
         const scheduleFormat = {
           id: audit.scheduleId,
           scheduleId: audit.scheduleId,
           title: audit.title,
-          leadAuditor: audit.leadAuditor,
+          leadAuditor: getLeadAuditorName(audit.leadAuditorId),
           division: getDivisionName(audit.divisionId),
           programs: getProgramNames(audit.programIds)
         };
@@ -155,7 +131,8 @@ function Planning({ selectedAuditId, allAudits = [] }) {
     control,
     reset,
     setValue,
-    watch
+    watch,
+    clearErrors
   } = useForm(
     {
       defaultValues: {}
@@ -172,14 +149,8 @@ function Planning({ selectedAuditId, allAudits = [] }) {
       // Set scope if available
       if (selectedAudit.scope) {
         setValue('scope', selectedAudit.scope);
-      }
-      // Set safety considerations if available
-      if (selectedAudit.safetyConsiderations) {
-        setValue('safetyConsiderations', selectedAudit.safetyConsiderations);
-      }
-      // Set special equipment if available
-      if (selectedAudit.specialEquipment) {
-        setValue('specialEquipment', selectedAudit.specialEquipment);
+      } else {
+        setValue('scope', '');
       }
       // Set safety if available
       if (selectedAudit.safety !== undefined) {
@@ -204,16 +175,32 @@ function Planning({ selectedAuditId, allAudits = [] }) {
       // Set special considerations if available
       if (selectedAudit.specialConsiderations) {
         setValue('SpecCon', selectedAudit.specialConsiderations);
+      } else {
+        setValue('SpecCon', '');
+      }
+      // Clear any validation errors when loading saved data
+      clearErrors();
+
+      // Check locked status
+      if (selectedAudit?.scheduleId) {
+        fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`)
+          .then(res => res.json())
+          .then(auditData => setAuditLocked(auditData.locked === 1))
+          .catch(err => console.error('Error checking locked status:', err));
       }
     } else {
       // Reset form when no schedule selected
       reset();
+      setAuditLocked(false);
     }
-  }, [schedule, selectedAudit, setValue, reset]);
+  }, [schedule, selectedAudit, setValue, reset, clearErrors]);
 
   const mode = watch('mode');
   const safety = watch('safety');
-  const [tableSize, setTableSize] = useState(10)
+  const [paginationModel, setPaginationModel] = useState({
+    page: 0,
+    pageSize: 10
+  });
 
   const columns = useMemo(() => [
     { field: 'scheduleId', headerName: 'Schedule ID', width: 150 },
@@ -223,62 +210,192 @@ function Planning({ selectedAuditId, allAudits = [] }) {
     { field: 'programs', headerName: 'Program(s)', width: 150 },
   ], []);
 
-  const schedules = allAudits.map(audit => ({
+  const sortedAudits = useMemo(() => {
+    return [...allAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
+  }, [allAudits]);
+
+  const schedules = sortedAudits.map(audit => ({
     id: audit.scheduleId,
     scheduleId: audit.scheduleId,
     title: audit.title,
-    leadAuditor: audit.leadAuditor,
+    leadAuditor: getLeadAuditorName(audit.leadAuditorId),
     division: getDivisionName(audit.divisionId),
     programs: getProgramNames(audit.programIds)
   }));
 
-  const famaOptions = rosterList.map(r => ({
-    value: r.rosterId,
-    label: r.rosterName
-  }));
+  const famaOptions = useMemo(() => {
+    return [...rosterList]
+      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
+      .map(r => ({
+        value: r.myId,
+        label: r.rosterName
+      }));
+  }, [rosterList]);
 
-  const safetyEquipmentOptions = safetyEquipmentList.map(se => ({
-    value: se.safetyEquipmentId,
-    label: se.safetyEquipmentName
-  }));
+  const safetyEquipmentOptions = useMemo(() => {
+    return [...safetyEquipmentList]
+      .filter((equipment) => (equipment.active ?? 1) === 1)
+      .sort((a, b) => (a.safetyEquipmentName || '').localeCompare(b.safetyEquipmentName || ''))
+      .map(se => ({
+        value: se.safetyEquipmentId,
+        label: se.safetyEquipmentName
+      }));
+  }, [safetyEquipmentList]);
 
-  const trainingRequirementsOptions = trainingRequirementsList.map(tr => ({
-    value: tr.trainingRequirementId,
-    label: tr.trainingRequirementName
-  }));
+  const trainingRequirementsOptions = useMemo(() => {
+    return [...trainingRequirementsList]
+      .filter((requirement) => (requirement.active ?? 1) === 1)
+      .sort((a, b) => (a.trainingRequirementName || '').localeCompare(b.trainingRequirementName || ''))
+      .map(tr => ({
+        value: tr.trainingRequirementId,
+        label: tr.trainingRequirementName
+      }));
+  }, [trainingRequirementsList]);
 
+
+  async function unlockAudit() {
+    try {
+      if (!selectedAudit?.scheduleId) {
+        throw new Error('No audit selected');
+      }
+
+      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scheduleId: selectedAudit.scheduleId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Audit unlocked successfully!');
+        setAuditLocked(false);
+      } else {
+        throw new Error(result.error || 'Failed to unlock audit');
+      }
+    } catch (error) {
+      toast.error('Failed to unlock audit: ' + error.message);
+    }
+  }
 
   async function onSubmit(data) {
     try {
-      //Waits 1000 ms to simulate async code
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      console.log(data)
+      if (!selectedAudit?.scheduleId) {
+        toast.error('Please select an audit from the table');
+        return;
+      }
+
+      // Prepare planning data
+      const computeStage = (fallbackStage) => {
+        const currentStage = selectedAudit?.stage ?? 0;
+        return Math.max(currentStage, fallbackStage);
+      };
+
+      const planningData = {
+        scheduleId: selectedAudit.scheduleId,
+        famaIds: data.fama || [],
+        safety: parseInt(data.safety),
+        clearance: parseInt(data.clearance),
+        safetyEquipmentIds: parseInt(data.safety) === 0 ? (data.safetyEquipmentIds || []) : [],
+        trainingRequirementIds: data.trainingRequirementIds || [],
+        scope: data.scope || '',
+        specialConsiderations: data.SpecCon || '',
+        stage: computeStage(2),
+        targetStage: 2
+      };
+
+      console.log("Planning data being sent:", planningData);
+
+      // Update audit in database
+      const response = await fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(planningData)
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Submitted!');
+
+        // Reload audit data if reloadAudits function is available
+        if (reloadAudits) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await reloadAudits();
+        }
+      } else {
+        throw new Error(result.error || 'Failed to save planning data');
+      }
     }
     catch (error) {
-      //The root error is a form-level error not tied to a specific field
+      toast.error(`Error: ${error.message}`);
       setError("root",
         { message: error.message }
       )
     }
-
   }
 
   function handleReset() {
-    reset();
+    if (selectedAudit) {
+      // Restore the saved data by re-triggering setSchedule
+      setSchedule({
+        id: selectedAudit.scheduleId,
+        scheduleId: selectedAudit.scheduleId,
+        title: selectedAudit.title,
+        leadAuditor: selectedAudit.leadAuditor,
+        division: getDivisionName(selectedAudit.divisionId),
+        programs: getProgramNames(selectedAudit.programIds)
+      });
+      // The useEffect will repopulate the form from selectedAudit
+    }
+  }
+
+  function onValidationError(errors) {
+    const errorArray = Object.values(errors)
+      .map(error => error.message)
+      .filter(msg => msg);
+
+    const errorMessage = errorArray.length > 3
+      ? 'Please complete all required fields'
+      : errorArray.join(', ') || 'Please fill in all required fields';
+
+    toast.error(errorMessage, {
+      progressStyle: { backgroundColor: '#f44336' },
+      style: { borderLeft: '4px solid #f44336' }
+    });
   }
 
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>Planning Tool</h1>
-        <h2 style={{ marginTop: '3px' }}>Welcome {userInfo.name}. <a href="mailto:walter.osborne@ngc.com" target='_blank'>Not you?</a></h2>
+        <h2 style={{ marginTop: '3px' }}>
+          Welcome {userInfo.name}.{' '}
+          <a
+            href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
+              userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
+            )}&body=${encodeURIComponent(
+              userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Not you?
+          </a>
+        </h2>
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
       {errors.root ? <p className='error'>{errors.root.message}</p> :
         <>
           {/* Form that has certain built in properties like submit and reset */}
-          <form onSubmit={handleSubmit(onSubmit)} style={{ width: '100%' }}>
+          <form onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
             <Box sx={{ height: 400, width: '100%', marginTop: '10px' }}>
               <DataGrid
                 rows={schedules}
@@ -288,14 +405,16 @@ function Planning({ selectedAuditId, allAudits = [] }) {
                 getRowId={(row) => row.scheduleId}
                 rowSelectionModel={rowSelectionModel}
                 pageSizeOptions={[5, 10, 20]}
-                paginationModel={{ pageSize: tableSize, page: 0 }}
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
                 getRowSpacing={(params) => ({
                   top: params.isFirstVisible ? 0 : 5,
                   bottom: params.isLastVisible ? 0 : 5,
                 })}
                 onRowSelectionModelChange={(selectionModel) => {
+                  if (!selectionModel?.ids) return;
+                  if (isSameSelectionModel(selectionModel, rowSelectionModel)) return;
                   setRowSelectionModel(selectionModel);
-                  // selectionModel.ids is a Set of selected row IDs
                   if (selectionModel.ids.size > 0) {
                     const scheduleID = Array.from(selectionModel.ids)[0];
                     const selectedSchedule = schedules.find(s => s.scheduleId === scheduleID);
@@ -318,7 +437,33 @@ function Planning({ selectedAuditId, allAudits = [] }) {
               />
 
             </Box>
-            {schedule &&
+            {schedule && auditLocked ? (
+              <>
+                <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                  Audit {schedule.scheduleId} has been submitted for final approval and cannot be edited.
+                </h2>
+                <button
+                  type="button"
+                  onClick={unlockAudit}
+                  style={{
+                    backgroundColor: '#f44336',
+                    color: 'white',
+                    border: 'none',
+                    padding: '12px 24px',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    marginBottom: '10px'
+                  }}
+                >
+                  Undo Submission
+                </button>
+                <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                  Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
+                </p>
+              </>
+            ) : schedule ? (
               <>
                 <h2 style={{ marginTop: '5px' }}>Currently Planning Schedule: {schedule.scheduleId}</h2>
                 <div className='section'>
@@ -414,7 +559,7 @@ function Planning({ selectedAuditId, allAudits = [] }) {
                         <Controller
                           name="safetyEquipmentIds"
                           control={control}
-                          rules={{ required: "Required Equipment is required if Safety Equipment Required is Yes" }}
+                          rules={{ required: "Required Equipment is required" }}
                           render={({ field }) => (
                             <Select
                               isClearable
@@ -491,7 +636,7 @@ function Planning({ selectedAuditId, allAudits = [] }) {
                   </button>
                 </div>
               </>
-            }
+            ) : null}
 
 
           </ form>
