@@ -135,9 +135,7 @@ const Calendar = () => {
                     : [];
             const additionalIds = Array.isArray(audit.additionalAuditorIds)
                 ? audit.additionalAuditorIds
-                : Array.isArray(audit.additionalAuditors)
-                    ? audit.additionalAuditors
-                    : [];
+                : [];
             map[key].push({
                 ...audit,
                 leadName: auditorMap[audit.leadAuditorId] || 'No lead assigned',
@@ -261,7 +259,7 @@ const Calendar = () => {
     return (
         <div className="entry-page">
             <div className="entry-container">
-                <div className="tool-page-header">
+                <div className="tool-page-header calendar-tool-header">
                     <p className="tool-page-subtitle">Tools · Calendar</p>
                     <h2 className="tool-page-title">Calendar</h2>
                 </div>

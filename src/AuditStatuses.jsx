@@ -73,9 +73,11 @@ const AuditStatuses = () => {
   };
 
   const getStageLabel = (audit) => {
+    const stage = Number(audit?.stage);
+    if (stage === -1) return 'Historical';
     if (audit?.approvedAt) return 'Approved';
     if (Number(audit?.locked) === 1) return 'Pending Approval';
-    switch (Number(audit?.stage)) {
+    switch (stage) {
       case 1:
         return 'Planning';
       case 2:
@@ -126,9 +128,9 @@ const AuditStatuses = () => {
       }
       const isApprovalStage = Number(audit.locked) === 1 || completed;
       if (!isApprovalStage) return false;
-      const approverIds = Array.isArray(audit.additionalAuditors)
-        ? audit.additionalAuditors
-        : (Array.isArray(audit.additionalauditors) ? audit.additionalauditors : []);
+      const approverIds = Array.isArray(audit.additionalApprovers)
+        ? audit.additionalApprovers
+        : [];
       const hasApproverRole = myId != null && (audit.approver === myId || approverIds.includes(myId));
       const isLeadAuditor = auditorId != null && Number(audit.leadAuditorId) === auditorId;
       return hasApproverRole || isLeadAuditor;

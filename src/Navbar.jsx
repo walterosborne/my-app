@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Navbar.css';
-import logo from './assets/placeholder.jpg';
+import logo from './assets/NG.png';
 
 const Navbar = () => {
     const [openDropdown, setOpenDropdown] = useState(null);
@@ -23,7 +23,7 @@ const Navbar = () => {
         ],
         'Audit Reports': [
             { label: 'Individual Audit Reports', path: '/audit' },
-            { label: 'All Reports', path: '/reports' },
+            { label: 'Multi-Audit Report', path: '/reports' },
             { label: '30/60/90', path: '/reports-30-60-90' }
         ],
         'FOE': [

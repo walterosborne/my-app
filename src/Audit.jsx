@@ -363,9 +363,9 @@ const Audit = () => {
         });
 
         const approverIds = auditData?.approver ? [auditData.approver] : [];
-        const additionalApproverIds = Array.isArray(auditData?.additionalAuditors)
-            ? auditData.additionalAuditors.filter(Boolean)
-            : (Array.isArray(auditData?.additionalauditors) ? auditData.additionalauditors.filter(Boolean) : []);
+        const additionalApproverIds = Array.isArray(auditData?.additionalApprovers)
+            ? auditData.additionalApprovers.filter(Boolean)
+            : [];
         const leadMyId = getLeadAuditorMyId();
         const requiredIds = [...new Set([
             ...approverIds,
@@ -454,15 +454,16 @@ const Audit = () => {
     const showNcDetailFallbacks = Boolean(isLocked || auditData?.submittedAt || stageValue >= 4);
     const auditNotFound = Boolean(id) && !auditData;
     const isRosterNonAuditor = currentUser?.myId && !currentUser?.auditorId;
-    const additionalApproverIds = Array.isArray(auditData?.additionalAuditors)
-        ? auditData.additionalAuditors
-        : (Array.isArray(auditData?.additionalauditors) ? auditData.additionalauditors : []);
+    const additionalApproverIds = Array.isArray(auditData?.additionalApprovers)
+        ? auditData.additionalApprovers
+        : [];
     const isLeadAuditor = currentUser?.auditorId && auditData?.leadAuditorId === currentUser.auditorId;
     const isApprover = currentUser?.myId && auditData?.approver === currentUser.myId;
     const isAdditionalApprover = currentUser?.myId && additionalApproverIds.includes(currentUser.myId);
     const canApprove = isLeadAuditor || isApprover || isAdditionalApprover;
 
     const getStageLabel = (stage, locked, approved) => {
+        if (stage === -1) return 'Historical';
         if (approved) return 'Approved';
         if (locked) return 'Pending Approval';
         switch (stage) {
@@ -897,9 +898,7 @@ const Audit = () => {
 
         const additionalAuditorIds = Array.isArray(auditData.additionalAuditorIds)
             ? auditData.additionalAuditorIds
-            : Array.isArray(auditData.additionalauditors)
-                ? auditData.additionalauditors
-                : [];
+            : [];
 
         const additionalAuditorNames = additionalAuditorIds
             .map((id) => {
@@ -1326,7 +1325,9 @@ const Audit = () => {
     };
 
     const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
-    const stageBadgeText = stageLabel === 'Approved' ? stageLabel : `Next step: ${stageLabel}`;
+    const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical')
+        ? stageLabel
+        : `Next step: ${stageLabel}`;
 
     return (
         <div className="audit-page">
@@ -1352,7 +1353,14 @@ const Audit = () => {
                 <div className="audit-header">
                     <div className="audit-id">Schedule ID: {auditData.scheduleId}</div>
                     <h1 className="audit-title">{auditData.title}</h1>
-                    <div style={(stageLabel === 'Approved' ? { backgroundColor: 'green', color: 'white' } : {})} className="audit-status-badge">
+                    <div
+                        style={(stageLabel === 'Approved'
+                            ? { backgroundColor: 'green', color: 'white' }
+                            : stageLabel === 'Historical'
+                                ? { backgroundColor: '#9ca3af', color: '#ffffff' }
+                                : {})}
+                        className="audit-status-badge"
+                    >
                         {stageBadgeText}
                     </div>
                 </div>

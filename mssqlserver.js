@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 const sqlConfig = {
-    server: `tcp:${process.env.auditserver || ''}`,
+    server: process.env.auditserver || '',
     database: process.env.auditdb || '',
     user: process.env.user || '',
     password: process.env.password || '',
@@ -23,6 +23,8 @@ const sqlConfig = {
 
 const sqlPool = new sql.ConnectionPool(sqlConfig);
 const sqlPoolPromise = sqlPool.connect();
+const rosterSqlPool = new sql.ConnectionPool(sqlConfig);
+const rosterPoolPromise = rosterSqlPool.connect();
 
 const normalizeRow = (row) => {
     if (!row) return row;
@@ -124,6 +126,14 @@ const pool = {
     }
 };
 
+const rosterPool = {
+    query: async (queryText, params = []) => {
+        const poolConn = await rosterPoolPromise;
+        const request = poolConn.request();
+        return runQuery(request, queryText, params);
+    }
+};
+
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 50 * 1024 * 1024 }
@@ -153,7 +163,7 @@ const getNetworkIdFromRequest = (req) => {
 const getCurrentUserInfo = async (req) => {
     const networkId = getNetworkIdFromRequest(req);
     if (!networkId) return null;
-    const result = await pool.query(
+    const result = await rosterPool.query(
         `SELECT TOP 1 r.rostername, r.myid, r.networkid, a.auditorid, a.divisionid, COALESCE(a.admin, 0) AS admin
          FROM roster_r r
          LEFT JOIN auditors_r a ON a.myid = r.myid
@@ -382,7 +392,7 @@ const normalizeStringArray = (value) => {
 };
 
 const parseAuditRow = (row) => {
-    const additionalAuditors = normalizeStringArray(row.additionalauditors);
+    const additionalApprovers = normalizeStringArray(row.additionalapprovers);
     return {
         scheduleId: row.scheduleid,
         title: row.title,
@@ -402,7 +412,6 @@ const parseAuditRow = (row) => {
         businessUnitIds: normalizeNumberArray(row.businessunitids),
         operatingUnitIds: normalizeNumberArray(row.operatingunitids),
         leadAuditorId: row.leadauditorid,
-        leadauditorid: row.leadauditorid,
         additionalAuditorIds: normalizeNumberArray(row.additionalauditorids),
         locked: row.locked,
         comment: row.comment,
@@ -425,9 +434,7 @@ const parseAuditRow = (row) => {
         previousCarsEffective: row.previouscarseffective,
         previouscarseffective: row.previouscarseffective,
         approver: row.approver,
-        leadAuditor: row.leadauditor,
-        additionalAuditors,
-        additionalauditors: additionalAuditors,
+        additionalApprovers,
         approvedAt: row.approvedat,
         submittedAt: row.submittedat,
         createdAt: row.createdat,
@@ -765,7 +772,7 @@ app.post('/api/request-auditor-access', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Division and reason are required.' });
         }
 
-        const rosterResult = await client.query(
+        const rosterResult = await rosterPool.query(
             'SELECT rostername, email, myid FROM roster_r WHERE myid = $1',
             [userInfo.myid]
         );
@@ -783,7 +790,7 @@ app.post('/api/request-auditor-access', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Division lead not configured.' });
         }
 
-        const leadResult = await client.query(
+        const leadResult = await rosterPool.query(
             `SELECT TOP 1 r.email, r.rostername
              FROM auditors_r a
              JOIN roster_r r ON r.myid = a.myid
@@ -1517,7 +1524,7 @@ app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
 // Get all roster
 app.get('/api/roster', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM roster_r ORDER BY rosterName');
+        const result = await rosterPool.query('SELECT * FROM roster_r ORDER BY rosterName');
         const data = result.rows.map(row => ({
             rosterName: row.rostername,
             myId: row.myid,
@@ -2319,7 +2326,7 @@ app.post('/api/audits', async (req, res) => {
         if (shouldSendScheduleEmail && scheduleIdToNotify && emailAuditorIds.size > 0) {
             const emailAuditorIdsList = Array.from(emailAuditorIds);
             const auditorPlaceholders = emailAuditorIdsList.map((_, idx) => `$${idx + 1}`).join(', ');
-            const rosterResult = await client.query(
+            const rosterResult = await rosterPool.query(
                 `SELECT DISTINCT r.email
                  FROM auditors_r a
                  JOIN roster_r r ON r.myid = a.myid
@@ -2426,7 +2433,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         }
 
         const auditResult = await pool.query(
-            'SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, additionalauditors, additionalauditorids FROM audits_r WHERE scheduleid = $1',
+            'SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, additionalapprovers, additionalauditorids FROM audits_r WHERE scheduleid = $1',
             [parseInt(scheduleId)]
         );
 
@@ -2453,7 +2460,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         if (auditorIds.size > 0) {
             const auditorIdList = Array.from(auditorIds);
             const auditorPlaceholders = auditorIdList.map((_, idx) => `$${idx + 1}`).join(', ');
-            const rosterResult = await pool.query(
+            const rosterResult = await rosterPool.query(
                 `SELECT DISTINCT r.email
                  FROM auditors_r a
                  JOIN roster_r r ON r.myid = a.myid
@@ -2463,7 +2470,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
             auditorEmails = rosterResult.rows.map((row) => row.email).filter(Boolean);
         }
         const approverIds = audit.approver ? [audit.approver] : [];
-        const additionalApproverIds = normalizeStringArray(audit.additionalauditors);
+        const additionalApproverIds = normalizeStringArray(audit.additionalapprovers);
         let leadMyId = null;
         if (audit.leadauditorid) {
             const leadRosterResult = await pool.query(
@@ -2648,8 +2655,8 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 auditorstime = $1,
                 previouscarseffective = $2,
                 approver = $3,
-                leadauditor = $4,
-                additionalauditors = $5,
+                leadauditorid = $4,
+                additionalapprovers = $5,
                 stage = $6,
                 locked = $7,
                 submittedat = CASE WHEN $7 = 1 THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
@@ -2660,7 +2667,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 audit.previousCarsEffective,
                 audit.approver,
                 audit.leadAuditor,
-                JSON.stringify(audit.additionalAuditors || []),
+                JSON.stringify(audit.additionalApprovers || []),
                 audit.stage,
                 audit.locked ? 1 : 0,
                 audit.scheduleId
@@ -2686,8 +2693,8 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             leadMyId = leadRosterResult.rows[0]?.myid ?? null;
         }
 
-        const additionalApproverIds = Array.isArray(audit.additionalAuditors)
-            ? audit.additionalAuditors.filter(Boolean)
+        const additionalApproverIds = Array.isArray(audit.additionalApprovers)
+            ? audit.additionalApprovers.filter(Boolean)
             : [];
         const approvalMyIds = [...new Set([
             ...(audit.approver ? [audit.approver] : []),
@@ -2715,7 +2722,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                     [audit.scheduleId, approverId]
                 );
 
-                const approverResult = await client.query(
+                const approverResult = await rosterPool.query(
                     'SELECT rostername, email FROM roster_r WHERE myid = $1',
                     [approverId]
                 );

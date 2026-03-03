@@ -1,20 +1,4 @@
-.admin-shell {
-    width: 100%;
-    min-height: calc(100vh - 60px);
-    padding: 0;
-    background: linear-gradient(180deg, var(--color-primary), var(--color-primary-dark));
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-}
-
 .admin-card {
-    width: 95%;
-    margin: 2.5rem auto;
-    background: #ffffff;
-    border-radius: 30px;
-    padding: 2.75rem 3rem;
-    box-shadow: 0 30px 60px rgba(15, 23, 42, 0.15);
     color: #0f172a;
     font-family: 'Source Sans Pro', system-ui, sans-serif;
 }
@@ -35,6 +19,7 @@
     font-size: 0.75rem;
     color: #64748b;
     margin: 0 0 0.25rem;
+    margin-top: 1rem;
 }
 
 .admin-welcome {

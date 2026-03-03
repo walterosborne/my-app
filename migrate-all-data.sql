@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS audits (
     programManager VARCHAR(100),
     maLeadManager VARCHAR(100),
     approver VARCHAR(10),
-    additionalauditors JSONB DEFAULT '[]',
+    additionalapprovers JSONB DEFAULT '[]',
     delayCause INTEGER,
     approvedAt TIMESTAMP,
     createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

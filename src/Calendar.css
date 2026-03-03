@@ -6,6 +6,14 @@
     box-sizing: border-box;
 }
 
+.calendar-tool-header .tool-page-subtitle {
+    padding-top: 0.25rem;
+}
+
+.calendar-tool-header {
+    margin-top: 1rem;
+}
+
 .calendar-header {
     display: flex;
     justify-content: space-between;
@@ -263,7 +271,7 @@
 }
 
 .event-tooltip {
-    position: fixed;
+    position: absolute;
     z-index: 80;
     background: #fff;
     border: 1px solid rgba(15, 23, 42, 0.2);

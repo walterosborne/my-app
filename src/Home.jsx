@@ -9,6 +9,8 @@ const Home = () => {
     const [upcomingAudits, setUpcomingAudits] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState({ name: 'User', myId: null });
+    const leftBubbleRef = React.useRef(null);
+    const rightBubbleRef = React.useRef(null);
 
     // Load audits from API and format for display
     React.useEffect(() => {
@@ -67,9 +69,22 @@ const Home = () => {
         loadAudits();
     }, []);
 
+    React.useLayoutEffect(() => {
+        const syncSidebarHeight = () => {
+            if (!leftBubbleRef.current || !rightBubbleRef.current) return;
+            const leftHeight = leftBubbleRef.current.getBoundingClientRect().height;
+            rightBubbleRef.current.style.maxHeight = `${leftHeight}px`;
+            rightBubbleRef.current.style.height = `${leftHeight}px`;
+        };
+
+        syncSidebarHeight();
+        window.addEventListener('resize', syncSidebarHeight);
+        return () => window.removeEventListener('resize', syncSidebarHeight);
+    }, [upcomingAudits.length]);
+
     return (
         <div className="home-container">
-            <div className="home-content">
+            <div className="home-content" ref={leftBubbleRef}>
                 <div className="home-header">
                     <h1 className="home-title">Northrop Grumman Audit Tool (NGAT)</h1>
                     <p className="welcome-text">Welcome {currentUser.name}!</p>
@@ -144,7 +159,7 @@ const Home = () => {
                 </div>
             </div>
 
-            <div className="right-section">
+            <div className="right-section" ref={rightBubbleRef}>
                 <div className="audit-sidebar">
                     <h2 className="sidebar-title">Upcoming Audits (30 Day Lookahead)</h2>
                     <div className="audit-list">

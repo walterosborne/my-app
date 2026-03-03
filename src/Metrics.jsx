@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import Select from 'react-select';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart, MarkElement } from '@mui/x-charts/LineChart';
@@ -55,6 +56,7 @@ const Metrics = () => {
   const [monthlyMetrics, setMonthlyMetrics] = useState(['Audit Count']);
   const [findingsIntExtId, setFindingsIntExtId] = useState(null);
   const [dateField, setDateField] = useState('expectedStartDate');
+  const [includeHistorical, setIncludeHistorical] = useState(false);
   const stageChartApiRef = React.useRef(null);
   const monthlyChartApiRef = React.useRef(null);
   const findingsChartApiRef = React.useRef(null);
@@ -251,6 +253,7 @@ const Metrics = () => {
     const approved = Boolean(audit?.approvedAt ?? audit?.approvedat);
     const locked = Number(audit?.locked) === 1;
     const stage = Number(audit?.stage);
+    if (stage === -1) return 'Historical';
     if (approved) return 'Approved';
     if (locked) return 'Pending Approval';
     switch (stage) {
@@ -285,6 +288,10 @@ const Metrics = () => {
     };
 
     return audits.filter((audit) => {
+      const stageValue = Number(audit?.stage);
+      if (!includeHistorical && stageValue === -1) {
+        return false;
+      }
       if (filters.auditorId) {
         const auditorId = Number(filters.auditorId);
         const additional = Array.isArray(audit.additionalAuditorIds) ? audit.additionalAuditorIds : [];
@@ -315,7 +322,7 @@ const Metrics = () => {
         return false;
       }
 
-      if (dateField === 'actualStartDate' && Number(audit.stage) < 3) {
+      if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && Number(audit.stage) !== -1) {
         return false;
       }
 
@@ -355,7 +362,7 @@ const Metrics = () => {
 
       return true;
     });
-  }, [audits, filters, dateField]);
+  }, [audits, filters, dateField, includeHistorical]);
 
   const stageChartData = useMemo(() => {
     const stageLabels = [
@@ -364,6 +371,7 @@ const Metrics = () => {
       'Nonconformaties',
       'Pending Approval',
       'Approved',
+      'Historical',
       'Unknown Stage'
     ];
 
@@ -858,6 +866,9 @@ const Metrics = () => {
     return { labels: formattedMonths, series };
   }, [filteredAudits, monthlyMetrics, nonconformanceBySchedule, timelineGranularity, dateField]);
 
+  const EXPORT_IMAGE_WIDTH = 1600;
+  const EXPORT_IMAGE_HEIGHT = 900;
+
   const exportChartFallback = async (wrapperRef, filenameBase) => {
     const wrapper = wrapperRef?.current;
     if (!wrapper) return false;
@@ -897,16 +908,17 @@ const Metrics = () => {
       }
     };
     inlineStyles(svg, clone);
-    const wrapperBox = wrapper.getBoundingClientRect();
-    const svgBox = svg.getBoundingClientRect();
-    const boxWidth = Math.max(wrapperBox.width || 0, svgBox.width || 0);
-    const boxHeight = Math.max(wrapperBox.height || 0, svgBox.height || 0);
-    const width = Math.max(1, Math.round(boxWidth || 800));
-    const height = Math.max(1, Math.round(boxHeight || 400));
+    const width = EXPORT_IMAGE_WIDTH;
+    const height = EXPORT_IMAGE_HEIGHT;
     clone.setAttribute('width', `${width}`);
     clone.setAttribute('height', `${height}`);
     if (!clone.getAttribute('viewBox')) {
-      clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      try {
+        const bbox = svg.getBBox();
+        clone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
+      } catch (error) {
+        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      }
     }
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
     clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
@@ -948,7 +960,50 @@ const Metrics = () => {
     return true;
   };
 
-  const handleExport = async (apiRef, wrapperRef, filenameBase) => {
+  const exportChartWithRender = async (renderChart, filenameBase) => {
+    if (!renderChart) return false;
+    const container = document.createElement('div');
+    container.style.width = `${EXPORT_IMAGE_WIDTH}px`;
+    container.style.height = `${EXPORT_IMAGE_HEIGHT}px`;
+    container.style.background = '#ffffff';
+    container.style.position = 'fixed';
+    container.style.left = '-10000px';
+    container.style.top = '0';
+    container.style.zIndex = '-1';
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    root.render(renderChart(EXPORT_IMAGE_WIDTH, EXPORT_IMAGE_HEIGHT));
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(resolve);
+      });
+    });
+    try {
+      const dataUrl = await toPng(container, {
+        cacheBust: true,
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        width: EXPORT_IMAGE_WIDTH,
+        height: EXPORT_IMAGE_HEIGHT
+      });
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = `${filenameBase}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      root.unmount();
+      container.remove();
+      return true;
+    } catch (error) {
+      console.warn('Chart export render failed:', error);
+      root.unmount();
+      container.remove();
+      return false;
+    }
+  };
+
+  const handleExport = async (apiRef, wrapperRef, filenameBase, renderChart) => {
     const api = apiRef?.current;
     if (api?.exportAsImage) {
       api.exportAsImage();
@@ -956,6 +1011,10 @@ const Metrics = () => {
     }
     if (api?.exportAsPrint) {
       api.exportAsPrint();
+      return;
+    }
+    const rendered = await exportChartWithRender(renderChart, filenameBase);
+    if (rendered) {
       return;
     }
     const fallbackWorked = await exportChartFallback(wrapperRef, filenameBase);
@@ -1085,6 +1144,84 @@ const Metrics = () => {
     );
   };
 
+  const renderStageChart = (width, height) => (
+    <BarChart
+      xAxis={[{ scaleType: 'band', data: stageChartData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={stageChartData.series}
+      slots={{ tooltip: MetricsTooltip }}
+      slotProps={{
+        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
+        tooltip: { trigger: 'axis' }
+      }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    >
+      <StageTotalsOverlay labels={stageChartData.labels} totals={stageChartData.totals} />
+    </BarChart>
+  );
+
+  const renderDelayChart = (width, height) => (
+    <BarChart
+      xAxis={[{ scaleType: 'band', data: delayChartData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={delayChartData.series}
+      slots={{ tooltip: MetricsTooltip }}
+      slotProps={{
+        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
+        tooltip: { trigger: 'axis' }
+      }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    />
+  );
+
+  const renderMonthlyChart = (width, height) => (
+    <LineChart
+      xAxis={[{ scaleType: 'point', data: monthlyChartData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={monthlyChartData.series}
+      slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
+      slotProps={{ tooltip: { trigger: 'axis' } }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    />
+  );
+
+  const renderSeverityChart = (width, height) => (
+    <LineChart
+      xAxis={[{ scaleType: 'point', data: severityTrendData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={severityTrendData.series}
+      slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
+      slotProps={{ tooltip: { trigger: 'axis' } }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    />
+  );
+
+  const renderFindingsChart = (width, height) => (
+    <BarChart
+      xAxis={[{ scaleType: 'band', data: findingsChartData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={findingsChartData.series}
+      slots={{ tooltip: MetricsTooltip }}
+      slotProps={{
+        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
+        tooltip: { trigger: 'axis' }
+      }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    >
+      <StageTotalsOverlay labels={findingsChartData.labels} totals={findingsChartData.totals} />
+    </BarChart>
+  );
+
   const showStageMetric = activeTab === 'All' || activeTab === 'PCAB';
   const showDelayMetric = activeTab === 'All' || activeTab === 'Other';
   const showMonthlyMetric = activeTab === 'All' || activeTab === 'Finding Analysis';
@@ -1122,6 +1259,7 @@ const Metrics = () => {
                 Selecting later-stage dates will filter out audits that have not reached that stage
                 (Approval Date requires approved audits, Submitted Date requires submitted audits, and Audit Start Date
                 requires results completion).
+                Historical audits are excluded unless you enable the toggle below.
               </p>
             </div>
             <div className="metrics-filter">
@@ -1145,6 +1283,17 @@ const Metrics = () => {
                     onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
                   />
                 </div>
+              </div>
+            </div>
+            <div className="metrics-filter metrics-toggle">
+              <label>Historical Audits</label>
+              <div className="metrics-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={includeHistorical}
+                  onChange={(event) => setIncludeHistorical(event.target.checked)}
+                />
+                <span>Include historical audits</span>
               </div>
             </div>
             <div className="metrics-filter">
@@ -1227,7 +1376,7 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(stageChartApiRef, stageChartWrapperRef, 'audits-by-stage')}
+                        onClick={() => handleExport(stageChartApiRef, stageChartWrapperRef, 'audits-by-stage', renderStageChart)}
                     >
                       Export
                     </button>
@@ -1276,7 +1425,7 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(delayChartApiRef, delayChartWrapperRef, 'delay-causes')}
+                        onClick={() => handleExport(delayChartApiRef, delayChartWrapperRef, 'delay-causes', renderDelayChart)}
                       >
                         Export
                       </button>
@@ -1305,7 +1454,7 @@ const Metrics = () => {
                     <button
                       type="button"
                       className="metrics-export-button"
-                      onClick={() => handleExport(monthlyChartApiRef, monthlyChartWrapperRef, 'audits-by-month')}
+                      onClick={() => handleExport(monthlyChartApiRef, monthlyChartWrapperRef, 'audits-by-month', renderMonthlyChart)}
                     >
                       Export
                     </button>
@@ -1361,7 +1510,7 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(severityChartApiRef, severityChartWrapperRef, 'nc-severity-mix')}
+                        onClick={() => handleExport(severityChartApiRef, severityChartWrapperRef, 'nc-severity-mix', renderSeverityChart)}
                       >
                         Export
                       </button>
@@ -1408,7 +1557,7 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(findingsChartApiRef, findingsChartWrapperRef, 'findings-by-function')}
+                        onClick={() => handleExport(findingsChartApiRef, findingsChartWrapperRef, 'findings-by-function', renderFindingsChart)}
                       >
                         Export
                       </button>

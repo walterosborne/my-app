@@ -215,6 +215,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     type: 'include',
     ids: new Set()
   });
+  const entryAudits = useMemo(() => {
+    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+  }, [allAudits]);
   const isSameSelectionModel = (nextModel, currentModel) => {
     if (!nextModel || !currentModel) return false;
     if (nextModel.type !== currentModel.type) return false;
@@ -235,8 +238,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
-    if (selectedAuditId && allAudits.length > 0) {
-      const audit = allAudits.find(a => a.scheduleId === selectedAuditId);
+    if (selectedAuditId && entryAudits.length > 0) {
+      const audit = entryAudits.find(a => a.scheduleId === selectedAuditId);
       if (audit) {
         setSelectedAudit(audit);
         setRowSelectionModel((prev) => {
@@ -248,14 +251,14 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           id: audit.scheduleId,
           scheduleId: audit.scheduleId,
           title: audit.title,
-          leadAuditor: audit.leadAuditor,
+          leadAuditor: getLeadAuditorName(audit.leadAuditorId),
           division: getDivisionName(audit.divisionId),
           programs: getProgramNames(audit.programIds)
         };
         setSchedule(scheduleFormat);
       }
     }
-  }, [selectedAuditId, allAudits]);
+  }, [selectedAuditId, entryAudits]);
 
   const { register, handleSubmit,
     setError,
@@ -286,8 +289,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   ], []);
 
   const sortedAudits = useMemo(() => {
-    return [...allAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
-  }, [allAudits]);
+    return [...entryAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
+  }, [entryAudits]);
 
   const schedules = sortedAudits.map(audit => ({
     id: audit.scheduleId,
@@ -380,7 +383,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       }));
   }, [auditorsList]);
 
-  const additionalAuditorsOptions = useMemo(() => {
+  const additionalApproversOptions = useMemo(() => {
     return [...rosterList]
       .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
       .map(person => ({
@@ -441,18 +444,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           if (auditData.approver !== null && auditData.approver !== undefined) {
             setValue('approver', auditData.approver);
           }
-          if (auditData.leadauditorid !== null && auditData.leadauditorid !== undefined) {
-            setValue('leadAuditor', auditData.leadauditorid);
-          } else if (auditData.leadauditor !== null && auditData.leadauditor !== undefined) {
-            setValue('leadAuditor', auditData.leadauditor);
+          if (auditData.leadAuditorId !== null && auditData.leadAuditorId !== undefined) {
+            setValue('leadAuditor', auditData.leadAuditorId);
           }
-          const existingAdditionalAuditors = Array.isArray(auditData.additionalAuditors)
-            ? auditData.additionalAuditors
-            : (Array.isArray(auditData.additionalauditors) ? auditData.additionalauditors : []);
-          if (existingAdditionalAuditors.length > 0) {
-            setValue('additionalAuditors', existingAdditionalAuditors);
+          const existingAdditionalApprovers = Array.isArray(auditData.additionalApprovers)
+            ? auditData.additionalApprovers
+            : [];
+          if (existingAdditionalApprovers.length > 0) {
+            setValue('additionalApprovers', existingAdditionalApprovers);
           } else {
-            setValue('additionalAuditors', []);
+            setValue('additionalApprovers', []);
           }
 
           // Populate CARs
@@ -495,7 +496,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         previousCarsEffective: data.carEffective ? parseInt(data.carEffective) : null,
         approver: data.approver || null,
         leadAuditor: data.leadAuditor || null,
-        additionalAuditors: data.additionalAuditors || [],
+        additionalApprovers: data.additionalApprovers || [],
         locked: lockedValue ? 1 : 0,
         stage: 4
       };
@@ -631,21 +632,19 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setValue('approver', null);
       }
 
-      if (loadedAuditData.leadauditorid !== null && loadedAuditData.leadauditorid !== undefined) {
-        setValue('leadAuditor', loadedAuditData.leadauditorid);
-      } else if (loadedAuditData.leadauditor !== null && loadedAuditData.leadauditor !== undefined) {
-        setValue('leadAuditor', loadedAuditData.leadauditor);
+      if (loadedAuditData.leadAuditorId !== null && loadedAuditData.leadAuditorId !== undefined) {
+        setValue('leadAuditor', loadedAuditData.leadAuditorId);
       } else {
         setValue('leadAuditor', null);
       }
 
-      const existingAdditionalAuditors = Array.isArray(loadedAuditData.additionalAuditors)
-        ? loadedAuditData.additionalAuditors
-        : (Array.isArray(loadedAuditData.additionalauditors) ? loadedAuditData.additionalauditors : []);
-      if (existingAdditionalAuditors.length > 0) {
-        setValue('additionalAuditors', existingAdditionalAuditors);
+      const existingAdditionalApprovers = Array.isArray(loadedAuditData.additionalApprovers)
+        ? loadedAuditData.additionalApprovers
+        : [];
+      if (existingAdditionalApprovers.length > 0) {
+        setValue('additionalApprovers', existingAdditionalApprovers);
       } else {
-        setValue('additionalAuditors', []);
+        setValue('additionalApprovers', []);
       }
 
       // Restore CARs
@@ -1141,16 +1140,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                       <div className="fieldboxthird">
                         <label>Additional Approvers</label>
                         <Controller
-                          name="additionalAuditors"
+                          name="additionalApprovers"
                           control={control}
                           render={({ field }) => (
                             <Select
                               isClearable
                               isMulti
-                              options={additionalAuditorsOptions}
+                              options={additionalApproversOptions}
                               styles={customStyles}
                               placeholder="Additional Approvers"
-                              value={field.value ? additionalAuditorsOptions.filter(a => field.value.includes(a.value)) : []}
+                              value={field.value ? additionalApproversOptions.filter(a => field.value.includes(a.value)) : []}
                               onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                             />
                           )}

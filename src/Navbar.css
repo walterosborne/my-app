@@ -3,7 +3,7 @@
     align-items: center;
     justify-content: space-between;
     background-color: white;
-    padding: 0.5rem 2rem;
+    padding: 0.45rem 2rem;
     width: 100%;
     box-sizing: border-box;
     position: sticky;
@@ -21,8 +21,8 @@
 }
 
 .navbar-logo {
-    width: 50px;
-    height: 40px;
+    width: 45px;
+    height: 36px;
     object-fit: contain;
     padding: 2px;
     border-radius: 4px;
@@ -55,7 +55,7 @@
     background-color: transparent;
     color: #2c3e50;
     border: none;
-    padding: 0.75rem 1.5rem;
+    padding: 0.7rem 1.5rem;
     font-size: 1rem;
     cursor: pointer;
     transition: background-color 0.3s;
@@ -105,12 +105,12 @@
     background-color: transparent;
     color: #2c3e50;
     border: none;
-    font-size: 2rem;
+    font-size: 1.8rem;
     cursor: pointer;
-    padding: 0.5rem;
+    padding: 0.45rem;
     transition: background-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.15s;
-    width: 50px;
-    height: 50px;
+    width: 45px;
+    height: 45px;
     display: flex;
     align-items: center;
     justify-content: center;

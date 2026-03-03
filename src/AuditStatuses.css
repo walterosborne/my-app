@@ -3,6 +3,11 @@
     justify-content: space-between;
     align-items: center;
     gap: 2rem;
+    margin-top: 1rem;
+}
+
+.audit-statuses-header .tool-page-subtitle {
+    padding-top: 0.25rem;
 }
 
 .audit-statuses-toggle {
@@ -95,7 +100,7 @@
     gap: 1rem;
 }
 
-.audit-status-card-header > div {
+.audit-status-card-header>div {
     min-width: 0;
 }
 

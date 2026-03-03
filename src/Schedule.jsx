@@ -212,6 +212,9 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     type: 'include',
     ids: new Set()
   });
+  const entryAudits = useMemo(() => {
+    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+  }, [allAudits]);
   const isSameSelectionModel = (nextModel, currentModel) => {
     if (!nextModel || !currentModel) return false;
     if (nextModel.type !== currentModel.type) return false;
@@ -239,8 +242,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
-    if (selectedAuditId && allAudits.length > 0) {
-      const audit = allAudits.find(a => a.scheduleId === selectedAuditId);
+    if (selectedAuditId && entryAudits.length > 0) {
+      const audit = entryAudits.find(a => a.scheduleId === selectedAuditId);
       if (audit) {
         setSelectedAudit(audit);
         setRowSelectionModel((prev) => {
@@ -259,17 +262,17 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setSchedule(scheduleFormat);
       }
     }
-  }, [selectedAuditId, allAudits, setValue]);
+  }, [selectedAuditId, entryAudits, setValue]);
 
   // Update selectedAudit when allAudits changes (e.g., after submission)
   useEffect(() => {
-    if (schedule && schedule.scheduleId && allAudits.length > 0) {
-      const updatedAudit = allAudits.find(a => a.scheduleId === schedule.scheduleId);
+    if (schedule && schedule.scheduleId && entryAudits.length > 0) {
+      const updatedAudit = entryAudits.find(a => a.scheduleId === schedule.scheduleId);
       if (updatedAudit) {
         setSelectedAudit(updatedAudit);
       }
     }
-  }, [allAudits, schedule]);
+  }, [entryAudits, schedule]);
 
 
   const mode = watch('mode');
@@ -391,8 +394,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   // Use real audit data from auditData.js
   const sortedAudits = useMemo(() => {
-    return [...allAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
-  }, [allAudits]);
+    return [...entryAudits].sort((a, b) => Number(b.scheduleId) - Number(a.scheduleId));
+  }, [entryAudits]);
 
   const schedules = sortedAudits.map(audit => ({
     id: audit.scheduleId,
@@ -856,7 +859,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         id: selectedAudit.scheduleId,
         scheduleId: selectedAudit.scheduleId,
         title: selectedAudit.title,
-        leadAuditor: selectedAudit.leadAuditor,
+        leadAuditor: getLeadAuditorName(selectedAudit.leadAuditorId),
         division: getDivisionName(selectedAudit.divisionId),
         programs: getProgramNames(selectedAudit.programIds)
       });
@@ -1070,8 +1073,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                     if (selectionModel.ids.size > 0) {
                       const scheduleID = Array.from(selectionModel.ids)[0];
                       const selectedSchedule = schedules.find(s => s.scheduleId === scheduleID);
-                      // Find the original audit object with programIds - always use current allAudits
-                      const originalAudit = allAudits.find(a => a.scheduleId === scheduleID);
+                      // Find the original audit object with programIds
+                      const originalAudit = entryAudits.find(a => a.scheduleId === scheduleID);
                       console.log("Row selected - Schedule ID:", scheduleID);
                       console.log("Row selected - Audit title:", originalAudit?.title);
                       console.log("Row selected - Audit comment:", originalAudit?.comment);

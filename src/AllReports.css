@@ -1,5 +1,5 @@
 .reports-page {
-    padding: 2rem 1.5rem 4rem;
+    padding: 1rem 1.5rem 4rem;
     background-color: #000080;
     min-height: 100vh;
 }
@@ -10,7 +10,7 @@
     margin: 0 auto;
     background: var(--color-white);
     border-radius: 12px;
-    padding: 2rem;
+    padding: 0.125rem 2rem 2rem;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
     box-sizing: border-box;
 }

@@ -1,5 +1,10 @@
 .metrics-header {
+  margin-top: 1rem;
   margin-bottom: 1.25rem;
+}
+
+.metrics-header .tool-page-subtitle {
+  padding-top: 0.25rem;
 }
 
 .metrics-header h2 {
@@ -35,6 +40,20 @@
   font-size: 0.85rem;
   color: #6b7280;
   line-height: 1.4;
+}
+
+.metrics-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #4b5563);
+}
+
+.metrics-toggle-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-primary-dark, #003366);
 }
 
 .metrics-date {

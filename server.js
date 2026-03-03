@@ -272,7 +272,7 @@ const normalizeStringArray = (value) => {
 };
 
 const parseAuditRow = (row) => {
-    const additionalAuditors = normalizeStringArray(row.additionalauditors);
+    const additionalApprovers = normalizeStringArray(row.additionalapprovers);
     return {
         scheduleId: row.scheduleid,
         title: row.title,
@@ -292,7 +292,6 @@ const parseAuditRow = (row) => {
         businessUnitIds: normalizeNumberArray(row.businessunitids),
         operatingUnitIds: normalizeNumberArray(row.operatingunitids),
         leadAuditorId: row.leadauditorid,
-        leadauditorid: row.leadauditorid,
         additionalAuditorIds: normalizeNumberArray(row.additionalauditorids),
         locked: row.locked,
         comment: row.comment,
@@ -315,9 +314,7 @@ const parseAuditRow = (row) => {
         previousCarsEffective: row.previouscarseffective,
         previouscarseffective: row.previouscarseffective,
         approver: row.approver,
-        leadAuditor: row.leadauditor,
-        additionalAuditors,
-        additionalauditors: additionalAuditors,
+        additionalApprovers,
         approvedAt: row.approvedat,
         submittedAt: row.submittedat,
         createdAt: row.createdat,
@@ -2322,7 +2319,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         }
 
         const auditResult = await pool.query(
-            'SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, additionalauditors, additionalauditorids FROM audits_r WHERE scheduleid = $1',
+            'SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, additionalapprovers, additionalauditorids FROM audits_r WHERE scheduleid = $1',
             [parseInt(scheduleId)]
         );
 
@@ -2357,7 +2354,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
             auditorEmails = rosterResult.rows.map((row) => row.email).filter(Boolean);
         }
         const approverIds = audit.approver ? [audit.approver] : [];
-        const additionalApproverIds = normalizeStringArray(audit.additionalauditors);
+        const additionalApproverIds = normalizeStringArray(audit.additionalapprovers);
         let leadMyId = null;
         if (audit.leadauditorid) {
             const leadRosterResult = await pool.query(
@@ -2542,8 +2539,8 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 auditorstime = $1,
                 previouscarseffective = $2,
                 approver = $3,
-                leadauditor = $4,
-                additionalauditors = $5,
+                leadauditorid = $4,
+                additionalapprovers = $5,
                 stage = $6,
                 locked = ${lockedBit},
                 submittedat = CASE WHEN ${lockedBit} = B'1' THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
@@ -2554,7 +2551,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 audit.previousCarsEffective,
                 audit.approver,
                 audit.leadAuditor,
-                JSON.stringify(audit.additionalAuditors || []),
+                JSON.stringify(audit.additionalApprovers || []),
                 audit.stage,
                 audit.scheduleId
             ]
@@ -2580,8 +2577,8 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             leadMyId = leadRosterResult.rows[0]?.myid ?? null;
         }
 
-        const additionalApproverIds = Array.isArray(audit.additionalAuditors)
-            ? audit.additionalAuditors.filter(Boolean)
+        const additionalApproverIds = Array.isArray(audit.additionalApprovers)
+            ? audit.additionalApprovers.filter(Boolean)
             : [];
         const approvalMyIds = [...new Set([
             ...(audit.approver ? [audit.approver] : []),

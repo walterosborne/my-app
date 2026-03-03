@@ -81,7 +81,6 @@ CREATE TABLE dbo.audits_r (
   functionid INT,
   standardids NVARCHAR(MAX) DEFAULT N'[]',
   statusid INT,
-  scheduledate DATE,
   expectedstartdate DATE,
   expectedcompletiondate DATE,
   startdate DATE,
@@ -112,13 +111,12 @@ CREATE TABLE dbo.audits_r (
   hash NVARCHAR(20),
   auditorstime INT,
   previouscarseffective SMALLINT,
-  leadauditor INT,
   locked BIT DEFAULT 0,
   stage INT NOT NULL,
   delaycause INT,
   approvedat DATETIME2,
   approver NVARCHAR(10),
-  additionalauditors NVARCHAR(MAX) DEFAULT N'[]',
+  additionalapprovers NVARCHAR(MAX) DEFAULT N'[]',
   submittedat DATETIME2,
   PRIMARY KEY (scheduleid)
 );

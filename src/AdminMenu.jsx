@@ -2610,8 +2610,8 @@ const AdminMenu = () => {
 
     if (loading || !currentUser) {
         return (
-            <div className="admin-shell">
-                <div className="admin-card" style={{ justifyContent: 'center', display: 'flex', textAlign: 'center' }}>
+            <div className="entry-page">
+                <div className="entry-container admin-card" style={{ justifyContent: 'center', display: 'flex', textAlign: 'center' }}>
                     Loading...
                 </div>
             </div>
@@ -2620,8 +2620,8 @@ const AdminMenu = () => {
 
     if (!currentUser.isAdmin) {
         return (
-            <div className="admin-shell">
-                <div className="admin-card">
+            <div className="entry-page">
+                <div className="entry-container admin-card">
                     <p className="admin-subtitle">Restricted</p>
                     <p>You do not have admin access. Redirecting...</p>
                     <button className="admin-primary" type="button" onClick={() => navigate('/audit')}>
@@ -2641,8 +2641,8 @@ const AdminMenu = () => {
     )}`;
 
     return (
-        <div className="admin-shell">
-            <div className="admin-card">
+        <div className="entry-page">
+            <div className="entry-container admin-card">
                 <header className="admin-header">
                     <div>
                         <p className="admin-subtitle">Tools · Admin menu</p>
