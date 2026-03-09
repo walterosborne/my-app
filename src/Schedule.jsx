@@ -32,7 +32,7 @@ import {
 
 function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
-  const [userInfo, setUserInfo] = useState({ name: 'User', myId: null });
+  const [userInfo, setUserInfo] = useState(null);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -63,9 +63,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     async function loadLookupData() {
       try {
         const userData = await getCurrentUser();
-        if (userData?.name) {
-          setUserInfo(userData);
-        }
+        setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
         const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, riskFactors, subcategories] = await Promise.all([
           getPrograms(),
           getDivisions(),
@@ -114,10 +112,22 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     }).join(', ');
   };
 
-  // Helper function to get division name from divisionId
+  const normalizeIdArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+  };
+
+  // Helper function to get division name(s) from divisionId(s)
   const getDivisionName = (divisionId) => {
-    const division = divisionsList.find(d => d.divisionId === divisionId);
-    return division ? division.divisionName : divisionId;
+    const ids = normalizeIdArray(divisionId);
+    if (ids.length === 0) return '';
+    return ids
+      .map(id => {
+        const division = divisionsList.find(d => d.divisionId === id);
+        return division ? division.divisionName : id;
+      })
+      .join('; ');
   };
 
   // Helper function to get sector name from sectorId
@@ -187,10 +197,16 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     return status ? status.statusName : statusId;
   };
 
-  // Helper function to get function name from functionId
+  // Helper function to get function name(s) from functionId(s)
   const getFunctionName = (functionId) => {
-    const func = functionsList.find(f => f.functionId === functionId);
-    return func ? func.functionName : functionId;
+    const ids = normalizeIdArray(functionId);
+    if (ids.length === 0) return '';
+    return ids
+      .map(id => {
+        const func = functionsList.find(f => f.functionId === id);
+        return func ? func.functionName : id;
+      })
+      .join('; ');
   };
 
   // Helper function to get int/ext name from intExtId
@@ -279,9 +295,13 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const startDate = watch('StartDate');
   const completionDate = watch('ExpCompDate');
   const selectedSectorId = watch('sector');
-  const selectedDivisionId = watch('division');
+  const selectedDivisionValue = watch('division');
   const parsedSectorId = selectedSectorId ? Number(selectedSectorId) : null;
-  const parsedDivisionId = selectedDivisionId ? Number(selectedDivisionId) : null;
+  const parsedDivisionIds = useMemo(() => (
+    normalizeIdArray(selectedDivisionValue)
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id))
+  ), [selectedDivisionValue]);
   const selectedPrograms = watch('program') || [];
   const selectedSites = watch('site') || [];
   const selectedBusinessUnits = watch('businessUnit') || [];
@@ -302,27 +322,32 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   };
 
   useEffect(() => {
-    const parsedSectorId = selectedSectorId ? Number(selectedSectorId) : null;
-    const parsedDivisionId = selectedDivisionId ? Number(selectedDivisionId) : null;
-    if (!parsedSectorId || !parsedDivisionId) {
+    if (!parsedSectorId || parsedDivisionIds.length === 0) {
       return;
     }
-    const division = divisionsList.find(d => d.divisionId === parsedDivisionId);
-    if (division && division.sectorId !== parsedSectorId) {
-      setValue('division', null);
+    const filteredDivisionIds = parsedDivisionIds.filter((divisionId) => {
+      const division = divisionsList.find(d => d.divisionId === divisionId);
+      return division && division.sectorId === parsedSectorId;
+    });
+    if (!areArraysEqual(parsedDivisionIds, filteredDivisionIds)) {
+      setValue('division', filteredDivisionIds);
       setValue('program', []);
       setValue('site', []);
       setValue('businessUnit', []);
       setValue('operatingUnit', []);
     }
-  }, [selectedSectorId, selectedDivisionId, divisionsList, setValue]);
+  }, [parsedSectorId, parsedDivisionIds, divisionsList, setValue]);
 
   useEffect(() => {
-    const parsedDivisionId = selectedDivisionId ? Number(selectedDivisionId) : null;
-    if (!parsedDivisionId) {
+    if (parsedDivisionIds.length === 0) {
+      if (selectedPrograms.length) setValue('program', []);
+      if (selectedSites.length) setValue('site', []);
+      if (selectedBusinessUnits.length) setValue('businessUnit', []);
+      if (selectedOperatingUnits.length) setValue('operatingUnit', []);
       return;
     }
 
+    const divisionIdSet = new Set(parsedDivisionIds);
     const filterByDivision = (ids, list, idKey) => {
       const filtered = [];
       ids.forEach(id => {
@@ -331,7 +356,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         if (!item) {
           return;
         }
-        if (item.divisionId === parsedDivisionId || item.divisionId == null) {
+        if (item.divisionId == null || divisionIdSet.has(Number(item.divisionId))) {
           filtered.push(normalizedId);
         }
       });
@@ -367,7 +392,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
     }
   }, [
-    selectedDivisionId,
+    parsedDivisionIds,
     selectedPrograms,
     selectedSites,
     selectedBusinessUnits,
@@ -413,22 +438,22 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const activeProgramsList = programsList.filter(p => (p.active ?? 1) === 1);
 
-  const filteredProgramsList = parsedDivisionId
-    ? activeProgramsList.filter(p => p.divisionId === parsedDivisionId || p.divisionId == null)
+  const filteredProgramsList = parsedDivisionIds.length > 0
+    ? activeProgramsList.filter(p => p.divisionId == null || parsedDivisionIds.includes(Number(p.divisionId)))
     : activeProgramsList;
 
   const activeSitesList = sitesList.filter(s => (s.active ?? 1) === 1);
 
-  const filteredSitesList = parsedDivisionId
-    ? activeSitesList.filter(s => s.divisionId === parsedDivisionId || s.divisionId == null)
+  const filteredSitesList = parsedDivisionIds.length > 0
+    ? activeSitesList.filter(s => s.divisionId == null || parsedDivisionIds.includes(Number(s.divisionId)))
     : activeSitesList;
 
-  const filteredBusinessUnitsList = parsedDivisionId
-    ? businessUnitsList.filter(bu => bu.divisionId === parsedDivisionId || bu.divisionId == null)
+  const filteredBusinessUnitsList = parsedDivisionIds.length > 0
+    ? businessUnitsList.filter(bu => bu.divisionId == null || parsedDivisionIds.includes(Number(bu.divisionId)))
     : businessUnitsList;
 
-  const filteredOperatingUnitsList = parsedDivisionId
-    ? operatingUnitsList.filter(ou => ou.divisionId === parsedDivisionId || ou.divisionId == null)
+  const filteredOperatingUnitsList = parsedDivisionIds.length > 0
+    ? operatingUnitsList.filter(ou => ou.divisionId == null || parsedDivisionIds.includes(Number(ou.divisionId)))
     : operatingUnitsList;
 
   // Convert programsList to react-select format
@@ -613,7 +638,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
       // Set division if available
       if (selectedAudit && selectedAudit.divisionId) {
-        setValue("division", selectedAudit.divisionId);
+        const divisionIds = normalizeIdArray(selectedAudit.divisionId).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+        setValue("division", divisionIds);
       }
       // Set site if available
       if (selectedAudit && selectedAudit.siteIds) {
@@ -646,7 +672,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
       // Set function if available
       if (selectedAudit && selectedAudit.functionId) {
-        setValue("function", selectedAudit.functionId);
+        const functionIds = normalizeIdArray(selectedAudit.functionId).map((id) => Number(id)).filter((id) => Number.isFinite(id));
+        setValue("function", functionIds);
       }
       // Set status if available
       if (selectedAudit && selectedAudit.statusId) {
@@ -710,13 +737,13 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         title: data.title,
         auditTypeId: data.auditType,
         intExtId: data.IntExt,
-        functionId: data.function,
+        functionId: data.function || [],
         standardIds: data.standards || [],
         statusId: data.status,
         stage: computeStage(1),
         expectedStartDate: data.StartDate ? new Date(data.StartDate).toISOString() : null,
         expectedCompletionDate: data.ExpCompDate ? new Date(data.ExpCompDate).toISOString() : null,
-        divisionId: data.division,
+        divisionId: data.division || [],
         programIds: data.program || [],
         sectorId: data.sector,
         siteIds: data.site || [],
@@ -955,7 +982,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       selectedAudit?.scheduleId || 'New',
       formData.title || '',
       formatSingle(formData.sector, sectorsList, 'sectorId', 'sectorName'),
-      formatSingle(formData.division, divisionsList, 'divisionId', 'divisionName'),
+      formatArray(formData.division, divisionsList, 'divisionId', 'divisionName'),
       formatArray(formData.program, programsList, 'programId', 'programName'),
       formatSiteArray(formData.site),
       formatArray(formData.businessUnit, businessUnitsList, 'businessUnitId', 'businessUnitName'),
@@ -968,7 +995,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       formatSingle(formData.IntExt, intExtList, 'intExtId', 'intExtName'),
       formatArray(formData.standards, standardsList, 'standardId', 'standardName'),
       formatSingle(formData.status, statusesList, 'statusId', 'statusName'),
-      formatSingle(formData.function, functionsList, 'functionId', 'functionName'),
+      formatArray(formData.function, functionsList, 'functionId', 'functionName'),
       formData.comment || ''
     ];
 
@@ -1007,24 +1034,30 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     });
   }
 
+  if (loading) {
+    return <div className="entry-message">Loading schedule data...</div>;
+  }
+
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>Schedule Entry Tool</h1>
-        <h2 style={{ marginTop: '3px' }}>
-          Welcome {userInfo.name}.{' '}
-          <a
-            href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
-              userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
-            )}&body=${encodeURIComponent(
-              userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
-            )}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Not you?
-          </a>
-        </h2>
+        {userInfo?.name && (
+          <h2 style={{ marginTop: '3px' }}>
+            Welcome {userInfo.name}.{' '}
+            <a
+              href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
+                userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
+              )}&body=${encodeURIComponent(
+                userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Not you?
+            </a>
+          </h2>
+        )}
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
       {errors.root ? <p className='error'>{errors.root.message}</p> :
@@ -1152,15 +1185,19 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               <Controller
                                 name="division"
                                 control={control}
-                                rules={{ required: "Division is required" }}
+                                rules={{
+                                  validate: (value) =>
+                                    Array.isArray(value) && value.length > 0 ? true : "Division is required"
+                                }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
+                                    isMulti
                                     options={divisions}
                                     styles={customStyles}
                                     placeholder="Division"
-                                    value={field.value ? divisions.find(d => d.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                    value={Array.isArray(field.value) ? divisions.filter(d => field.value.includes(d.value)) : []}
+                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
                                 )}
                               />
@@ -1409,15 +1446,19 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               <Controller
                                 name="function"
                                 control={control}
-                                rules={{ required: "Function is required" }}
+                                rules={{
+                                  validate: (value) =>
+                                    Array.isArray(value) && value.length > 0 ? true : "Function is required"
+                                }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
+                                    isMulti
                                     options={functions}
                                     styles={customStyles}
                                     placeholder="Function"
-                                    value={field.value ? functions.find(f => f.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                    value={Array.isArray(field.value) ? functions.filter(f => field.value.includes(f.value)) : []}
+                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
                                 )}
                               />

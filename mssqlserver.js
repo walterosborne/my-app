@@ -357,6 +357,9 @@ const parseMaybeJsonArray = (value) => {
     if (value === null || value === undefined) {
         return [];
     }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return [value];
+    }
     if (typeof value === 'string') {
         const trimmed = value.trim();
         if (!trimmed) {
@@ -364,7 +367,13 @@ const parseMaybeJsonArray = (value) => {
         }
         try {
             const parsed = JSON.parse(trimmed);
-            return Array.isArray(parsed) ? parsed : [];
+            if (Array.isArray(parsed)) {
+                return parsed;
+            }
+            if (parsed === null || parsed === undefined) {
+                return [];
+            }
+            return [parsed];
         } catch (error) {
             return [];
         }
@@ -391,6 +400,16 @@ const normalizeStringArray = (value) => {
         .filter((item) => item.length > 0);
 };
 
+const normalizeAuditArrayForStorage = (value) => {
+    if (Array.isArray(value)) {
+        return JSON.stringify(value);
+    }
+    if (value === null || value === undefined || value === '') {
+        return JSON.stringify([]);
+    }
+    return JSON.stringify([value]);
+};
+
 const parseAuditRow = (row) => {
     const additionalApprovers = normalizeStringArray(row.additionalapprovers);
     return {
@@ -398,14 +417,14 @@ const parseAuditRow = (row) => {
         title: row.title,
         auditTypeId: row.audittypeid,
         intExtId: row.intextid,
-        functionId: row.functionid,
+        functionId: normalizeNumberArray(row.functionid),
         standardIds: normalizeNumberArray(row.standardids),
         statusId: row.statusid,
         stage: row.stage,
         expectedStartDate: row.expectedstartdate,
         expectedCompletionDate: row.expectedcompletiondate,
         startDate: row.startdate,
-        divisionId: row.divisionid,
+        divisionId: normalizeNumberArray(row.divisionid),
         programIds: normalizeNumberArray(row.programids),
         sectorId: row.sectorid,
         siteIds: normalizeNumberArray(row.siteids),
@@ -452,8 +471,13 @@ const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds =
         (audit.leadAuditorId === auditorId || (audit.additionalAuditorIds || []).includes(auditorId))
     );
 
+    const auditDivisionIds = Array.isArray(audit.divisionId)
+        ? audit.divisionId.map(Number)
+        : audit.divisionId != null
+            ? [Number(audit.divisionId)]
+            : [];
     const isAdmin = Boolean(
-        userInfo.admin && userInfo.divisionid && audit.divisionId === userInfo.divisionid
+        userInfo.admin && userInfo.divisionid && auditDivisionIds.includes(Number(userInfo.divisionid))
     );
 
     if (!report) {
@@ -2190,7 +2214,12 @@ const buildStageUpdateQuery = ({ scheduleId, stageValue, targetStage, audit }) =
 
     columns.forEach((column) => {
         const value = audit[column];
-        values.push(Array.isArray(value) ? JSON.stringify(value) : value);
+        const serializedValue = (column === 'functionId' || column === 'divisionId')
+            ? normalizeAuditArrayForStorage(value)
+            : Array.isArray(value)
+                ? JSON.stringify(value)
+                : value;
+        values.push(serializedValue);
         clauses.push(`${column} = $${values.length}`);
     });
 
@@ -2235,7 +2264,12 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
                 if (key === 'scheduleId') continue;
 
                 fields.push(`${key} = $${paramCount}`);
-                values.push(Array.isArray(value) ? JSON.stringify(value) : value);
+                const serializedValue = (key === 'functionId' || key === 'divisionId')
+                    ? normalizeAuditArrayForStorage(value)
+                    : Array.isArray(value)
+                        ? JSON.stringify(value)
+                        : value;
+                values.push(serializedValue);
                 paramCount++;
             }
 
@@ -2295,12 +2329,12 @@ app.post('/api/audits', async (req, res) => {
                     $27, $28, $29, $30, $31, $32, $33, $34
                 ) RETURNING scheduleId`,
                 [
-                    audit.title, audit.auditTypeId, audit.intExtId, audit.functionId,
-                    JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
-                    audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
-                    audit.divisionId, JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
-                    JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,
-                    JSON.stringify(audit.additionalAuditorIds), audit.comment, audit.scope,
+                audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
+                JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
+                audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
+                normalizeAuditArrayForStorage(audit.divisionId), JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
+                JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,
+                JSON.stringify(audit.additionalAuditorIds), audit.comment, audit.scope,
                     audit.safety, audit.clearance,
                     JSON.stringify(audit.safetyEquipmentIds), JSON.stringify(audit.trainingRequirementIds), JSON.stringify(audit.famaIds),
                     JSON.stringify(audit.intervieweeIds), audit.specialConsiderations, audit.overview, audit.evaluator,

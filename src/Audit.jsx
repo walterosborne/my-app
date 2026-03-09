@@ -132,10 +132,22 @@ const Audit = () => {
         }).join(', ');
     };
 
-    // Helper function to get division name from divisionId
+    const normalizeIdArray = (value) => {
+        if (Array.isArray(value)) return value;
+        if (value === null || value === undefined) return [];
+        return [value];
+    };
+
+    // Helper function to get division name(s) from divisionId(s)
     const getDivisionName = (divisionId) => {
-        const division = divisionsList.find(d => d.divisionId === divisionId);
-        return division ? division.divisionName : divisionId;
+        const ids = normalizeIdArray(divisionId);
+        if (ids.length === 0) return '';
+        return ids
+            .map(id => {
+                const division = divisionsList.find(d => d.divisionId === id);
+                return division ? division.divisionName : id;
+            })
+            .join('; ');
     };
 
     // Helper function to get sector name from sectorId
@@ -205,10 +217,16 @@ const Audit = () => {
         return status ? status.statusName : statusId;
     };
 
-    // Helper function to get function name from functionId
+    // Helper function to get function name(s) from functionId(s)
     const getFunctionName = (functionId) => {
-        const func = functionsList.find(f => f.functionId === functionId);
-        return func ? func.functionName : functionId;
+        const ids = normalizeIdArray(functionId);
+        if (ids.length === 0) return '';
+        return ids
+            .map(id => {
+                const func = functionsList.find(f => f.functionId === id);
+                return func ? func.functionName : id;
+            })
+            .join('; ');
     };
 
     // Helper function to get int/ext name from intExtId
@@ -497,6 +515,18 @@ const Audit = () => {
         loadNonconformances();
     }, [auditData?.scheduleId]);
 
+    const hasObjectiveEvidence = React.useMemo(() => {
+        return nonconformances.some((nc) => {
+            if (Array.isArray(nc?.files)) {
+                return nc.files.length > 0;
+            }
+            if (typeof nc?.files === 'string') {
+                return nc.files.trim().length > 0 && nc.files.trim() !== '[]';
+            }
+            return false;
+        });
+    }, [nonconformances]);
+
     React.useEffect(() => {
         async function loadApprovals() {
             if (!auditData?.scheduleId) {
@@ -742,7 +772,7 @@ const Audit = () => {
             auditData.scheduleId || '',
             auditData.title || '',
             formatSingle(auditData.sectorId, sectorsList, 'sectorId', 'sectorName'),
-            formatSingle(auditData.divisionId, divisionsList, 'divisionId', 'divisionName'),
+            formatArray(auditData.divisionId, divisionsList, 'divisionId', 'divisionName'),
             formatArray(auditData.programIds, programsList, 'programId', 'programName'),
             formatSiteArray(auditData.siteIds),
             formatArray(auditData.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
@@ -755,7 +785,7 @@ const Audit = () => {
             formatSingle(auditData.intExtId, intExtList, 'intExtId', 'intExtName'),
             formatArray(auditData.standardIds, standardsList, 'standardId', 'standardName'),
             formatSingle(auditData.statusId, statusesList, 'statusId', 'statusName'),
-            formatSingle(auditData.functionId, functionsList, 'functionId', 'functionName'),
+            formatArray(auditData.functionId, functionsList, 'functionId', 'functionName'),
             auditData.comment || ''
         ];
         addSheet(wb, 'Schedule', scheduleHeaders, [scheduleValues]);
@@ -1793,7 +1823,7 @@ const Audit = () => {
                     </div>
                 )}
 
-                {nonconformances.length > 0 && (
+                {hasObjectiveEvidence && (
                     <button
                         type="button"
                         onClick={handleDownloadObjectiveEvidence}

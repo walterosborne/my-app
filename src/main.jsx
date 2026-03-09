@@ -21,6 +21,7 @@ import AdminMenu from './AdminMenu.jsx'
 import FOE from './FOE.jsx'
 import InfoSupport from './InfoSupport.jsx'
 import AuditStatuses from './AuditStatuses.jsx'
+import AuditReports from './AuditReports.jsx'
 import RequestAuditorAccess from './RequestAuditorAccess.jsx'
 import TableTest from './TableTest.jsx'
 import Headers from './Headers.jsx'
@@ -45,8 +46,9 @@ createRoot(document.getElementById('root')).render(
         <Route path="/" element={<Home />} />
         <Route path="/audit" element={<Audit />} />
         <Route path="/audit/:id" element={<Audit />} />
-        <Route path="/reports" element={<AllReports />} />
-        <Route path="/reports-30-60-90" element={<ThirtySixtyNinety />} />
+        <Route path="/myaudits" element={<AllReports />} />
+        <Route path="/audit-reports" element={<AuditReports />} />
+        <Route path="/reports" element={<ThirtySixtyNinety />} />
         <Route path="/entry" element={<Entry />} />
         <Route path="/approve/:scheduleId" element={<Approval />} />
         <Route path="/email-outbox" element={<EmailOutbox />} />

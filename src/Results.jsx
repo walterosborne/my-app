@@ -39,7 +39,7 @@ import {
 
 function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
-  const [userInfo, setUserInfo] = useState({ name: 'User', myId: null });
+  const [userInfo, setUserInfo] = useState(null);
   const navigate = useNavigate();
 
   // Helper function to get program names from programIds
@@ -50,10 +50,22 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }).join(', ');
   };
 
-  // Helper function to get division name from divisionId
+  const normalizeIdArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+  };
+
+  // Helper function to get division name(s) from divisionId(s)
   const getDivisionName = (divisionId) => {
-    const division = divisionsList.find(d => d.divisionId === divisionId);
-    return division ? division.divisionName : divisionId;
+    const ids = normalizeIdArray(divisionId);
+    if (ids.length === 0) return '';
+    return ids
+      .map(id => {
+        const division = divisionsList.find(d => d.divisionId === id);
+        return division ? division.divisionName : id;
+      })
+      .join('; ');
   };
 
   const getLeadAuditorName = (leadAuditorId) => {
@@ -132,9 +144,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const etqConversionNotifiedRef = useRef(new Set());
 
   const filteredEveryTimeQuestions = useMemo(() => {
-    if (!selectedAudit?.divisionId) return [];
-    const targetDivisionId = Number(selectedAudit.divisionId);
-    return everyTimeQuestionsList.filter((question) => Number(question.divisionId) === targetDivisionId);
+    const targetDivisionIds = normalizeIdArray(selectedAudit?.divisionId)
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id));
+    if (targetDivisionIds.length === 0) return [];
+    return everyTimeQuestionsList.filter((question) => targetDivisionIds.includes(Number(question.divisionId)));
   }, [everyTimeQuestionsList, selectedAudit]);
 
   const standardNameMap = useMemo(() => {
@@ -239,7 +253,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       try {
         const userData = await getCurrentUser();
         if (userData?.name) {
-          setUserInfo(userData);
+        setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
         }
         const [programs, divisions, auditors, standards, standardTexts, props, roster, causes, files] = await Promise.all([
           getPrograms(),
@@ -280,9 +294,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
 
       try {
+        const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
+        const divisionFilter = divisionIds.length === 1 ? divisionIds[0] : null;
         const [ncResponse, everyTimeQuestions] = await Promise.all([
           fetch(`http://localhost:3001/api/nonconformances/${selectedAudit.scheduleId}`),
-          getEveryTimeQuestions(selectedAudit.divisionId)
+          getEveryTimeQuestions(divisionFilter)
         ]);
         const data = await ncResponse.json();
         const etqList = Array.isArray(everyTimeQuestions)
@@ -694,11 +710,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [selectedAudit, propsList]);
 
-  // Division PrOP options - props matching the audit's divisionId
+  // Division PrOP options - props matching the audit's divisionId(s)
   const divisionPrOPOptions = useMemo(() => {
-    if (!selectedAudit?.divisionId) return [];
+    const divisionIds = normalizeIdArray(selectedAudit?.divisionId)
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id));
+    if (divisionIds.length === 0) return [];
     return propsList
-      .filter(prop => prop.propTypeId === 3 && prop.divisionId === selectedAudit.divisionId && prop.active === 1)
+      .filter(prop => prop.propTypeId === 3 && divisionIds.includes(Number(prop.divisionId)) && prop.active === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1084,24 +1103,30 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   })();
   const showNonconformatiesButton = selectedAudit && Number(selectedAudit.stage) >= 3;
 
+  if (loading) {
+    return <div className="entry-message">Loading conduct audit data...</div>;
+  }
+
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>Conduct Audit</h1>
-        <h2 style={{ marginTop: '3px' }}>
-          Welcome {userInfo.name}.{' '}
-          <a
-            href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
-              userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
-            )}&body=${encodeURIComponent(
-              userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
-            )}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Not you?
-          </a>
-        </h2>
+        {userInfo?.name && (
+          <h2 style={{ marginTop: '3px' }}>
+            Welcome {userInfo.name}.{' '}
+            <a
+              href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
+                userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
+              )}&body=${encodeURIComponent(
+                userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Not you?
+            </a>
+          </h2>
+        )}
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}

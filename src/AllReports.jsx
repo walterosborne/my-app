@@ -81,7 +81,7 @@ const AllReports = () => {
 
   const [titleFilter, setTitleFilter] = useState('');
   const [sectorFilter, setSectorFilter] = useState(null);
-  const [divisionFilter, setDivisionFilter] = useState(null);
+  const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
   const [siteFilter, setSiteFilter] = useState([]);
   const [businessUnitFilter, setBusinessUnitFilter] = useState([]);
@@ -90,7 +90,7 @@ const AllReports = () => {
   const [leadAuditorFilter, setLeadAuditorFilter] = useState(null);
   const [additionalAuditorsFilter, setAdditionalAuditorsFilter] = useState([]);
   const [statusFilter, setStatusFilter] = useState(null);
-  const [functionFilter, setFunctionFilter] = useState(null);
+  const [functionFilter, setFunctionFilter] = useState([]);
   const [intExtFilter, setIntExtFilter] = useState(null);
   const [standardsFilter, setStandardsFilter] = useState([]);
   const [expectedStartFrom, setExpectedStartFrom] = useState('');
@@ -192,6 +192,12 @@ const AllReports = () => {
     }).join(', ');
   };
 
+  const normalizeIdArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+  };
+
   const formatSiteArray = (ids) => {
     if (!ids || ids.length === 0) return '';
     return ids.map((id) => {
@@ -247,10 +253,18 @@ const AllReports = () => {
         return false;
       }
       if (sectorFilter && audit.sectorId !== sectorFilter.value) return false;
-      if (divisionFilter && audit.divisionId !== divisionFilter.value) return false;
+      if (divisionFilter.length > 0) {
+        const auditDivisionIds = normalizeIdArray(audit.divisionId).map((id) => Number(id));
+        const matchesDivision = divisionFilter.some((option) => auditDivisionIds.includes(Number(option.value)));
+        if (!matchesDivision) return false;
+      }
       if (auditTypeFilter && audit.auditTypeId !== auditTypeFilter.value) return false;
       if (statusFilter && audit.statusId !== statusFilter.value) return false;
-      if (functionFilter && audit.functionId !== functionFilter.value) return false;
+      if (functionFilter.length > 0) {
+        const auditFunctionIds = normalizeIdArray(audit.functionId).map((id) => Number(id));
+        const matchesFunction = functionFilter.some((option) => auditFunctionIds.includes(Number(option.value)));
+        if (!matchesFunction) return false;
+      }
       if (intExtFilter && audit.intExtId !== intExtFilter.value) return false;
       if (leadAuditorFilter && audit.leadAuditorId !== leadAuditorFilter.value) return false;
 
@@ -311,12 +325,14 @@ const AllReports = () => {
     id: audit.scheduleId,
     scheduleId: audit.scheduleId,
     title: audit.title,
-    division: formatSingle(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+    division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
     status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
     expectedStartDate: audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
-    expectedCompletionDate: audit.expectedCompletionDate ? audit.expectedCompletionDate.split('T')[0] : ''
+    expectedCompletionDate: audit.expectedCompletionDate ? audit.expectedCompletionDate.split('T')[0] : '',
+    submittedDate: audit.submittedAt ? audit.submittedAt.split('T')[0] : '',
+    approvalDate: audit.approvedAt ? audit.approvedAt.split('T')[0] : ''
   }));
 
   const columns = [
@@ -327,7 +343,9 @@ const AllReports = () => {
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
     { field: 'status', headerName: 'Status', width: 140 },
     { field: 'expectedStartDate', headerName: 'Expected Start', width: 140 },
-    { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 }
+    { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 },
+    { field: 'submittedDate', headerName: 'Submitted Date', width: 150 },
+    { field: 'approvalDate', headerName: 'Approval Date', width: 150 }
   ];
 
   const getPreviousCarsEffectiveLabel = (value) => {
@@ -415,13 +433,14 @@ const AllReports = () => {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Status', 'Function', 'Comment'
+      'Status', 'Function', 'Comment',
+      'Submission Date', 'Approval Date'
     ];
     const scheduleRows = exportAudits.map((audit) => ([
       audit.scheduleId || '',
       audit.title || '',
       formatSingle(audit.sectorId, sectorsList, 'sectorId', 'sectorName'),
-      formatSingle(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+      formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
       formatArray(audit.programIds, programsList, 'programId', 'programName'),
       formatSiteArray(audit.siteIds),
       formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
@@ -434,8 +453,10 @@ const AllReports = () => {
       formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
       formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
-      formatSingle(audit.functionId, functionsList, 'functionId', 'functionName'),
-      audit.comment || ''
+      formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
+      audit.comment || '',
+      audit.submittedAt ? audit.submittedAt.split('T')[0] : '',
+      audit.approvedAt ? audit.approvedAt.split('T')[0] : ''
     ]));
     addSheet(wb, 'Schedule', scheduleHeaders, scheduleRows);
 
@@ -721,13 +742,13 @@ const AllReports = () => {
             <div className="filter-field">
               <label>Division</label>
               <Select
-                isClearable
+                isMulti
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={divisionOptions}
                 styles={customStyles}
                 value={divisionFilter}
-                onChange={setDivisionFilter}
+                onChange={(value) => setDivisionFilter(value || [])}
               />
             </div>
 
@@ -786,13 +807,13 @@ const AllReports = () => {
             <div className="filter-field">
               <label>Function</label>
               <Select
-                isClearable
+                isMulti
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={functionOptions}
                 styles={customStyles}
                 value={functionFilter}
-                onChange={setFunctionFilter}
+                onChange={(value) => setFunctionFilter(value || [])}
               />
             </div>
 

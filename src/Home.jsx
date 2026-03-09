@@ -8,7 +8,7 @@ const Home = () => {
     const navigate = useNavigate();
     const [upcomingAudits, setUpcomingAudits] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
-    const [currentUser, setCurrentUser] = React.useState({ name: 'User', myId: null });
+    const [currentUser, setCurrentUser] = React.useState(null);
     const leftBubbleRef = React.useRef(null);
     const rightBubbleRef = React.useRef(null);
 
@@ -21,7 +21,7 @@ const Home = () => {
                     getAuditors(),
                     getCurrentUser()
                 ]);
-                setCurrentUser(userData?.name ? userData : { name: 'User', myId: null });
+                setCurrentUser(userData?.name && userData.name !== 'User' ? userData : null);
 
                 // Calculate date range for 30-day lookahead
                 const now = new Date();
@@ -87,7 +87,9 @@ const Home = () => {
             <div className="home-content" ref={leftBubbleRef}>
                 <div className="home-header">
                     <h1 className="home-title">Northrop Grumman Audit Tool (NGAT)</h1>
-                    <p className="welcome-text">Welcome {currentUser.name}!</p>
+                    {currentUser?.name && (
+                        <p className="welcome-text">Welcome {currentUser.name}!</p>
+                    )}
                 </div>
 
                 <div className="main-section">

@@ -75,7 +75,13 @@ const Entry = () => {
     };
 
     if (loading) {
-        return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>;
+        return (
+            <div className="entry-page">
+                <div className="entry-container">
+                    <div className="entry-message">Loading audits...</div>
+                </div>
+            </div>
+        );
     }
 
     const isRosterNonAuditor = currentUser?.myId && !currentUser?.auditorId;

@@ -23,8 +23,8 @@ const Navbar = () => {
         ],
         'Audit Reports': [
             { label: 'Individual Audit Reports', path: '/audit' },
-            { label: 'Multi-Audit Report', path: '/reports' },
-            { label: '30/60/90', path: '/reports-30-60-90' }
+            { label: 'All My Audits', path: '/myaudits' },
+            { label: 'Audit Reports', path: '/audit-reports' }
         ],
         'FOE': [
             { label: 'Metrics', path: 'https://www.yahoo.com', external: true },

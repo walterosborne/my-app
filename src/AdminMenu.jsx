@@ -2647,12 +2647,14 @@ const AdminMenu = () => {
                     <div>
                         <p className="admin-subtitle">Tools · Admin menu</p>
                         <h1>Admin Menu</h1>
-                        <p className="admin-welcome">
-                            Welcome {currentUser.name}.{' '}
-                            <a href={mailto} target="_blank" rel="noreferrer">
-                                Not you?
-                            </a>
-                        </p>
+                        {currentUser?.name && currentUser.name !== 'User' && (
+                            <p className="admin-welcome">
+                                Welcome {currentUser.name}.{' '}
+                                <a href={mailto} target="_blank" rel="noreferrer">
+                                    Not you?
+                                </a>
+                            </p>
+                        )}
                     </div>
                 </header>
                 <div className="admin-action-bar">

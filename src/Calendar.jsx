@@ -139,7 +139,15 @@ const Calendar = () => {
             map[key].push({
                 ...audit,
                 leadName: auditorMap[audit.leadAuditorId] || 'No lead assigned',
-                divisionName: divisionMap[audit.divisionId] || 'Unassigned',
+                divisionName: (() => {
+                    const ids = Array.isArray(audit.divisionId)
+                        ? audit.divisionId
+                        : audit.divisionId != null
+                            ? [audit.divisionId]
+                            : [];
+                    const names = ids.map((id) => divisionMap[id]).filter(Boolean);
+                    return names.length > 0 ? names.join('; ') : 'Unassigned';
+                })(),
                 siteNames: siteIds.map((id) => siteMap[id]).filter(Boolean),
                 additionalAuditorNames: additionalIds.map((id) => auditorMap[id]).filter(Boolean)
             });

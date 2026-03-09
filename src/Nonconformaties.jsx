@@ -31,7 +31,7 @@ import {
 
 function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
-  const [userInfo, setUserInfo] = useState({ name: 'User', myId: null });
+  const [userInfo, setUserInfo] = useState(null);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -55,9 +55,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     async function loadLookupData() {
       try {
         const userData = await getCurrentUser();
-        if (userData?.name) {
-          setUserInfo(userData);
-        }
+        setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
         const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster] = await Promise.all([
           getPrograms(),
           getDivisions(),
@@ -106,10 +104,22 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     }).join(', ');
   };
 
-  // Helper function to get division name from divisionId
+  const normalizeIdArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+  };
+
+  // Helper function to get division name(s) from divisionId(s)
   const getDivisionName = (divisionId) => {
-    const division = divisionsList.find(d => d.divisionId === divisionId);
-    return division ? division.divisionName : divisionId;
+    const ids = normalizeIdArray(divisionId);
+    if (ids.length === 0) return '';
+    return ids
+      .map(id => {
+        const division = divisionsList.find(d => d.divisionId === id);
+        return division ? division.divisionName : id;
+      })
+      .join('; ');
   };
 
   // Helper function to get sector name from sectorId
@@ -179,10 +189,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return status ? status.statusName : statusId;
   };
 
-  // Helper function to get function name from functionId
+  // Helper function to get function name(s) from functionId(s)
   const getFunctionName = (functionId) => {
-    const func = functionsList.find(f => f.functionId === functionId);
-    return func ? func.functionName : functionId;
+    const ids = normalizeIdArray(functionId);
+    if (ids.length === 0) return '';
+    return ids
+      .map(id => {
+        const func = functionsList.find(f => f.functionId === id);
+        return func ? func.functionName : id;
+      })
+      .join('; ');
   };
 
   // Helper function to get int/ext name from intExtId
@@ -692,24 +708,30 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return null;
   })();
 
+  if (loading) {
+    return <div className="entry-message">Loading nonconformaties data...</div>;
+  }
+
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>Enter Nonconformaties</h1>
-        <h2 style={{ marginTop: '3px' }}>
-          Welcome {userInfo.name}.{' '}
-          <a
-            href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
-              userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
-            )}&body=${encodeURIComponent(
-              userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
-            )}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Not you?
-          </a>
-        </h2>
+        {userInfo?.name && (
+          <h2 style={{ marginTop: '3px' }}>
+            Welcome {userInfo.name}.{' '}
+            <a
+              href={`mailto:walter.osborne@ngc.com?subject=${encodeURIComponent(
+                userInfo.myId ? `NGAT user verification (${userInfo.myId})` : 'NGAT user verification'
+              )}&body=${encodeURIComponent(
+                userInfo.myId ? `Hi Walter, NGAT is registering me with the MyID  ${userInfo.myId}, which is incorrect.` : 'Hi Walter, NGAT is not registering my MyID correctly.'
+              )}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Not you?
+            </a>
+          </h2>
+        )}
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
@@ -965,7 +987,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                             <div className='section' key={nc.NCID}>
                               <div className='sectionrow'>
                                 <div className="fieldboxwhole">
-                                  <h3></h3> <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                                  <div style={{ margin: '0 0 10px 0' }}>
+                                    <ReactMarkdown>{nc.Question || ''}</ReactMarkdown>
+                                  </div>
                                 </div>
                               </div>
                               <div className='sectionrow'>

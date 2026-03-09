@@ -49,6 +49,7 @@ const Metrics = () => {
   const [programsList, setProgramsList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('All');
   const [colorBy, setColorBy] = useState('division');
   const [timelineGranularity, setTimelineGranularity] = useState('Monthly');
@@ -71,10 +72,10 @@ const Metrics = () => {
     dateFrom: '',
     dateTo: '',
     auditorId: null,
-    divisionId: null,
+    divisionIds: [],
     siteId: null,
     programId: null,
-    functionId: null
+    functionIds: []
   });
 
   useEffect(() => {
@@ -122,12 +123,20 @@ const Metrics = () => {
         setProgramsList(programsData);
         setFunctionsList(functionsData);
         setNonconformances(nonconformancesData);
+        setLoading(false);
       } catch (error) {
         console.error('Error loading metrics data:', error);
+        setLoading(false);
       }
     }
     loadData();
   }, []);
+
+  const normalizeIdArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value === null || value === undefined) return [];
+    return [value];
+  };
 
   const getSiteLabel = (site) => {
     if (!site) return '';
@@ -300,8 +309,12 @@ const Metrics = () => {
         }
       }
 
-      if (filters.divisionId && Number(audit.divisionId) !== Number(filters.divisionId)) {
-        return false;
+      if (filters.divisionIds.length > 0) {
+        const auditDivisionIds = normalizeIdArray(audit.divisionId).map((id) => Number(id));
+        const matchesDivision = filters.divisionIds.some((id) => auditDivisionIds.includes(Number(id)));
+        if (!matchesDivision) {
+          return false;
+        }
       }
 
       if (filters.siteId) {
@@ -318,8 +331,12 @@ const Metrics = () => {
         }
       }
 
-      if (filters.functionId && Number(audit.functionId) !== Number(filters.functionId)) {
-        return false;
+      if (filters.functionIds.length > 0) {
+        const auditFunctionIds = normalizeIdArray(audit.functionId).map((id) => Number(id));
+        const matchesFunction = filters.functionIds.some((id) => auditFunctionIds.includes(Number(id)));
+        if (!matchesFunction) {
+          return false;
+        }
       }
 
       if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && Number(audit.stage) !== -1) {
@@ -392,8 +409,10 @@ const Metrics = () => {
           return ids.map((id) => resolveLabel(id, operatingUnitsList, 'operatingUnitId', 'operatingUnitName')).filter(Boolean);
         }
         case 'division': {
-          const label = resolveLabel(audit.divisionId, divisionsList, 'divisionId', 'divisionName');
-          return label ? [label] : [];
+          const ids = normalizeIdArray(audit.divisionId);
+          return ids
+            .map((id) => resolveLabel(id, divisionsList, 'divisionId', 'divisionName'))
+            .filter(Boolean);
         }
         case 'sector': {
           const label = resolveLabel(audit.sectorId, sectorsList, 'sectorId', 'sectorName');
@@ -411,8 +430,10 @@ const Metrics = () => {
           }).filter(Boolean);
         }
         case 'function': {
-          const label = resolveLabel(audit.functionId, functionsList, 'functionId', 'functionName');
-          return label ? [label] : [];
+          const ids = normalizeIdArray(audit.functionId);
+          return ids
+            .map((id) => resolveLabel(id, functionsList, 'functionId', 'functionName'))
+            .filter(Boolean);
         }
         default:
           return [];
@@ -655,7 +676,11 @@ const Metrics = () => {
     });
 
     const functionLabels = Array.from(
-      new Set(auditsForFindings.map((audit) => Number(audit.functionId)))
+      new Set(
+        auditsForFindings.flatMap((audit) =>
+          normalizeIdArray(audit.functionId).map((id) => Number(id))
+        )
+      )
     )
       .filter((id) => Number.isFinite(id))
       .map((id) => ({ id, label: functionLookup.get(id) || `Function ${id}` }))
@@ -676,32 +701,37 @@ const Metrics = () => {
     nonconformances.forEach((nc) => {
       const audit = auditBySchedule.get(Number(nc.scheduleId ?? nc.scheduleid));
       if (!audit) return;
-      const functionId = Number(audit.functionId);
-      if (!functionSet.has(functionId)) {
+      const functionIds = normalizeIdArray(audit.functionId)
+        .map((id) => Number(id))
+        .filter((id) => functionSet.has(id));
+      if (functionIds.length === 0) {
         return;
       }
-      const functionLabel = functionLookup.get(functionId) || `Function ${functionId}`;
-      if (!countsByFunction[functionLabel]) {
-        countsByFunction[functionLabel] = {
-          Conformities: 0,
-          Observations: 0,
-          OFIs: 0
-        };
-      }
 
-      const findingType = Number(nc.findingType);
-      if (findingType === 1) {
-        const severityName = severityLookup.get(Number(nc.severity)) || 'Unspecified';
-        const label = `NC ${severityName}`;
-        severityLabels.add(label);
-        countsByFunction[functionLabel][label] = (countsByFunction[functionLabel][label] || 0) + 1;
-      } else if (findingType === 2) {
-        countsByFunction[functionLabel].Conformities += 1;
-      } else if (findingType === 3) {
-        countsByFunction[functionLabel].OFIs += 1;
-      } else if (findingType === 4) {
-        countsByFunction[functionLabel].Observations += 1;
-      }
+      functionIds.forEach((functionId) => {
+        const functionLabel = functionLookup.get(functionId) || `Function ${functionId}`;
+        if (!countsByFunction[functionLabel]) {
+          countsByFunction[functionLabel] = {
+            Conformities: 0,
+            Observations: 0,
+            OFIs: 0
+          };
+        }
+
+        const findingType = Number(nc.findingType);
+        if (findingType === 1) {
+          const severityName = severityLookup.get(Number(nc.severity)) || 'Unspecified';
+          const label = `NC ${severityName}`;
+          severityLabels.add(label);
+          countsByFunction[functionLabel][label] = (countsByFunction[functionLabel][label] || 0) + 1;
+        } else if (findingType === 2) {
+          countsByFunction[functionLabel].Conformities += 1;
+        } else if (findingType === 3) {
+          countsByFunction[functionLabel].OFIs += 1;
+        } else if (findingType === 4) {
+          countsByFunction[functionLabel].Observations += 1;
+        }
+      });
     });
 
     const severityList = Array.from(severityLabels).sort((a, b) => a.localeCompare(b));
@@ -1236,6 +1266,16 @@ const Metrics = () => {
     }));
   };
 
+  if (loading) {
+    return (
+      <div className="entry-page">
+        <div className="entry-container">
+          <div className="entry-message">Loading metrics...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="entry-page">
       <div className="entry-container">
@@ -1310,23 +1350,29 @@ const Metrics = () => {
             <div className="metrics-filter">
               <label>Division</label>
               <Select
-                isClearable
+                isMulti
                 options={divisionOptions}
                 styles={customStyles}
                 placeholder="Select Division"
-                value={filters.divisionId ? divisionOptions.find((option) => option.value === filters.divisionId) : null}
-                onChange={handleFilterChange('divisionId')}
+                value={divisionOptions.filter((option) => filters.divisionIds.includes(option.value))}
+                onChange={(selected) => setFilters((prev) => ({
+                  ...prev,
+                  divisionIds: selected ? selected.map((option) => option.value) : []
+                }))}
               />
             </div>
             <div className="metrics-filter">
               <label>Function</label>
               <Select
-                isClearable
+                isMulti
                 options={functionOptions}
                 styles={customStyles}
                 placeholder="Select Function"
-                value={filters.functionId ? functionOptions.find((option) => option.value === filters.functionId) : null}
-                onChange={handleFilterChange('functionId')}
+                value={functionOptions.filter((option) => filters.functionIds.includes(option.value))}
+                onChange={(selected) => setFilters((prev) => ({
+                  ...prev,
+                  functionIds: selected ? selected.map((option) => option.value) : []
+                }))}
               />
             </div>
             <div className="metrics-filter">
