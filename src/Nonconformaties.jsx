@@ -1,4 +1,4 @@
-import { React, useEffect, useMemo, useState } from 'react'
+import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
 import { Box, Typography } from '@mui/material';
@@ -32,6 +32,7 @@ import {
 function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   const [userInfo, setUserInfo] = useState(null);
+  const readOnlyToastRef = useRef(null);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -227,6 +228,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   };
 
   const [selectedAudit, setSelectedAudit] = useState(null);
+  const isViewOnly = Boolean(selectedAudit?.scheduleId && selectedAudit?.canEdit === false);
+  const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
@@ -246,11 +249,19 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   };
   const [schedule, setSchedule] = useState(null);
   const [locked, setLocked] = useState(false);
-  const [newCARs, setNewCARs] = useState([]);
-  const [carCounter, setCarCounter] = useState(0);
   const [loadedAuditData, setLoadedAuditData] = useState(null);
   const [loadedCARs, setLoadedCARs] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
+
+  useEffect(() => {
+    if (!isViewOnly || !selectedAudit?.scheduleId) {
+      readOnlyToastRef.current = null;
+      return;
+    }
+    if (readOnlyToastRef.current === selectedAudit.scheduleId) return;
+    toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
+    readOnlyToastRef.current = selectedAudit.scheduleId;
+  }, [isViewOnly, selectedAudit]);
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
@@ -372,15 +383,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   }, [severitiesList]);
 
   // Generate options from API data
-  const reviewerOptions = useMemo(() => {
-    return [...rosterList]
-      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
-      .map(person => ({
-        value: person.myId,
-        label: person.rosterName
-      }));
-  }, [rosterList]);
-
   const approverOptions = useMemo(() => {
     return [...rosterList]
       .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
@@ -408,24 +410,12 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       }));
   }, [rosterList]);
 
-  function addCAR() {
-    const newCarId = carCounter;
-    setNewCARs([...newCARs, newCarId]);
-    setCarCounter(carCounter + 1);
-  }
-
-  function deleteCAR(carId) {
-    setNewCARs(newCARs.filter(id => id !== carId));
-  }
-
   useEffect(() => {
     async function loadAuditData() {
       if (schedule?.scheduleId) {
         try {
           // First reset the form to clear all previous data
           reset();
-          setNewCARs([]);
-          setCarCounter(0);
 
           // Fetch audit data
           const auditResponse = await fetch(`http://localhost:3001/api/audits/${schedule.scheduleId}`);
@@ -446,16 +436,12 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           ncData.forEach(nc => {
             if (nc.details) setValue(`ncDetails${nc.ncId}`, nc.details);
             if (nc.severity) setValue(`ncSeverity${nc.ncId}`, nc.severity);
-            if (nc.ncDetails) setValue(`ncNCDetails${nc.ncId}`, nc.ncDetails);
             if (nc.AIN) setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN);
           });
 
           // Populate form with saved data
           if (auditData.auditorstime !== null && auditData.auditorstime !== undefined) {
             setValue('auditorsTime', auditData.auditorstime);
-          }
-          if (auditData.previouscarseffective !== null && auditData.previouscarseffective !== undefined) {
-            setValue('carEffective', String(auditData.previouscarseffective));
           }
           if (auditData.approver !== null && auditData.approver !== undefined) {
             setValue('approver', auditData.approver);
@@ -474,23 +460,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
           // Populate CARs
           if (carsData && carsData.length > 0) {
-            const carIds = [];
             carsData.forEach((car, idx) => {
-              const carId = idx;
-              carIds.push(carId);
-              setValue(`car${carId}`, car.car);
-              setValue(`carReviewer${carId}`, car.reviewer);
+              const carId = car.carid ?? idx;
+              setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
             });
-            setNewCARs(carIds);
-            setCarCounter(carsData.length);
           }
         } catch (error) {
           console.error('Error loading audit data:', error);
         }
       } else {
         reset();
-        setNewCARs([]);
-        setCarCounter(0);
         setLoadedAuditData(null);
         setLoadedCARs([]);
         setNonconformances([]);
@@ -500,6 +479,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   }, [schedule, setValue, reset]);
 
   async function onSubmit(data, lockedValue = false) {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
       if (!selectedAudit?.scheduleId) {
         throw new Error('No audit selected');
@@ -509,7 +492,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       const auditUpdate = {
         scheduleId: selectedAudit.scheduleId,
         auditorsTime: data.auditorsTime ? parseInt(data.auditorsTime) : null,
-        previousCarsEffective: data.carEffective ? parseInt(data.carEffective) : null,
         approver: data.approver || null,
         leadAuditor: data.leadAuditor || null,
         additionalApprovers: data.additionalApprovers || [],
@@ -518,18 +500,24 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       };
 
       // Prepare CARs data
-      const carsData = newCARs.map(carId => ({
+      const carsData = loadedCARs.map((car, index) => {
+        const carId = car.carid ?? index;
+        return ({
         scheduleId: selectedAudit.scheduleId,
-        car: data[`car${carId}`] || '',
-        reviewer: data[`carReviewer${carId}`] || null
-      })).filter(car => car.car); // Only include CARs with actual data
+        carId: car.carid ?? null,
+        car: car.car || '',
+        reviewer: car.reviewer || null,
+        effective: data[`carEffective${carId}`] !== '' && data[`carEffective${carId}`] != null
+          ? parseInt(data[`carEffective${carId}`], 10)
+          : null
+      });
+      }).filter(car => car.car); // Only include CARs with actual data
 
       // Prepare nonconformance updates
       const ncUpdates = nonconformances.map(nc => ({
         ncId: nc.ncId,
         details: data[`ncDetails${nc.ncId}`] || '',
         severity: data[`ncSeverity${nc.ncId}`] || null,
-        ncDetails: data[`ncNCDetails${nc.ncId}`] || '',
         actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
       }));
 
@@ -578,6 +566,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         const carsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`);
         const carsDataReloaded = await carsResponse.json();
         setLoadedCARs(carsDataReloaded);
+        carsDataReloaded.forEach((car, idx) => {
+          const carId = car.carid ?? idx;
+          setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
+        });
       } else {
         throw new Error(result.error || 'Failed to save data');
       }
@@ -596,6 +588,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   };
 
   async function unlockAudit() {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
       if (!schedule?.scheduleId) {
         throw new Error('No audit selected');
@@ -636,12 +632,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setValue('auditorsTime', '');
       }
 
-      if (loadedAuditData.previouscarseffective !== null && loadedAuditData.previouscarseffective !== undefined) {
-        setValue('carEffective', String(loadedAuditData.previouscarseffective));
-      } else {
-        setValue('carEffective', '');
-      }
-
       if (loadedAuditData.approver !== null && loadedAuditData.approver !== undefined) {
         setValue('approver', loadedAuditData.approver);
       } else {
@@ -665,25 +655,18 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
       // Restore CARs
       if (loadedCARs && loadedCARs.length > 0) {
-        const carIds = [];
         loadedCARs.forEach((car, idx) => {
-          const carId = idx;
-          carIds.push(carId);
-          setValue(`car${carId}`, car.car);
-          setValue(`carReviewer${carId}`, car.reviewer);
+          const carId = car.carid ?? idx;
+          setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
         });
-        setNewCARs(carIds);
-        setCarCounter(loadedCARs.length);
       } else {
-        setNewCARs([]);
-        setCarCounter(0);
+        setLoadedCARs([]);
       }
 
       // Restore nonconformance fields
       nonconformances.forEach(nc => {
         setValue(`ncDetails${nc.ncId}`, nc.details || '');
         setValue(`ncSeverity${nc.ncId}`, nc.severity || null);
-        setValue(`ncNCDetails${nc.ncId}`, nc.ncDetails || '');
         setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN || '');
       });
     } else {
@@ -762,8 +745,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                   if (selectionModel.ids.size > 0) {
                     const scheduleID = Array.from(selectionModel.ids)[0];
                     const selectedSchedule = schedules.find(s => s.scheduleId === scheduleID);
+                    const originalAudit = entryAudits.find(a => a.scheduleId === scheduleID);
                     setSchedule(selectedSchedule);
-                    setSelectedAudit(selectedSchedule);
+                    setSelectedAudit(originalAudit || selectedSchedule);
                   } else {
                     //No row selected, clearing schedule
                     setSchedule(null);
@@ -785,23 +769,25 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                   <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
                     Audit {loadedAuditData.scheduleid} has been submitted for final approval and cannot be edited.
                   </h2>
-                  <button
-                    type="button"
-                    onClick={unlockAudit}
-                    style={{
-                      backgroundColor: '#f44336',
-                      color: 'white',
-                      border: 'none',
-                      padding: '12px 24px',
-                      fontSize: '16px',
-                      cursor: 'pointer',
-                      borderRadius: '4px',
-                      fontWeight: 'bold',
-                      marginBottom: '10px'
-                    }}
-                  >
-                    Undo Submission
-                  </button>
+                  {!isViewOnly && (
+                    <button
+                      type="button"
+                      onClick={unlockAudit}
+                      style={{
+                        backgroundColor: '#f44336',
+                        color: 'white',
+                        border: 'none',
+                        padding: '12px 24px',
+                        fontSize: '16px',
+                        cursor: 'pointer',
+                        borderRadius: '4px',
+                        fontWeight: 'bold',
+                        marginBottom: '10px'
+                      }}
+                    >
+                      Undo Submission
+                    </button>
+                  )}
                   <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
                     Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
                   </p>
@@ -818,6 +804,12 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               ) : schedule ? (
                 <>
                   <h2 style={{ marginTop: '5px' }}>Currently Entering Nonconformaties for Schedule: {schedule.scheduleId}</h2>
+                  {isViewOnly && (
+                    <p style={{ marginTop: '6px', color: '#666' }}>
+                      You are not assigned as an auditor on this audit. Fields are view-only.
+                    </p>
+                  )}
+                  <div style={readOnlyStyle}>
                   <div className='section'>
                     <label className='sectiontitle'>Overview</label>
                     <div className='sectionrow'>
@@ -870,7 +862,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                             </div>
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Severity</label>
                               <Controller
                                 name={`ncSeverity${nc.NCID}`}
@@ -887,16 +879,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 )}
                               />
                             </div>
-                            <div className="fieldboxthird">
-                              <label>NC Details</label>
-                              <input
-                                type="text"
-                                {...register(`ncNCDetails${nc.NCID}`)}
-                                id={`ncNCDetails${nc.NCID}`}
-                                className='textfield'
-                              />
-                            </div>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Action Item Number</label>
                               <input
                                 type="text"
@@ -934,7 +917,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                             </div>
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Severity</label>
                               <Controller
                                 name={`ncSeverity${nc.NCID}`}
@@ -951,16 +934,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 )}
                               />
                             </div>
-                            <div className="fieldboxthird">
-                              <label>NC Details</label>
-                              <input
-                                type="text"
-                                {...register(`ncNCDetails${nc.NCID}`)}
-                                id={`ncNCDetails${nc.NCID}`}
-                                className='textfield'
-                              />
-                            </div>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Action Item Number</label>
                               <input
                                 type="text"
@@ -1004,7 +978,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 </div>
                               </div>
                               <div className='sectionrow'>
-                                <div className="fieldboxthird">
+                                <div className="fieldboxhalf">
                                   <label>Severity</label>
                                   <Controller
                                     name={`ncSeverity${nc.NCID}`}
@@ -1021,16 +995,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                     )}
                                   />
                                 </div>
-                                <div className="fieldboxthird">
-                                  <label>NC Details</label>
-                                  <input
-                                    type="text"
-                                    {...register(`ncNCDetails${nc.NCID}`)}
-                                    id={`ncNCDetails${nc.NCID}`}
-                                    className='textfield'
-                                  />
-                                </div>
-                                <div className="fieldboxthird">
+                                <div className="fieldboxhalf">
                                   <label>Action Item Number</label>
                                   <input
                                     type="text"
@@ -1050,74 +1015,69 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                   <div className='section'>
                     <label className='sectiontitle'>CARs</label>
                     <label>Previous CARs</label>
-                    <div className='sectionrow' style={{ flexDirection: 'column' }}>
-                      <button type='button' onClick={addCAR} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black' }}>Add New</button>
-                    </div>
-                    {newCARs.map((carId, index) => (
-                      <div className='sectionrow' key={carId} style={{ border: '1px solid #ccc', borderRadius: '8px', marginBottom: '10px', padding: '10px', boxSizing: 'border-box' }}>
-                        <div className="fieldboxthird">
-                          <label>CAR {index + 1}</label>
-                          <input
-                            type="text"
-                            {...register(`car${carId}`)}
-                            id={`car${carId}`}
-                            className='textfield'
-                          />
+                    {loadedCARs.length === 0 ? (
+                      <div className='sectionrow'>
+                        <div className="fieldboxwhole">
+                          <p style={{ margin: 0, color: '#666' }}>No previous CARs were entered during planning.</p>
                         </div>
-                        <div className="fieldboxthird">
-                          <label>Reviewer</label>
-                          <Controller
-                            name={`carReviewer${carId}`}
-                            control={control}
-                            render={({ field }) => (
-                              <Select
-                                isClearable
-                                options={reviewerOptions}
-                                styles={customStyles}
-                                placeholder="Reviewer"
-                                value={reviewerOptions.find(r => r.value === field.value) || null}
-                                onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                      </div>
+                    ) : (
+                      loadedCARs.map((car, index) => {
+                        const carId = car.carid ?? index;
+                        return (
+                          <div className='sectionrow' key={car.carid ?? `car-${index}`} style={{ border: '1px solid #ccc', borderRadius: '8px', marginBottom: '10px', padding: '10px', boxSizing: 'border-box' }}>
+                            <div className="fieldboxthird">
+                              <label>CAR {index + 1}</label>
+                              <input
+                                type="text"
+                                value={car.car || ''}
+                                className='textfield'
+                                disabled
                               />
-                            )}
-                          />
-                        </div>
-                        <div className="fieldboxthird">
-                          <button type='button' onClick={() => deleteCAR(carId)} className='button' style={{ backgroundColor: 'red', marginTop: '20px', width: 'auto', padding: '8px 16px' }}>
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    <div className='sectionrow'>
-                      <div className="fieldboxwhole">
-                        <label>Was previous CAR(s) deemed effective?</label>
-                        <Controller
-                          name="carEffective"
-                          control={control}
-                          render={({ field }) => (
-                            <ToggleButtonGroup
-                              {...field}
-                              exclusive
-                              onChange={(event, newValue) => {
-                                if (newValue !== null) {
-                                  field.onChange(newValue);
-                                }
-                              }}
-                            >
-                              <ToggleButton value="0" sx={{ textTransform: 'none' }}>
-                                Yes
-                              </ToggleButton>
-                              <ToggleButton value="1" sx={{ textTransform: 'none' }}>
-                                No
-                              </ToggleButton>
-                              <ToggleButton value="2" sx={{ textTransform: 'none' }}>
-                                Unknown
-                              </ToggleButton>
-                            </ToggleButtonGroup>
-                          )}
-                        />
-                      </div>
-                    </div>
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>Reviewer</label>
+                              <input
+                                type="text"
+                                value={car.reviewer ? (rosterList.find((person) => person.myId === car.reviewer)?.rosterName || car.reviewer) : ''}
+                                className='textfield'
+                                disabled
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>Was this CAR deemed effective?<label style={{ color: 'red' }}>*</label></label>
+                              <Controller
+                                name={`carEffective${carId}`}
+                                control={control}
+                                rules={{ required: 'CAR effectiveness is required' }}
+                                render={({ field }) => (
+                                  <ToggleButtonGroup
+                                    value={field.value ?? ''}
+                                    exclusive
+                                    onChange={(event, newValue) => {
+                                      if (newValue !== null) {
+                                        field.onChange(newValue);
+                                      }
+                                    }}
+                                  >
+                                    <ToggleButton value="0" sx={{ textTransform: 'none' }}>
+                                      Yes
+                                    </ToggleButton>
+                                    <ToggleButton value="1" sx={{ textTransform: 'none' }}>
+                                      No
+                                    </ToggleButton>
+                                    <ToggleButton value="2" sx={{ textTransform: 'none' }}>
+                                      Unknown
+                                    </ToggleButton>
+                                  </ToggleButtonGroup>
+                                )}
+                              />
+                              {errors[`carEffective${carId}`] && <p className='fielderror'>{errors[`carEffective${carId}`].message}</p>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
 
                   <div className='section'>
@@ -1186,15 +1146,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                     width: '100%', display: 'flex', justifyContent: 'space-between', boxSizing: 'border-box',
                     padding: '2px', marginTop: '10px'
                   }}>
-                    <button type="button" disabled={isSubmitting} onClick={handleSubmit((data) => onSubmit(data, true))} className='button' style={{ backgroundColor: 'green', width: '32%' }}>
+                    <button type="button" disabled={isSubmitting || isViewOnly} onClick={handleSubmit((data) => onSubmit(data, true))} className='button' style={{ backgroundColor: 'green', width: '32%' }}>
                       {isSubmitting ? "Submitting..." : "Submit"}
                     </button>
-                    <button type="button" disabled={isSubmitting} onClick={handleSaveWithoutSubmitting} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
+                    <button type="button" disabled={isSubmitting || isViewOnly} onClick={handleSaveWithoutSubmitting} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
                       {isSubmitting ? "Saving..." : "Save Changes Without Submitting"}
                     </button>
-                    <button type="button" onClick={handleReset} disabled={isSubmitting} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', width: '32%' }}>
+                    <button type="button" onClick={handleReset} disabled={isSubmitting || isViewOnly} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', width: '32%' }}>
                       Reset
                     </button>
+                  </div>
                   </div>
                 </>
               ) : null}

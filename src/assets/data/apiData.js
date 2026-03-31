@@ -160,12 +160,57 @@ export async function getSubcategories() {
     return await fetchData('subcategories');
 }
 
-export async function getRiskRatings(scheduleId) {
-    if (scheduleId) {
-        const response = await fetch(`${API_BASE}/risk-ratings/${scheduleId}`);
-        return await response.json();
+export async function getRiskRatings(riskTypeId, targetId = null, processArea = null, year = null) {
+    const params = new URLSearchParams();
+    if (riskTypeId !== null && riskTypeId !== undefined && riskTypeId !== '') {
+        params.set('riskTypeId', String(riskTypeId));
     }
-    return [];
+    if (targetId !== null && targetId !== undefined && targetId !== '') {
+        params.set('targetId', String(targetId));
+    }
+    if (processArea !== null && processArea !== undefined && String(processArea).trim() !== '') {
+        params.set('processArea', String(processArea).trim());
+    }
+    if (year !== null && year !== undefined && year !== '') {
+        params.set('year', String(year));
+    }
+
+    const queryString = params.toString();
+    const response = await fetch(`${API_BASE}/risk-ratings${queryString ? `?${queryString}` : ''}`);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+export async function saveRiskRatings(payload) {
+    const response = await fetch(`${API_BASE}/risk-ratings`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Failed to save risk ratings.');
+    }
+    return await response.json();
+}
+
+export async function deleteRiskRatings(payload) {
+    const response = await fetch(`${API_BASE}/risk-ratings`, {
+        method: 'DELETE',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Failed to delete risk ratings.');
+    }
+    return await response.json();
 }
 
 export async function getCauses() {

@@ -67,6 +67,8 @@ const AdminMenu = () => {
     const [firstName, setFirstName] = React.useState('');
     const [lastName, setLastName] = React.useState('');
     const [divisionId, setDivisionId] = React.useState('');
+    const [cuiApproved, setCuiApproved] = React.useState(false);
+    const [auditorProgramIds, setAuditorProgramIds] = React.useState([]);
     const [submissionMessage, setSubmissionMessage] = React.useState('');
     const [submissionError, setSubmissionError] = React.useState('');
     const [submitting, setSubmitting] = React.useState(false);
@@ -130,6 +132,7 @@ const AdminMenu = () => {
     const [programsList, setProgramsList] = React.useState([]);
     const [programInput, setProgramInput] = React.useState('');
     const [programDivisionId, setProgramDivisionId] = React.useState('');
+    const [programAuditorIds, setProgramAuditorIds] = React.useState([]);
     const [editingProgram, setEditingProgram] = React.useState(null);
     const [includeArchivedPrograms, setIncludeArchivedPrograms] = React.useState(false);
     const [programMessage, setProgramMessage] = React.useState('');
@@ -201,6 +204,8 @@ const AdminMenu = () => {
             auditorName,
             myId: row.myId ?? row.myid,
             divisionId: row.divisionId ?? row.divisionid,
+            cuiApproved: Number(row.cuiApproved ?? row.cuiapproved ?? 0) === 1 ? 1 : 0,
+            programIds: Array.isArray(row.programIds ?? row.programids) ? (row.programIds ?? row.programids).map(Number) : [],
             active: typeof row.active === 'number' ? row.active : row.active ?? 1
         };
     }, []);
@@ -248,8 +253,21 @@ const AdminMenu = () => {
         programId: row.programId ?? row.programid ?? row.id,
         programName: row.programName ?? row.programname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
+        auditorIds: Array.isArray(row.auditorIds ?? row.auditorids) ? (row.auditorIds ?? row.auditorids).map(Number) : [],
         active: typeof row.active === 'number' ? row.active : row.active ?? 1
     }), []);
+
+    const reloadAuditorsAndPrograms = React.useCallback(async () => {
+        const [auditorsData, programsData] = await Promise.all([
+            getAuditors(),
+            getPrograms()
+        ]);
+        const normalizedAuditors = auditorsData.map(normalizeAuditorRow);
+        const normalizedPrograms = programsData.map(normalizeProgramRow);
+        setAuditorList(normalizedAuditors);
+        setProgramsList(normalizedPrograms);
+        return { normalizedAuditors, normalizedPrograms };
+    }, [normalizeAuditorRow, normalizeProgramRow]);
 
     const normalizeDivisionRow = React.useCallback((row) => ({
         divisionId: row.divisionId ?? row.divisionid ?? row.id,
@@ -361,6 +379,8 @@ const AdminMenu = () => {
             setFirstName('');
             setLastName('');
             setDivisionId('');
+            setCuiApproved(false);
+            setAuditorProgramIds([]);
             setManualEntry(false);
             setSubmissionError('');
             setSubmissionMessage('');
@@ -401,6 +421,7 @@ const AdminMenu = () => {
             setEditingProgram(null);
             setProgramInput('');
             setProgramDivisionId('');
+            setProgramAuditorIds([]);
             setProgramError('');
             setProgramMessage('');
             setProgramFieldErrors({});
@@ -627,6 +648,24 @@ const AdminMenu = () => {
         });
     }, [programsList]);
 
+    const auditorProgramOptions = React.useMemo(() => {
+        return [...programsList]
+            .sort((a, b) => (a.programName || '').localeCompare(b.programName || ''))
+            .map((program) => ({
+                value: program.programId,
+                label: program.programName
+            }));
+    }, [programsList]);
+
+    const programAuditorOptions = React.useMemo(() => {
+        return [...auditorList]
+            .sort((a, b) => (a.auditorName || '').localeCompare(b.auditorName || ''))
+            .map((auditor) => ({
+                value: auditor.auditorId,
+                label: auditor.auditorName || [auditor.lastName, auditor.firstName].filter(Boolean).join(', ')
+            }));
+    }, [auditorList]);
+
     const sortedSites = React.useMemo(() => {
         return [...sitesList].sort((a, b) => {
             const nameA = (a.address || '').toLowerCase();
@@ -700,7 +739,9 @@ const AdminMenu = () => {
             setFirstName(parsed.firstName || '');
             setLastName(parsed.lastName || '');
             setDivisionId(editingAuditor.divisionId ?? '');
+            setCuiApproved(Number(editingAuditor.cuiApproved) === 1);
             setMyIdInput(editingAuditor.myId ?? editingAuditor.myid ?? '');
+            setAuditorProgramIds(editingAuditor.programIds ?? []);
             return;
         }
         if (manualEntry) return;
@@ -708,12 +749,14 @@ const AdminMenu = () => {
             setFirstName('');
             setLastName('');
             setDivisionId('');
+            setCuiApproved(false);
             return;
         }
         const [last, first] = (rosterMatch.rosterName || '').split(',').map((part) => part?.trim() || '');
         setFirstName(first || '');
         setLastName(last || '');
         setDivisionId(auditorMatch?.divisionId ?? '');
+        setCuiApproved(Boolean(Number(auditorMatch?.cuiApproved ?? 0)));
     }, [manualEntry, rosterMatch, auditorMatch, editingAuditor, rosterList, parseAuditorName]);
 
     React.useEffect(() => {
@@ -1004,6 +1047,8 @@ const AdminMenu = () => {
             lastName: lastName.trim(),
             myId: myIdInput.trim(),
             divisionId: Number(divisionId),
+            cuiApproved: cuiApproved ? 1 : 0,
+            programIds: auditorProgramIds.map(Number),
             active: editingAuditor?.active ?? 1
         };
 
@@ -1027,18 +1072,9 @@ const AdminMenu = () => {
                 throw new Error(errorBody?.error || 'Failed to save auditor.');
             }
 
-            const saved = normalizeAuditorRow(await response.json());
+            await response.json();
             const successMsg = isEditMode && editingAuditor ? 'Auditor updated successfully.' : 'Auditor added successfully.';
-
-            if (isEditMode && editingAuditor) {
-                setAuditorList((prev) =>
-                    prev.map((auditor) =>
-                        auditor.auditorId === editingAuditor.auditorId ? saved : auditor
-                    )
-                );
-            } else {
-                setAuditorList((prev) => [...prev, saved]);
-            }
+            await reloadAuditorsAndPrograms();
 
             setSubmissionMessage(successMsg);
             toast.success('Submitted!', SUCCESS_TOAST_OPTIONS);
@@ -1047,6 +1083,7 @@ const AdminMenu = () => {
             setFirstName('');
             setLastName('');
             setDivisionId('');
+            setAuditorProgramIds([]);
             setManualEntry(false);
             setEditingAuditor(null);
         } catch (error) {
@@ -1068,6 +1105,9 @@ const AdminMenu = () => {
         lastName,
         manualEntry,
         myIdInput,
+        cuiApproved,
+        auditorProgramIds,
+        reloadAuditorsAndPrograms,
         rosterMatch,
         sectionMessage,
         selectedAction,
@@ -1084,6 +1124,8 @@ const AdminMenu = () => {
                 lastName: lastName.trim(),
                 myId: myIdInput.trim(),
                 divisionId: Number(divisionId),
+                cuiApproved: cuiApproved ? 1 : 0,
+                programIds: auditorProgramIds.map(Number),
                 active: newActive
             };
             const response = await fetch(`${API_BASE}/auditors/${editingAuditor.auditorId}`, {
@@ -1096,13 +1138,11 @@ const AdminMenu = () => {
                 throw new Error(errorBody?.error || 'Failed to update auditor.');
             }
             const saved = normalizeAuditorRow(await response.json());
-            setAuditorList((prev) =>
-                prev.map((auditor) =>
-                    auditor.auditorId === saved.auditorId ? saved : auditor
-                )
-            );
-            setEditingAuditor(saved);
-            const successMsg = saved.active === 1 ? 'Auditor reactivated.' : 'Auditor archived.';
+            const { normalizedAuditors } = await reloadAuditorsAndPrograms();
+            const refreshedAuditor = normalizedAuditors.find((auditor) => auditor.auditorId === saved.auditorId) ?? saved;
+            setEditingAuditor(refreshedAuditor);
+            setAuditorProgramIds(refreshedAuditor.programIds ?? []);
+            const successMsg = refreshedAuditor.active === 1 ? 'Auditor reactivated.' : 'Auditor archived.';
             setSubmissionMessage(successMsg);
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
@@ -1113,7 +1153,7 @@ const AdminMenu = () => {
         } finally {
             setSubmitting(false);
         }
-    }, [editingAuditor, firstName, lastName, myIdInput, divisionId, normalizeAuditorRow]);
+    }, [editingAuditor, firstName, lastName, myIdInput, divisionId, cuiApproved, auditorProgramIds, normalizeAuditorRow, reloadAuditorsAndPrograms]);
 
     const handleAuditTypeSubmit = React.useCallback(async () => {
         const errors = {};
@@ -1780,6 +1820,7 @@ const AdminMenu = () => {
         const payload = {
             programName: programInput.trim(),
             divisionId: Number(programDivisionId),
+            auditorIds: programAuditorIds.map(Number),
             active: editingProgram?.active ?? 1
         };
 
@@ -1802,23 +1843,16 @@ const AdminMenu = () => {
                 const errorBody = await response.json().catch(() => null);
                 throw new Error(errorBody?.error || 'Failed to save program.');
             }
-            const saved = normalizeProgramRow(await response.json());
+            await response.json();
             const successMsg = isProgramEditMode && editingProgram
                 ? 'Program updated successfully.'
                 : 'Program added successfully.';
-            if (isProgramEditMode && editingProgram) {
-                setProgramsList((prev) =>
-                    prev.map((program) =>
-                        program.programId === editingProgram.programId ? saved : program
-                    )
-                );
-            } else {
-                setProgramsList((prev) => [...prev, saved]);
-            }
+            await reloadAuditorsAndPrograms();
             setProgramMessage(successMsg);
             toast.success('Submitted!', SUCCESS_TOAST_OPTIONS);
             setProgramInput('');
             setProgramDivisionId('');
+            setProgramAuditorIds([]);
             setEditingProgram(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save program.';
@@ -1828,7 +1862,7 @@ const AdminMenu = () => {
         } finally {
             setProgramSubmitting(false);
         }
-    }, [programInput, programDivisionId, editingProgram, isProgramEditMode, normalizeProgramRow]);
+    }, [programInput, programDivisionId, editingProgram, isProgramEditMode, programAuditorIds, reloadAuditorsAndPrograms]);
 
     const handleProgramArchive = React.useCallback(async () => {
         if (!editingProgram) return;
@@ -1838,6 +1872,7 @@ const AdminMenu = () => {
             const payload = {
                 programName: programInput.trim() || editingProgram.programName,
                 divisionId: Number(programDivisionId || editingProgram.divisionId),
+                auditorIds: programAuditorIds.map(Number),
                 active: newActive
             };
             const response = await fetch(`${API_BASE}/programs/${editingProgram.programId}`, {
@@ -1850,15 +1885,13 @@ const AdminMenu = () => {
                 throw new Error(errorBody?.error || 'Failed to update program.');
             }
             const saved = normalizeProgramRow(await response.json());
-            setProgramsList((prev) =>
-                prev.map((program) =>
-                    program.programId === saved.programId ? saved : program
-                )
-            );
-            setEditingProgram(saved);
-            setProgramInput(saved.programName || '');
-            setProgramDivisionId(saved.divisionId ?? '');
-            const successMsg = saved.active === 1 ? 'Program reactivated.' : 'Program archived.';
+            const { normalizedPrograms } = await reloadAuditorsAndPrograms();
+            const refreshedProgram = normalizedPrograms.find((program) => program.programId === saved.programId) ?? saved;
+            setEditingProgram(refreshedProgram);
+            setProgramInput(refreshedProgram.programName || '');
+            setProgramDivisionId(refreshedProgram.divisionId ?? '');
+            setProgramAuditorIds(refreshedProgram.auditorIds ?? []);
+            const successMsg = refreshedProgram.active === 1 ? 'Program reactivated.' : 'Program archived.';
             setProgramMessage(successMsg);
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
@@ -1869,7 +1902,7 @@ const AdminMenu = () => {
         } finally {
             setProgramSubmitting(false);
         }
-    }, [programInput, programDivisionId, editingProgram, normalizeProgramRow]);
+    }, [programInput, programDivisionId, editingProgram, normalizeProgramRow, programAuditorIds, reloadAuditorsAndPrograms]);
 
     const handleDivisionSubmit = React.useCallback(async () => {
         const errors = {};
@@ -2714,7 +2747,10 @@ const AdminMenu = () => {
                         firstName={firstName}
                         lastName={lastName}
                         divisionId={divisionId}
+                        cuiApproved={cuiApproved}
                         sortedDivisions={sortedDivisions}
+                        programOptions={auditorProgramOptions}
+                        selectedProgramIds={auditorProgramIds}
                         onFirstNameChange={(event) => {
                             setFirstName(event.target.value);
                             clearFieldError('firstName');
@@ -2723,13 +2759,19 @@ const AdminMenu = () => {
                             setLastName(event.target.value);
                             clearFieldError('lastName');
                         }}
-                        onDivisionChange={(event) => {
-                            setDivisionId(event.target.value);
+                        onDivisionChange={(selectedOption) => {
+                            setDivisionId(selectedOption ? selectedOption.value : '');
                             clearFieldError('divisionId');
                         }}
                         onClearDivision={() => {
                             setDivisionId('');
                             clearFieldError('divisionId');
+                        }}
+                        onCuiApprovedChange={(event) => {
+                            setCuiApproved(event.target.checked);
+                        }}
+                        onProgramChange={(selectedOptions) => {
+                            setAuditorProgramIds(selectedOptions ? selectedOptions.map((option) => option.value) : []);
                         }}
                         onSubmit={handleSubmit}
                         submitting={submitting}
@@ -2739,6 +2781,8 @@ const AdminMenu = () => {
                             setFirstName('');
                             setLastName('');
                             setDivisionId('');
+                            setCuiApproved(false);
+                            setAuditorProgramIds([]);
                             setManualEntry(false);
                             setSubmissionError('');
                             setSubmissionMessage('');
@@ -2955,6 +2999,7 @@ const AdminMenu = () => {
                             setEditingProgram(program);
                             setProgramInput(program.programName || '');
                             setProgramDivisionId(program.divisionId ?? '');
+                            setProgramAuditorIds(program.auditorIds ?? []);
                             setProgramMessage('');
                             setProgramError('');
                         }}
@@ -2989,12 +3034,18 @@ const AdminMenu = () => {
                                 });
                             }
                         }}
+                        auditorOptions={programAuditorOptions}
+                        selectedAuditorIds={programAuditorIds}
+                        onAuditorChange={(selectedOptions) => {
+                            setProgramAuditorIds(selectedOptions ? selectedOptions.map((option) => option.value) : []);
+                        }}
                         programFieldErrors={programFieldErrors}
                         onSubmit={handleProgramSubmit}
                         onArchiveToggle={handleProgramArchive}
                         onReset={() => {
                             setProgramInput('');
                             setProgramDivisionId('');
+                            setProgramAuditorIds([]);
                             setEditingProgram(null);
                             setProgramError('');
                             setProgramMessage('');

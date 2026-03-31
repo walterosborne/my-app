@@ -24,7 +24,7 @@ const Navbar = () => {
         'Audit Reports': [
             { label: 'Individual Audit Reports', path: '/audit' },
             { label: 'All My Audits', path: '/myaudits' },
-            { label: 'Audit Reports', path: '/audit-reports' }
+            { label: 'Reports', path: '/audit-reports' }
         ],
         'FOE': [
             { label: 'Metrics', path: 'https://www.yahoo.com', external: true },
@@ -36,7 +36,8 @@ const Navbar = () => {
             { label: 'Admin Menu', path: '/admin' },
             { label: 'Audit Statuses', path: '/audit-statuses' },
             { label: 'Calendar', path: '/calendar' },
-            { label: 'Metrics', path: '/metrics' }
+            { label: 'Metrics', path: '/metrics' },
+            { label: 'Risk Analysis', path: '/risk-analysis' }
         ],
         'Help': [
             { label: 'Info/Support', path: '/info-support' },

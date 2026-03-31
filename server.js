@@ -43,7 +43,15 @@ const getCurrentUserInfo = async (req) => {
     const networkId = getNetworkIdFromRequest(req);
     if (!networkId) return null;
     const result = await pool.query(
-        `SELECT r.rostername, r.myid, r.networkid, a.auditorid, a.divisionid, COALESCE(a.admin, 0) AS admin
+        `SELECT r.rostername, r.myid, r.networkid, a.auditorid, a.divisionid, COALESCE(a.admin, 0) AS admin, COALESCE(a.cuiapproved, 0) AS cuiapproved,
+                COALESCE(
+                    (
+                        SELECT json_agg(apa.programid ORDER BY apa.programid)
+                        FROM auditor_program_assignments_r apa
+                        WHERE apa.auditorid = a.auditorid
+                    ),
+                    '[]'::json
+                ) AS programids
          FROM roster_r r
          LEFT JOIN auditors_r a ON a.myid = r.myid
          WHERE r.networkid = $1
@@ -290,8 +298,109 @@ const normalizeAuditArrayForStorage = (value) => {
     return JSON.stringify([value]);
 };
 
+const AUDIT_SELECT_BASE_COLUMNS = [
+    'scheduleid',
+    'title',
+    'audittypeid',
+    'intextid',
+    'functionid',
+    'standardids',
+    'statusid',
+    'stage',
+    'expectedstartdate',
+    'expectedcompletiondate',
+    'startdate',
+    'divisionid',
+    'programids',
+    'sectorid',
+    'siteids',
+    'businessunitids',
+    'operatingunitids',
+    'leadauditorid',
+    'additionalauditorids',
+    'comment',
+    'scope',
+    'safety',
+    'clearance',
+    'safetyequipmentids',
+    'trainingrequirementids',
+    'famaids',
+    'intervieweeids',
+    'specialconsiderations',
+    'overview',
+    'evaluator',
+    'relateditems',
+    'programmanager',
+    'maleadmanager',
+    'cui',
+    'delaycause',
+    'auditorstime',
+    'approver',
+    'approvedat',
+    'submittedat',
+    'createdat',
+    'updatedat',
+    'hash'
+];
+
+let auditAdditionalApproversColumnPromise = null;
+
+const getAuditAdditionalApproversColumn = async (queryable = pool) => {
+    const loadColumn = async () => {
+        const result = await queryable.query(`
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'audits_r'
+              AND column_name IN ('additionalapprovers', 'additionalauditors')
+            ORDER BY CASE WHEN column_name = 'additionalapprovers' THEN 0 ELSE 1 END
+            LIMIT 1
+        `);
+        const columnName = result.rows[0]?.column_name;
+        if (columnName === 'additionalapprovers' || columnName === 'additionalauditors') {
+            return columnName;
+        }
+        return 'additionalapprovers';
+    };
+
+    if (queryable === pool) {
+        if (!auditAdditionalApproversColumnPromise) {
+            auditAdditionalApproversColumnPromise = loadColumn();
+        }
+        return auditAdditionalApproversColumnPromise;
+    }
+
+    return loadColumn();
+};
+
+const getAuditSelectColumns = (additionalApproversColumn) => {
+    return [
+        ...AUDIT_SELECT_BASE_COLUMNS,
+        `${additionalApproversColumn} AS additionalapprovers`
+    ].join(', ');
+};
+
+const normalizeLockedValue = (value) => {
+    if (Array.isArray(value)) {
+        return value.some((item) => Number(item) === 1) ? 1 : 0;
+    }
+    if (value && typeof value === 'object' && typeof value.length === 'number') {
+        return Array.from(value).some((item) => Number(item) === 1) ? 1 : 0;
+    }
+    if (typeof value === 'boolean') {
+        return value ? 1 : 0;
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (trimmed === '') return 0;
+        const num = Number(trimmed);
+        if (Number.isFinite(num)) return num === 1 ? 1 : 0;
+    }
+    const num = Number(value);
+    return Number.isFinite(num) && num === 1 ? 1 : 0;
+};
+
 const parseAuditRow = (row) => {
-    const additionalApprovers = normalizeStringArray(row.additionalapprovers);
+    const additionalApprovers = normalizeStringArray(row.additionalapprovers ?? row.additionalauditors);
     return {
         scheduleId: row.scheduleid,
         title: row.title,
@@ -312,7 +421,7 @@ const parseAuditRow = (row) => {
         operatingUnitIds: normalizeNumberArray(row.operatingunitids),
         leadAuditorId: row.leadauditorid,
         additionalAuditorIds: normalizeNumberArray(row.additionalauditorids),
-        locked: row.locked,
+        locked: normalizeLockedValue(row.locked),
         comment: row.comment,
         scope: row.scope,
         safety: row.safety,
@@ -327,11 +436,10 @@ const parseAuditRow = (row) => {
         relatedItems: row.relateditems,
         programManager: row.programmanager,
         maLeadManager: row.maleadmanager,
+        cui: row.cui,
         delayCause: row.delaycause,
         auditorsTime: row.auditorstime,
         auditorstime: row.auditorstime,
-        previousCarsEffective: row.previouscarseffective,
-        previouscarseffective: row.previouscarseffective,
         approver: row.approver,
         additionalApprovers,
         approvedAt: row.approvedat,
@@ -341,15 +449,33 @@ const parseAuditRow = (row) => {
     };
 };
 
+const canEditAudit = ({ audit, userInfo }) => {
+    if (!userInfo?.auditorid) return false;
+    const auditorId = Number(userInfo.auditorid);
+    const additionalAuditorIds = Array.isArray(audit.additionalAuditorIds)
+        ? audit.additionalAuditorIds.map(Number)
+        : [];
+    return Number(audit.leadAuditorId) === auditorId || additionalAuditorIds.includes(auditorId);
+};
+
+const canViewAuditByProgram = ({ audit, userInfo }) => {
+    if (!userInfo?.auditorid) return false;
+    const userProgramIds = normalizeNumberArray(userInfo.programids ?? userInfo.programIds);
+    const auditProgramIds = Array.isArray(audit.programIds)
+        ? audit.programIds.map(Number)
+        : [];
+    return userProgramIds.length > 0 && auditProgramIds.some((programId) => userProgramIds.includes(programId));
+};
+
 const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds = new Set() }) => {
     if (!userInfo) return false;
+    if (Number(audit?.cui) === 1 && Number(userInfo?.cuiapproved) !== 1) {
+        return false;
+    }
 
-    const auditorId = userInfo.auditorid;
     const myId = userInfo.myid;
-    const isAuditor = Boolean(
-        auditorId &&
-        (audit.leadAuditorId === auditorId || (audit.additionalAuditorIds || []).includes(auditorId))
-    );
+    const isAuditor = canEditAudit({ audit, userInfo });
+    const isProgramAuditor = canViewAuditByProgram({ audit, userInfo });
 
     const auditDivisionIds = Array.isArray(audit.divisionId)
         ? audit.divisionId.map(Number)
@@ -361,7 +487,7 @@ const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds =
     );
 
     if (!report) {
-        return isAuditor || isAdmin;
+        return isAuditor || isAdmin || isProgramAuditor;
     }
 
     const isInterviewee = Boolean(
@@ -372,7 +498,17 @@ const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds =
         myId && approverScheduleIds.has(audit.scheduleId) && (audit.locked || audit.approvedAt)
     );
 
-    return isAuditor || isAdmin || isInterviewee || isApprover;
+    return isAuditor || isAdmin || isProgramAuditor || isInterviewee || isApprover;
+};
+
+const getAuditForAccessCheck = async (client, scheduleId) => {
+    const additionalApproversColumn = await getAuditAdditionalApproversColumn(client);
+    const result = await client.query(
+        `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
+        [Number(scheduleId)]
+    );
+    if (result.rows.length === 0) return null;
+    return parseAuditRow(result.rows[0]);
 };
 
 // PostgreSQL connection pool
@@ -415,7 +551,6 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
             response: nc.response,
             auditorComment: nc.auditorcomment,
             details: nc.details,
-            ncDetails: nc.ncdetails,
             AIN: nc.ain,
             division: parseMaybeJsonArray(nc.division),
             sector: parseMaybeJsonArray(nc.sector),
@@ -660,6 +795,8 @@ app.get('/api/current-user', async (req, res) => {
             networkId: row.networkid,
             auditorId: row.auditorid,
             divisionId: row.divisionid,
+            programIds: normalizeNumberArray(row.programids),
+            cuiApproved: Number(row.cuiapproved) === 1 ? 1 : 0,
             isAdmin: Boolean(row.admin)
         });
     } catch (error) {
@@ -758,7 +895,6 @@ app.get('/api/nonconformances', async (req, res) => {
             response: nc.response,
             auditorComment: nc.auditorcomment,
             details: nc.details,
-            ncDetails: nc.ncdetails,
             AIN: nc.ain,
             division: parseMaybeJsonArray(nc.division),
             sector: parseMaybeJsonArray(nc.sector),
@@ -782,6 +918,11 @@ app.post('/api/save-nonconformances', async (req, res) => {
 
     try {
         const { scheduleId, nonconformances } = req.body;
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
 
         await client.query('BEGIN');
 
@@ -792,8 +933,8 @@ app.post('/api/save-nonconformances', async (req, res) => {
         for (const nc of nonconformances) {
             await client.query(
                 `INSERT INTO nonconformances_r 
-        (scheduleId, type, findingType, section, subsection, question, response, auditorComment, details, ncDetails, AIN, division, sector, qma, other, files)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+        (scheduleId, type, findingType, section, subsection, question, response, auditorComment, details, AIN, division, sector, qma, other, files)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
                 [
                     nc.scheduleId,
                     nc.type,
@@ -804,7 +945,6 @@ app.post('/api/save-nonconformances', async (req, res) => {
                     nc.response || '',
                     nc.auditorComment || '',
                     nc.details || '',
-                    nc.ncDetails || '',
                     nc.AIN || '',
                     JSON.stringify(nc.division || []),
                     JSON.stringify(nc.sector || []),
@@ -832,13 +972,23 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
     const client = await pool.connect();
 
     try {
-        const { ncId, details, severity, ncDetails, actionItemNumber } = req.body;
+        const { ncId, details, severity, actionItemNumber } = req.body;
+        const ncLookup = await client.query(
+            'SELECT scheduleid FROM nonconformances_r WHERE ncid = $1',
+            [ncId]
+        );
+        const scheduleId = ncLookup.rows[0]?.scheduleid;
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = scheduleId ? await getAuditForAccessCheck(client, scheduleId) : null;
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
 
         await client.query(
             `UPDATE nonconformances_r 
-            SET details = $1, severity = $2, ncDetails = $3, ain = $4, updatedat = CURRENT_TIMESTAMP
-            WHERE ncid = $5`,
-            [details || '', severity || null, ncDetails || '', actionItemNumber || '', ncId]
+            SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
+            WHERE ncid = $4`,
+            [details || '', severity || null, actionItemNumber || '', ncId]
         );
 
         res.json({ success: true, message: 'Nonconformance details updated successfully' });
@@ -1062,11 +1212,25 @@ app.get('/api/standard-texts', async (req, res) => {
 // Get all programs
 app.get('/api/programs', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM programs_r ORDER BY programId');
+        const result = await pool.query(`
+            SELECT
+                p.*,
+                COALESCE(
+                    (
+                        SELECT json_agg(apa.auditorid ORDER BY apa.auditorid)
+                        FROM auditor_program_assignments_r apa
+                        WHERE apa.programid = p.programid
+                    ),
+                    '[]'::json
+                ) AS auditorids
+            FROM programs_r p
+            ORDER BY p.programid
+        `);
         const data = result.rows.map(row => ({
             programId: row.programid,
             programName: row.programname,
             divisionId: row.divisionid,
+            auditorIds: normalizeNumberArray(row.auditorids),
             active: row.active
         }));
         res.json(data);
@@ -1077,54 +1241,98 @@ app.get('/api/programs', async (req, res) => {
 });
 
 app.post('/api/programs', async (req, res) => {
-    const { programName, divisionId, active = 1 } = req.body;
+    const { programName, divisionId, auditorIds = [], active = 1 } = req.body;
     if (!programName || !divisionId) {
         return res.status(400).json({ success: false, error: 'programName and divisionId are required.' });
     }
+    const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
+    const client = await pool.connect();
     try {
-        const existing = await pool.query(
+        await client.query('BEGIN');
+        const existing = await client.query(
             'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2',
             [programName, divisionId]
         );
         if (existing.rowCount > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
-        const insert = await pool.query(
+        const insert = await client.query(
             'INSERT INTO programs_r (programName, divisionId, active) VALUES ($1, $2, $3) RETURNING programId, programName, divisionId, active',
             [programName, divisionId, active]
         );
-        res.status(201).json(insert.rows[0]);
+        const saved = insert.rows[0];
+        for (const auditorId of normalizedAuditorIds) {
+            await client.query(
+                'INSERT INTO auditor_program_assignments_r (auditorId, programId) VALUES ($1, $2)',
+                [auditorId, saved.programid]
+            );
+        }
+        await client.query('COMMIT');
+        res.status(201).json({
+            programId: saved.programid,
+            programName: saved.programname,
+            divisionId: saved.divisionid,
+            auditorIds: normalizedAuditorIds,
+            active: saved.active
+        });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error creating program:', error);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
     }
 });
 
 app.put('/api/programs/:programId', async (req, res) => {
     const { programId } = req.params;
-    const { programName, divisionId, active = 1 } = req.body;
+    const { programName, divisionId, auditorIds = [], active = 1 } = req.body;
     if (!programName || !divisionId) {
         return res.status(400).json({ success: false, error: 'programName and divisionId are required.' });
     }
+    const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
+    const client = await pool.connect();
     try {
-        const conflict = await pool.query(
+        await client.query('BEGIN');
+        const conflict = await client.query(
             'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2 AND programId <> $3',
             [programName, divisionId, programId]
         );
         if (conflict.rowCount > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
-        const update = await pool.query(
+        const update = await client.query(
             'UPDATE programs_r SET programName = $1, divisionId = $2, active = $3 WHERE programId = $4 RETURNING programId, programName, divisionId, active',
             [programName, divisionId, active, programId]
         );
         if (update.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Program not found.' });
         }
-        res.json(update.rows[0]);
+        await client.query('DELETE FROM auditor_program_assignments_r WHERE programId = $1', [programId]);
+        for (const auditorId of normalizedAuditorIds) {
+            await client.query(
+                'INSERT INTO auditor_program_assignments_r (auditorId, programId) VALUES ($1, $2)',
+                [auditorId, programId]
+            );
+        }
+        await client.query('COMMIT');
+        const saved = update.rows[0];
+        res.json({
+            programId: saved.programid,
+            programName: saved.programname,
+            divisionId: saved.divisionid,
+            auditorIds: normalizedAuditorIds,
+            active: saved.active
+        });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error updating program:', error);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -1453,7 +1661,20 @@ app.get('/api/roster', async (req, res) => {
 // Get all auditors
 app.get('/api/auditors', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM auditors_r ORDER BY auditorId');
+        const result = await pool.query(`
+            SELECT
+                a.*,
+                COALESCE(
+                    (
+                        SELECT json_agg(apa.programid ORDER BY apa.programid)
+                        FROM auditor_program_assignments_r apa
+                        WHERE apa.auditorid = a.auditorid
+                    ),
+                    '[]'::json
+                ) AS programids
+            FROM auditors_r a
+            ORDER BY a.auditorid
+        `);
         const data = result.rows.map(row => ({
             auditorId: row.auditorid,
             firstName: row.fname ?? row.firstname ?? '',
@@ -1461,6 +1682,8 @@ app.get('/api/auditors', async (req, res) => {
             auditorName: formatAuditorName(row.fname ?? row.firstname, row.lname ?? row.lastname),
             myId: row.myid,
             divisionId: row.divisionid,
+            programIds: normalizeNumberArray(row.programids),
+            cuiApproved: Number(row.cuiapproved) === 1 ? 1 : 0,
             active: row.active
         }));
         res.json(data);
@@ -1471,23 +1694,34 @@ app.get('/api/auditors', async (req, res) => {
 });
 
 app.post('/api/auditors', async (req, res) => {
-    const { auditorName, firstName, lastName, myId, divisionId, active = 1 } = req.body;
+    const { auditorName, firstName, lastName, myId, divisionId, programIds = [], cuiApproved = 0, active = 1 } = req.body;
     const parsed = parseAuditorName(auditorName);
     const resolvedFirstName = (firstName ?? parsed.firstName ?? '').trim();
     const resolvedLastName = (lastName ?? parsed.lastName ?? '').trim();
     if (!resolvedFirstName || !resolvedLastName || !myId || !divisionId) {
         return res.status(400).json({ success: false, error: 'firstName, lastName, myId, and divisionId are required.' });
     }
+    const normalizedProgramIds = [...new Set(normalizeNumberArray(programIds))];
+    const client = await pool.connect();
     try {
-        const existing = await pool.query('SELECT auditorId FROM auditors_r WHERE LOWER(TRIM(myId)) = LOWER(TRIM($1))', [myId]);
+        await client.query('BEGIN');
+        const existing = await client.query('SELECT auditorId FROM auditors_r WHERE LOWER(TRIM(myId)) = LOWER(TRIM($1))', [myId]);
         if (existing.rowCount > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'An auditor with that MyID already exists.' });
         }
-        const insert = await pool.query(
-            'INSERT INTO auditors_r (fname, lname, myId, divisionId, active) VALUES ($1, $2, $3, $4, $5) RETURNING auditorId, fname, lname, myId, divisionId, active',
-            [resolvedFirstName, resolvedLastName, myId, divisionId, active]
+        const insert = await client.query(
+            'INSERT INTO auditors_r (fname, lname, myId, divisionId, cuiapproved, active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING auditorId, fname, lname, myId, divisionId, cuiapproved, active',
+            [resolvedFirstName, resolvedLastName, myId, divisionId, Number(cuiApproved) === 1 ? 1 : 0, active]
         );
         const saved = insert.rows[0];
+        for (const programId of normalizedProgramIds) {
+            await client.query(
+                'INSERT INTO auditor_program_assignments_r (auditorId, programId) VALUES ($1, $2)',
+                [saved.auditorid, programId]
+            );
+        }
+        await client.query('COMMIT');
         res.status(201).json({
             auditorId: saved.auditorid,
             firstName: saved.fname,
@@ -1495,38 +1729,56 @@ app.post('/api/auditors', async (req, res) => {
             auditorName: formatAuditorName(saved.fname, saved.lname),
             myId: saved.myid,
             divisionId: saved.divisionid,
+            programIds: normalizedProgramIds,
+            cuiApproved: Number(saved.cuiapproved) === 1 ? 1 : 0,
             active: saved.active
         });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error creating auditor:', error);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
     }
 });
 
 app.put('/api/auditors/:auditorId', async (req, res) => {
     const { auditorId } = req.params;
-    const { auditorName, firstName, lastName, myId, divisionId, active = 1 } = req.body;
+    const { auditorName, firstName, lastName, myId, divisionId, programIds = [], cuiApproved = 0, active = 1 } = req.body;
     const parsed = parseAuditorName(auditorName);
     const resolvedFirstName = (firstName ?? parsed.firstName ?? '').trim();
     const resolvedLastName = (lastName ?? parsed.lastName ?? '').trim();
     if (!resolvedFirstName || !resolvedLastName || !myId || !divisionId) {
         return res.status(400).json({ success: false, error: 'firstName, lastName, myId, and divisionId are required.' });
     }
+    const normalizedProgramIds = [...new Set(normalizeNumberArray(programIds))];
+    const client = await pool.connect();
     try {
-        const conflict = await pool.query(
+        await client.query('BEGIN');
+        const conflict = await client.query(
             'SELECT auditorId FROM auditors_r WHERE LOWER(TRIM(myId)) = LOWER(TRIM($1)) AND auditorId <> $2',
             [myId, auditorId]
         );
         if (conflict.rowCount > 0) {
+            await client.query('ROLLBACK');
             return res.status(409).json({ success: false, error: 'An auditor with that MyID already exists.' });
         }
-        const update = await pool.query(
-            'UPDATE auditors_r SET fname = $1, lname = $2, myId = $3, divisionId = $4, active = $5 WHERE auditorId = $6 RETURNING auditorId, fname, lname, myId, divisionId, active',
-            [resolvedFirstName, resolvedLastName, myId, divisionId, active, auditorId]
+        const update = await client.query(
+            'UPDATE auditors_r SET fname = $1, lname = $2, myId = $3, divisionId = $4, cuiapproved = $5, active = $6 WHERE auditorId = $7 RETURNING auditorId, fname, lname, myId, divisionId, cuiapproved, active',
+            [resolvedFirstName, resolvedLastName, myId, divisionId, Number(cuiApproved) === 1 ? 1 : 0, active, auditorId]
         );
         if (update.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ success: false, error: 'Auditor not found.' });
         }
+        await client.query('DELETE FROM auditor_program_assignments_r WHERE auditorId = $1', [auditorId]);
+        for (const programId of normalizedProgramIds) {
+            await client.query(
+                'INSERT INTO auditor_program_assignments_r (auditorId, programId) VALUES ($1, $2)',
+                [auditorId, programId]
+            );
+        }
+        await client.query('COMMIT');
         const saved = update.rows[0];
         res.json({
             auditorId: saved.auditorid,
@@ -1535,11 +1787,16 @@ app.put('/api/auditors/:auditorId', async (req, res) => {
             auditorName: formatAuditorName(saved.fname, saved.lname),
             myId: saved.myid,
             divisionId: saved.divisionid,
+            programIds: normalizedProgramIds,
+            cuiApproved: Number(saved.cuiapproved) === 1 ? 1 : 0,
             active: saved.active
         });
     } catch (error) {
+        await client.query('ROLLBACK');
         console.error('Error updating auditor:', error);
         res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -2025,7 +2282,8 @@ app.put('/api/props/:propId', async (req, res) => {
 app.get('/api/audits', async (req, res) => {
     try {
         const { hash, all, report } = req.query;
-        let query = 'SELECT *, locked::int as locked FROM audits_r';
+        const additionalApproversColumn = await getAuditAdditionalApproversColumn();
+        let query = `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, locked::int as locked FROM audits_r`;
         let params = [];
 
         const conditions = [];
@@ -2046,9 +2304,9 @@ app.get('/api/audits', async (req, res) => {
         if (all !== 'true') {
             const userInfo = await getCurrentUserInfo(req);
 
-            if (!userInfo) {
-                return res.json([]);
-            }
+        if (!userInfo) {
+            return res.json([]);
+        }
 
             let approverScheduleIds = new Set();
             if (report === 'true' && userInfo.myid) {
@@ -2067,6 +2325,10 @@ app.get('/api/audits', async (req, res) => {
                     approverScheduleIds
                 })
             );
+            audits = audits.map((audit) => ({
+                ...audit,
+                canEdit: canEditAudit({ audit, userInfo })
+            }));
         }
 
         res.json(audits);
@@ -2090,7 +2352,7 @@ const stageColumnGroups = {
     ],
     3: [
         'overview', 'standardIds', 'programIds', 'intervieweeIds', 'startDate',
-        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause'
+        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause', 'cui'
     ]
 };
 
@@ -2127,6 +2389,11 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
     try {
         const { scheduleId } = req.params;
         const updates = { ...req.body };
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
 
         const targetStage = Number.isFinite(updates.targetStage) ? Number(updates.targetStage) : null;
         const stageValue = Number.isFinite(updates.stage) ? Number(updates.stage) : null;
@@ -2187,6 +2454,13 @@ app.post('/api/audits', async (req, res) => {
         const audit = req.body;
         const existingScheduleId = audit.scheduleId;
         const isNewAudit = !existingScheduleId;
+        if (existingScheduleId) {
+            const userInfo = await getCurrentUserInfo(req);
+            const existingAudit = await getAuditForAccessCheck(client, existingScheduleId);
+            if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
+                return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+            }
+        }
 
         await client.query('BEGIN');
 
@@ -2210,11 +2484,11 @@ app.post('/api/audits', async (req, res) => {
                     leadAuditorId, additionalAuditorIds, comment, scope, safety,
                     clearance, safetyEquipmentIds, trainingRequirementIds,
                     famaIds, intervieweeIds, specialConsiderations, overview, evaluator, relatedItems,
-                    programManager, maLeadManager, delayCause, hash
+                    programManager, maLeadManager, cui, delayCause, hash
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
                     $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                    $27, $28, $29, $30, $31, $32, $33, $34
+                    $27, $28, $29, $30, $31, $32, $33, $34, $35
                 ) RETURNING scheduleId`,
                 [
                     audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
@@ -2226,7 +2500,7 @@ app.post('/api/audits', async (req, res) => {
                     audit.safety, audit.clearance,
                     JSON.stringify(audit.safetyEquipmentIds), JSON.stringify(audit.trainingRequirementIds), JSON.stringify(audit.famaIds),
                     JSON.stringify(audit.intervieweeIds), audit.specialConsiderations, audit.overview, audit.evaluator,
-                    audit.relatedItems, audit.programManager, audit.maLeadManager, audit.delayCause,
+                    audit.relatedItems, audit.programManager, audit.maLeadManager, audit.cui, audit.delayCause,
                     audit.hash
                 ]
             );
@@ -2308,8 +2582,9 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
         }
 
         const auditId = parseInt(scheduleId);
+        const additionalApproversColumn = await getAuditAdditionalApproversColumn();
         const result = await pool.query(
-            `SELECT *, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
+            `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
             [auditId]
         );
 
@@ -2335,7 +2610,10 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
 
-        res.json(audit);
+        res.json({
+            ...audit,
+            canEdit: canEditAudit({ audit, userInfo })
+        });
     } catch (error) {
         console.error('Error fetching audit:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2352,8 +2630,11 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Approval not found' });
         }
 
+        const additionalApproversColumn = await getAuditAdditionalApproversColumn();
         const auditResult = await pool.query(
-            'SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, additionalapprovers, additionalauditorids FROM audits_r WHERE scheduleid = $1',
+            `SELECT scheduleid, title, approvedat, locked::int as locked, approver, leadauditorid, ${additionalApproversColumn} AS additionalapprovers, additionalauditorids
+             FROM audits_r
+             WHERE scheduleid = $1`,
             [parseInt(scheduleId)]
         );
 
@@ -2521,6 +2802,57 @@ app.get('/api/cars/:scheduleId', async (req, res) => {
     }
 });
 
+const replaceCarsForSchedule = async (client, scheduleId, cars = []) => {
+    await client.query(
+        'DELETE FROM cars_r WHERE scheduleid = $1',
+        [scheduleId]
+    );
+
+    for (const car of cars) {
+        if (!car?.car) continue;
+        await client.query(
+            'INSERT INTO cars_r (scheduleid, car, reviewer, effective) VALUES ($1, $2, $3, $4)',
+            [
+                scheduleId,
+                car.car,
+                car.reviewer ?? null,
+                car.effective ?? null
+            ]
+        );
+    }
+};
+
+app.put('/api/cars/:scheduleId', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { scheduleId } = req.params;
+        const { cars } = req.body;
+
+        const parsedScheduleId = parseInt(scheduleId, 10);
+        if (!parsedScheduleId) {
+            return res.status(400).json({ success: false, error: 'Valid scheduleId is required.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, parsedScheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+
+        await client.query('BEGIN');
+        await replaceCarsForSchedule(client, parsedScheduleId, Array.isArray(cars) ? cars : []);
+        await client.query('COMMIT');
+
+        res.json({ success: true });
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('Error saving CARs:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Unlock an audit (set locked to 0)
 app.post('/api/unlock-audit', async (req, res) => {
     const client = await pool.connect();
@@ -2529,6 +2861,11 @@ app.post('/api/unlock-audit', async (req, res) => {
 
         if (!scheduleId) {
             return res.status(400).json({ success: false, error: 'scheduleId is required' });
+        }
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
         }
 
         await client.query('BEGIN');
@@ -2558,6 +2895,11 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
     const client = await pool.connect();
     try {
         const { audit, cars } = req.body;
+        const userInfo = await getCurrentUserInfo(req);
+        const existingAudit = await getAuditForAccessCheck(client, audit?.scheduleId);
+        if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
 
         console.log('Received audit data:', audit);
         console.log('Received CARs data:', cars);
@@ -2565,24 +2907,23 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
 
         await client.query('BEGIN');
+        const additionalApproversColumn = await getAuditAdditionalApproversColumn(client);
 
         // Update audit with nonconformities data
         const lockedBit = audit.locked ? "B'1'" : "B'0'";
         const updateResult = await client.query(
             `UPDATE audits_r SET 
                 auditorstime = $1,
-                previouscarseffective = $2,
-                approver = $3,
-                leadauditorid = $4,
-                additionalapprovers = $5,
-                stage = $6,
+                approver = $2,
+                leadauditorid = $3,
+                ${additionalApproversColumn} = $4,
+                stage = $5,
                 locked = ${lockedBit},
                 submittedat = CASE WHEN ${lockedBit} = B'1' THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
                 updatedat = CURRENT_TIMESTAMP
-            WHERE scheduleid = $7`,
+            WHERE scheduleid = $6`,
             [
                 audit.auditorsTime,
-                audit.previousCarsEffective,
                 audit.approver,
                 audit.leadAuditor,
                 JSON.stringify(audit.additionalApprovers || []),
@@ -2663,24 +3004,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             await client.query('UPDATE audits_r SET approvedat = NULL, submittedat = NULL WHERE scheduleid = $1', [audit.scheduleId]);
         }
 
-        // Delete existing CARs for this audit
-        const deleteResult = await client.query(
-            'DELETE FROM cars_r WHERE scheduleid = $1',
-            [audit.scheduleId]
-        );
-
-        console.log('CARs delete result:', deleteResult.rowCount, 'rows deleted');
-
-        // Insert new CARs
-        if (cars && cars.length > 0) {
-            for (const car of cars) {
-                const insertResult = await client.query(
-                    'INSERT INTO cars_r (scheduleid, car, reviewer) VALUES ($1, $2, $3)',
-                    [audit.scheduleId, car.car, car.reviewer]
-                );
-                console.log('Inserted CAR:', car.car);
-            }
-        }
+        await replaceCarsForSchedule(client, audit.scheduleId, Array.isArray(cars) ? cars : []);
 
         await client.query('COMMIT');
         console.log('Transaction committed successfully');
@@ -2737,13 +3061,107 @@ app.get('/api/email-outbox', async (req, res) => {
     }
 });
 
-// Get risk ratings for a specific schedule
-app.get('/api/risk-ratings/:scheduleId', async (req, res) => {
+const RISK_SCOPE_COLUMN_MAP = {
+    1: null,
+    2: 'sectorid',
+    3: 'divisionid',
+    4: 'siteid',
+    5: 'buid',
+    6: 'ouid',
+    7: 'programid'
+};
+
+const buildRiskScope = (riskTypeId, targetId) => {
+    const typeId = Number(riskTypeId);
+    if (!Number.isInteger(typeId) || !RISK_SCOPE_COLUMN_MAP.hasOwnProperty(typeId)) {
+        throw new Error('Invalid riskTypeId.');
+    }
+
+    const column = RISK_SCOPE_COLUMN_MAP[typeId];
+    if (!column) {
+        return {
+            typeId,
+            column: null,
+            targetId: null,
+            whereClause: 'risktypeid = $1',
+            params: [typeId]
+        };
+    }
+
+    const parsedTargetId = Number(targetId);
+    if (!Number.isInteger(parsedTargetId)) {
+        throw new Error('targetId is required for the selected org group.');
+    }
+
+    return {
+        typeId,
+        column,
+        targetId: parsedTargetId,
+        whereClause: `risktypeid = $1 AND ${column} = $2`,
+        params: [typeId, parsedTargetId]
+    };
+};
+
+// Get risk ratings for a specific org grouping
+app.get('/api/risk-ratings', async (req, res) => {
     try {
-        const { scheduleId } = req.params;
+        const { riskTypeId, targetId, processArea, year } = req.query;
+        const normalizedProcessArea = String(processArea || '').trim();
+        const normalizedYear = year !== undefined && year !== null && year !== '' ? Number(year) : null;
+        if (normalizedYear !== null && !Number.isInteger(normalizedYear)) {
+            return res.status(400).json({ error: 'Invalid year.' });
+        }
+
+        if (riskTypeId === undefined || riskTypeId === null || riskTypeId === '') {
+            if (!normalizedProcessArea) {
+                const params = [];
+                let whereClause = '';
+                if (normalizedYear !== null) {
+                    params.push(normalizedYear);
+                    whereClause = `WHERE year = $1`;
+                }
+                const result = await pool.query(
+                    `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                     FROM RiskRatings_r
+                     ${whereClause}
+                     ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
+                    params
+                );
+                return res.json(result.rows);
+            }
+
+            const params = [normalizedProcessArea];
+            let whereClause = 'WHERE LOWER(TRIM(processarea)) = LOWER(TRIM($1))';
+            if (normalizedYear !== null) {
+                params.push(normalizedYear);
+                whereClause += ` AND year = $2`;
+            }
+            const result = await pool.query(
+                `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                 FROM RiskRatings_r
+                 ${whereClause}
+                 ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
+                params
+            );
+            return res.json(result.rows);
+        }
+        const scope = buildRiskScope(riskTypeId, targetId);
+        const params = [...scope.params];
+        let whereClause = scope.whereClause;
+        if (normalizedProcessArea) {
+            params.push(normalizedProcessArea);
+            whereClause += ` AND LOWER(TRIM(processarea)) = LOWER(TRIM($${params.length}))`;
+        }
+        if (normalizedYear !== null) {
+            params.push(normalizedYear);
+            whereClause += ` AND year = $${params.length}`;
+        }
         const result = await pool.query(
-            'SELECT * FROM RiskRatings_r WHERE ScheduleID = $1',
-            [parseInt(scheduleId)]
+            `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+             FROM RiskRatings_r
+             WHERE ${whereClause}
+             ORDER BY year DESC, subcategoryid`,
+            params
         );
         res.json(result.rows);
     } catch (error) {
@@ -2752,26 +3170,60 @@ app.get('/api/risk-ratings/:scheduleId', async (req, res) => {
     }
 });
 
-// Save risk ratings for a schedule
+// Save risk ratings for an org grouping
 app.post('/api/risk-ratings', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { scheduleId, ratings } = req.body;
+        const { riskTypeId, targetId, processArea, year, ratings } = req.body;
+        const scope = buildRiskScope(riskTypeId, targetId);
+        const normalizedProcessArea = String(processArea || '').trim();
+        const normalizedYear = Number(year);
+        if (!normalizedProcessArea) {
+            return res.status(400).json({ success: false, error: 'processArea is required.' });
+        }
+        if (!Number.isInteger(normalizedYear)) {
+            return res.status(400).json({ success: false, error: 'year is required.' });
+        }
 
         await client.query('BEGIN');
 
-        // Delete existing ratings for this schedule
+        // Delete existing ratings for this org grouping
+        const deleteParams = [...scope.params, normalizedProcessArea, normalizedYear];
         await client.query(
-            'DELETE FROM RiskRatings_r WHERE ScheduleID = $1',
-            [scheduleId]
+            `DELETE FROM RiskRatings_r WHERE ${scope.whereClause} AND LOWER(TRIM(processarea)) = LOWER(TRIM($${deleteParams.length - 1})) AND year = $${deleteParams.length}`,
+            deleteParams
         );
 
         // Insert new ratings
         if (ratings && ratings.length > 0) {
             for (const rating of ratings) {
                 await client.query(
-                    'INSERT INTO RiskRatings_r (ScheduleID, SubcategoryID, Rating) VALUES ($1, $2, $3)',
-                    [scheduleId, rating.subcategoryId, rating.rating]
+                    `INSERT INTO RiskRatings_r (
+                        processarea,
+                        year,
+                        risktypeid,
+                        sectorid,
+                        divisionid,
+                        siteid,
+                        buid,
+                        ouid,
+                        programid,
+                        subcategoryid,
+                        rating
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    [
+                        normalizedProcessArea,
+                        normalizedYear,
+                        scope.typeId,
+                        scope.column === 'sectorid' ? scope.targetId : null,
+                        scope.column === 'divisionid' ? scope.targetId : null,
+                        scope.column === 'siteid' ? scope.targetId : null,
+                        scope.column === 'buid' ? scope.targetId : null,
+                        scope.column === 'ouid' ? scope.targetId : null,
+                        scope.column === 'programid' ? scope.targetId : null,
+                        rating.subcategoryId,
+                        rating.rating
+                    ]
                 );
             }
         }
@@ -2781,6 +3233,38 @@ app.post('/api/risk-ratings', async (req, res) => {
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error saving risk ratings:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.delete('/api/risk-ratings', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { riskTypeId, targetId, processArea, year } = req.body;
+        const scope = buildRiskScope(riskTypeId, targetId);
+        const normalizedProcessArea = String(processArea || '').trim();
+        const normalizedYear = Number(year);
+        if (!normalizedProcessArea) {
+            return res.status(400).json({ success: false, error: 'processArea is required.' });
+        }
+        if (!Number.isInteger(normalizedYear)) {
+            return res.status(400).json({ success: false, error: 'year is required.' });
+        }
+
+        const deleteParams = [...scope.params, normalizedProcessArea, normalizedYear];
+        await client.query(
+            `DELETE FROM RiskRatings_r
+             WHERE ${scope.whereClause}
+               AND LOWER(TRIM(processarea)) = LOWER(TRIM($${deleteParams.length - 1}))
+               AND year = $${deleteParams.length}`,
+            deleteParams
+        );
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting risk ratings:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();

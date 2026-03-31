@@ -85,6 +85,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [newPEQs, setNewPEQs] = useState(0);
   const [deletedPEQs, setDeletedPEQs] = useState(new Set());
   const [selectedAudit, setSelectedAudit] = useState(null);
+  const isViewOnly = Boolean(selectedAudit?.scheduleId && selectedAudit?.canEdit === false);
   const [standardAdditional, setStandardAdditional] = useState({});
   const [deletedStandardQuestions, setDeletedStandardQuestions] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
@@ -98,8 +99,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [uploadingFile, setUploadingFile] = useState(false);
   const fileInputRef = useRef(null);
   const lastSelectedScheduleRef = useRef(null);
+  const readOnlyToastRef = useRef(null);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isUploadTooLarge = Boolean(uploadFile && uploadFile.size > MAX_UPLOAD_BYTES);
+  const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
@@ -129,6 +132,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   useEffect(() => {
     rowSelectionModelRef.current = rowSelectionModel;
   }, [rowSelectionModel]);
+
+  useEffect(() => {
+    if (!isViewOnly || !selectedAudit?.scheduleId) {
+      readOnlyToastRef.current = null;
+      return;
+    }
+    if (readOnlyToastRef.current === selectedAudit.scheduleId) return;
+    toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
+    readOnlyToastRef.current = selectedAudit.scheduleId;
+  }, [isViewOnly, selectedAudit]);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -182,7 +195,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       question: nc.question || 'No response provided',
       type: getQuestionTypeLabel(nc.type),
       findingType: getFindingTypeLabel(nc.findingType),
-      comment: nc.auditorComment || nc.comment || nc.ncDetails || 'No response provided'
+      comment: nc.auditorComment || nc.comment || 'No response provided'
     }));
     return rows.sort((a, b) => Number(a.id) - Number(b.id));
   }, [nonconformances, getQuestionTypeLabel, getFindingTypeLabel]);
@@ -206,6 +219,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, []);
 
   const handleFileUpload = async () => {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     if (!uploadFile) {
       toast.error('Please select a file to upload.');
       return;
@@ -473,6 +490,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       // Set overview (always, even if empty)
       setValue('overview', selectedAudit.overview || '');
+      setValue('cui', selectedAudit.cui ?? null);
 
       // Set standards if available
       if (selectedAudit.standardIds) {
@@ -808,6 +826,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   async function onSubmit(data) {
     try {
+      if (isViewOnly) {
+        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        return;
+      }
       if (!selectedAudit) {
         alert('Please select an audit first');
         return;
@@ -873,7 +895,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             response: response || '',
             auditorComment: auditorComment || '',
             details: '',
-            ncDetails: '',
             AIN: '',
             division: data[`prOPDivision${i}`] || [],
             sector: data[`prOPSector${i}`] || [],
@@ -908,7 +929,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             response: response || '',
             auditorComment: auditorComment || '',
             details: '',
-            ncDetails: '',
             AIN: '',
             division: data[`etqPrOPDivision${idx}`] || [],
             sector: data[`etqPrOPSector${idx}`] || [],
@@ -950,7 +970,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
               response: response || '',
               auditorComment: auditorComment || '',
               details: '',
-              ncDetails: '',
               AIN: '',
               division: data[`standardAdditionalPrOPDivision_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
               sector: data[`standardAdditionalPrOPSector_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
@@ -974,6 +993,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         body: JSON.stringify({
           ...selectedAudit,
           overview: data.overview,
+          cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
           standardIds: data.standards || [],
           programIds: data.programs || [],
           intervieweeIds: data.interviewees || [],
@@ -1038,6 +1058,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   async function unlockAudit() {
     try {
+      if (isViewOnly) {
+        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        return;
+      }
       if (!schedule?.scheduleId) {
         throw new Error('No audit selected');
       }
@@ -1245,12 +1269,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   <input
                     ref={fileInputRef}
                     type="file"
+                    disabled={isViewOnly}
                     onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
                     className="textfield"
                   />
                 </div>
                 <div className="fieldboxhalf" style={{ display: 'flex', alignItems: 'center' }}>
-                  {uploadFile && !isUploadTooLarge && (
+                  {uploadFile && !isUploadTooLarge && !isViewOnly && (
                     <button
                       type="button"
                       className="button"
@@ -1284,23 +1309,25 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                 <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
                   Audit {schedule.scheduleId} has been submitted for final approval and cannot be edited.
                 </h2>
-                <button
-                  type="button"
-                  onClick={unlockAudit}
-                  style={{
-                    backgroundColor: '#f44336',
-                    color: 'white',
-                    border: 'none',
-                    padding: '12px 24px',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    marginBottom: '10px'
-                  }}
-                >
-                  Undo Submission
-                </button>
+                {!isViewOnly && (
+                  <button
+                    type="button"
+                    onClick={unlockAudit}
+                    style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      marginBottom: '10px'
+                    }}
+                  >
+                    Undo Submission
+                  </button>
+                )}
                 <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
                   Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
                 </p>
@@ -1318,6 +1345,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                 :
                 <>
                   <h2 style={{ marginTop: '5px' }}>Currently Conducting Schedule: {schedule.scheduleId}</h2>
+                  {isViewOnly && (
+                    <p style={{ marginTop: '6px', color: '#666' }}>
+                      You are not assigned as an auditor on this audit. Fields are view-only.
+                    </p>
+                  )}
+                  <div style={readOnlyStyle}>
                   <div className="admin-edit-table-wrapper" style={{ marginTop: '12px' }}>
                     <p className="admin-editing-label">Existing Findings and Nonconformaties</p>
                     <div className="admin-edit-table-scroll">
@@ -1367,7 +1400,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                     <label className='sectiontitle'>Process Evaluation (PE) Introduction</label>
 
                     <div className='sectionrow'>
-                      <div className={isDelayed ? "fieldboxhalf" : "fieldboxthird"}>
+                      <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
                         <label>Standard(s)<label style={{ color: 'red' }}>*</label></label>
                         <Controller
                           name="standards"
@@ -1387,7 +1420,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                         />
                         {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
                       </div>
-                      <div className={isDelayed ? "fieldboxhalf" : "fieldboxthird"}>
+                      <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
                         <label>Interviewees</label>
                         <Controller
                           name="interviewees"
@@ -1405,8 +1438,32 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           )}
                         />
                       </div>
+                      <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
+                        <label>Does this audit contain CUI?<label style={{ color: 'red' }}>*</label></label>
+                        <Controller
+                          name="cui"
+                          control={control}
+                          rules={{ required: "CUI selection is required" }}
+                          render={({ field }) => (
+                            <Select
+                              isClearable
+                              options={[
+                                { value: 0, label: 'No' },
+                                { value: 1, label: 'Yes' }
+                              ]}
+                              styles={customStyles}
+                              placeholder="Select One"
+                              value={field.value === 0 || field.value === 1
+                                ? { value: field.value, label: field.value === 1 ? 'Yes' : 'No' }
+                                : null}
+                              onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                            />
+                          )}
+                        />
+                        {errors.cui && <p className='fielderror'>{errors.cui.message}</p>}
+                      </div>
                       {!isDelayed && (
-                        <div className="fieldboxthird">
+                        <div className="fieldboxquarter">
                           <label>Actual Audit Start Date</label>
                           <input
                             type="date"
@@ -2185,14 +2242,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       </p>
                     </div>
                   )}
-
+                  </div>
                 </>)
             }
 
 
           </ form>
           {/* Fixed position buttons at bottom right */}
-          {(selectedAudit && !auditLocked) && (
+          {(selectedAudit && !auditLocked && !isViewOnly) && (
             <div style={{
               position: 'fixed',
               bottom: '20px',

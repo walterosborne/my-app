@@ -1,4 +1,4 @@
-import { React, useEffect, useMemo, useState } from 'react'
+import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
 import { Box, Typography } from '@mui/material';
@@ -23,9 +23,6 @@ import {
   getFunctions,
   getIntExt,
   getStandards,
-  getRiskFactors,
-  getSubcategories,
-  getRiskRatings,
   getCurrentUser
 } from './assets/data/apiData';
 
@@ -47,15 +44,12 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
-  const [riskFactorsList, setRiskFactorsList] = useState([]);
-  const [subcategoriesList, setSubcategoriesList] = useState([]);
-  const [selectedRiskFactors, setSelectedRiskFactors] = useState([]);
-  const [riskRatings, setRiskRatings] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
   const [submittedScheduleId, setSubmittedScheduleId] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
+  const readOnlyToastRef = useRef(null);
   const navigate = useNavigate();
 
   // Load all lookup data from API on mount
@@ -64,7 +58,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, riskFactors, subcategories] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -76,9 +70,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
           getStatuses(),
           getFunctions(),
           getIntExt(),
-          getStandards(),
-          getRiskFactors(),
-          getSubcategories()
+          getStandards()
         ]);
 
         setProgramsList(programs);
@@ -93,8 +85,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
-        setRiskFactorsList(riskFactors);
-        setSubcategoriesList(subcategories);
         setLoading(false);
       } catch (error) {
         console.error('Error loading lookup data:', error);
@@ -103,6 +93,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
     loadLookupData();
   }, []);
+
 
   // Helper function to get program names from programIds
   const getProgramNames = (programIds) => {
@@ -224,6 +215,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   };
 
   const [selectedAudit, setSelectedAudit] = useState(null);
+  const isViewOnly = Boolean(selectedAudit?.scheduleId && selectedAudit?.canEdit === false);
+  const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
@@ -241,6 +234,16 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
     return true;
   };
+
+  useEffect(() => {
+    if (!isViewOnly || !selectedAudit?.scheduleId) {
+      readOnlyToastRef.current = null;
+      return;
+    }
+    if (readOnlyToastRef.current === selectedAudit.scheduleId) return;
+    toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
+    readOnlyToastRef.current = selectedAudit.scheduleId;
+  }, [isViewOnly, selectedAudit]);
   const { register, handleSubmit,
     setError,
     formState: { errors, isSubmitting },
@@ -555,44 +558,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     label: s.standardName
   })).sort((a, b) => a.label.localeCompare(b.label));
 
-  // Load risk ratings when an audit is selected
-  useEffect(() => {
-    async function loadRiskRatings() {
-      if (selectedAudit?.scheduleId) {
-        try {
-          const ratings = await getRiskRatings(selectedAudit.scheduleId);
-
-          // Convert ratings array to object for easier lookup
-          const ratingsMap = {};
-          const selectedFactors = new Set();
-
-          ratings.forEach(rating => {
-            ratingsMap[rating.subcategoryid] = rating.rating;
-            // Find which risk factor this subcategory belongs to
-            const subcategory = subcategoriesList.find(s => s.subcategoryid === rating.subcategoryid);
-            if (subcategory) {
-              selectedFactors.add(subcategory.riskfactorid);
-            }
-          });
-
-          setRiskRatings(ratingsMap);
-          setSelectedRiskFactors(Array.from(selectedFactors));
-        } catch (error) {
-          console.error('Error loading risk ratings:', error);
-        }
-      } else {
-        // Clear when no audit selected
-        setRiskRatings({});
-        setSelectedRiskFactors([]);
-      }
-    }
-
-    if (subcategoriesList.length > 0) {
-      loadRiskRatings();
-    }
-  }, [selectedAudit?.scheduleId, subcategoriesList]);
-
-
   useEffect(() => {
     if (mode === 'New') {
       setSchedule(null);
@@ -601,9 +566,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         type: 'include',
         ids: new Set()
       });
-      // Clear risk factors when switching to New mode
-      setRiskRatings({});
-      setSelectedRiskFactors([]);
     }
   }, [mode]);
 
@@ -712,14 +674,11 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, [schedule, selectedAudit]); // Runs effect whenever schedule or selectedAudit changes
 
   async function onSubmit(data) {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
-      // Validate risk ratings - check if any subcategory is checked but has no rating selected
-      const incompleteRatings = Object.entries(riskRatings).filter(([_, rating]) => rating === '');
-      if (incompleteRatings.length > 0) {
-        toast.error('Please select a rating for all checked subcategories');
-        return;
-      }
-
       // Generate a unique hash for tracking new records
       const hash = Math.random().toString(36).substring(2, 22);
 
@@ -786,32 +745,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setSubmitted(true);
         setSubmittedScheduleId(finalScheduleId);
 
-        // Save risk ratings if any exist
-        const ratingsToSave = Object.entries(riskRatings)
-          .filter(([_, rating]) => rating !== null && rating !== '')
-          .map(([subcategoryId, rating]) => ({
-            subcategoryId: parseInt(subcategoryId),
-            rating: parseInt(rating)
-          }));
-
-        if (ratingsToSave.length > 0) {
-          const ratingsResponse = await fetch('http://localhost:3001/api/risk-ratings', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              scheduleId: finalScheduleId,
-              ratings: ratingsToSave
-            })
-          });
-
-          const ratingsResult = await ratingsResponse.json();
-          if (!ratingsResult.success) {
-            console.error('Failed to save risk ratings:', ratingsResult.error);
-          }
-        }
-
         // Reload all audit data - add small delay to ensure DB transaction completes
         if (reloadAudits) {
           console.log('Reloading audits after submission...');
@@ -831,6 +764,10 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   }
   async function unlockAudit() {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
       if (!schedule?.scheduleId) {
         throw new Error('No audit selected');
@@ -877,9 +814,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         ids: new Set()
       });
       setValue("mode", "New");
-      // Clear risk factors
-      setRiskRatings({});
-      setSelectedRiskFactors([]);
     } else if (currentMode === 'Edit' && selectedAudit) {
       // In Edit mode, restore the saved data
       setSchedule({
@@ -890,33 +824,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         division: getDivisionName(selectedAudit.divisionId),
         programs: getProgramNames(selectedAudit.programIds)
       });
-
-      // Reload risk ratings from the saved audit
-      async function reloadRiskRatings() {
-        try {
-          const ratings = await getRiskRatings(selectedAudit.scheduleId);
-
-          const ratingsMap = {};
-          const selectedFactors = new Set();
-
-          ratings.forEach(rating => {
-            ratingsMap[rating.subcategoryid] = rating.rating;
-            const subcategory = subcategoriesList.find(s => s.subcategoryid === rating.subcategoryid);
-            if (subcategory) {
-              selectedFactors.add(subcategory.riskfactorid);
-            }
-          });
-
-          setRiskRatings(ratingsMap);
-          setSelectedRiskFactors(Array.from(selectedFactors));
-        } catch (error) {
-          console.error('Error reloading risk ratings:', error);
-        }
-      }
-
-      if (subcategoriesList.length > 0) {
-        reloadRiskRatings();
-      }
 
       // The useEffect will repopulate the form from selectedAudit
     }
@@ -1132,12 +1039,17 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
               </Box>}
               {schedule && <h2 style={{ marginTop: '5px' }}>Currently Editing Schedule: {schedule.scheduleId}</h2>}
+              {schedule && isViewOnly && (
+                <p style={{ marginTop: '6px', color: '#666' }}>
+                  You are not assigned as an auditor on this audit. Fields are view-only.
+                </p>
+              )}
               {/* Sections mimic the old streamlit containers with borders */}
               {(mode !== 'Edit' || schedule) && (
                 <>
                   {(mode !== 'Edit' || !auditLocked) ?
                     (
-                      <>
+                      <div style={readOnlyStyle}>
                         <div className='section'>
                           <label className='sectiontitle' htmlFor="title">Audit Title<label style={{ color: 'red' }}>*</label></label>
                           {/* Field box quarter is a quarter width field */}
@@ -1181,7 +1093,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxquarter">
-                              <label>Division<label style={{ color: 'red' }}>*</label></label>
+                              <label>Division(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="division"
                                 control={control}
@@ -1195,7 +1107,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     isMulti
                                     options={divisions}
                                     styles={customStyles}
-                                    placeholder="Division"
+                                    placeholder="Division(s)"
                                     value={Array.isArray(field.value) ? divisions.filter(d => field.value.includes(d.value)) : []}
                                     onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
@@ -1247,7 +1159,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                           </div>
                           <div className='sectionrow'>
                             <div className="fieldboxthird">
-                              <label>Business Unit</label>
+                              <label>Business Unit(s)</label>
                               <Controller
                                 name="businessUnit"
                                 control={control}
@@ -1257,7 +1169,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     isClearable
                                     options={businessUnits}
                                     styles={customStyles}
-                                    placeholder="Business Unit"
+                                    placeholder="Business Unit(s)"
                                     value={field.value ? businessUnits.filter(b => field.value.includes(b.value)) : []}
                                     onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])}
                                   />
@@ -1267,7 +1179,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxthird">
-                              <label>Operating Unit</label>
+                              <label>Operating Unit(s)</label>
                               <Controller
                                 name="operatingUnit"
                                 control={control}
@@ -1277,7 +1189,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     isClearable
                                     options={operatingUnits}
                                     styles={customStyles}
-                                    placeholder="Operating Unit"
+                                    placeholder="Operating Unit(s)"
                                     value={field.value ? operatingUnits.filter(o => field.value.includes(o.value)) : []}
                                     onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(option => option.value) : [])}
                                   />
@@ -1442,7 +1354,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxthird">
-                              <label>Function<label style={{ color: 'red' }}>*</label></label>
+                              <label>Function(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="function"
                                 control={control}
@@ -1456,134 +1368,13 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     isMulti
                                     options={functions}
                                     styles={customStyles}
-                                    placeholder="Function"
+                                    placeholder="Function(s)"
                                     value={Array.isArray(field.value) ? functions.filter(f => field.value.includes(f.value)) : []}
                                     onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
                                 )}
                               />
                               {errors.function && <p className='fielderror'>{errors.function.message}</p>}
-                            </div>
-                          </div>
-                        </div>
-                        <div className='section'>
-                          <div className='sectionrow' style={{ display: 'flex', gap: '20px' }}>
-                            {/* Left column - Risk Factor Checkboxes (1/3 width) */}
-                            <div style={{ flex: '0 0 30%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                              <label className='sectiontitle'>Risk Factors</label>
-                              {riskFactorsList.map(factor => (
-                                <div key={factor.riskfactorid} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <input
-                                    type="checkbox"
-                                    id={`risk-factor-${factor.riskfactorid}`}
-                                    checked={selectedRiskFactors.includes(factor.riskfactorid)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setSelectedRiskFactors([...selectedRiskFactors, factor.riskfactorid]);
-                                      } else {
-                                        setSelectedRiskFactors(selectedRiskFactors.filter(id => id !== factor.riskfactorid));
-                                        // Clear ratings for subcategories of this factor
-                                        const subcatsToRemove = subcategoriesList
-                                          .filter(s => s.riskfactorid === factor.riskfactorid)
-                                          .map(s => s.subcategoryid);
-                                        const newRatings = { ...riskRatings };
-                                        subcatsToRemove.forEach(id => delete newRatings[id]);
-                                        setRiskRatings(newRatings);
-                                      }
-                                    }}
-                                    style={{ cursor: 'pointer' }}
-                                  />
-                                  <label
-                                    htmlFor={`risk-factor-${factor.riskfactorid}`}
-                                    style={{ cursor: 'pointer', margin: 0 }}
-                                  >
-                                    {factor.riskfactor}
-                                  </label>
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* Right column - Subcategory Dropdowns (2/3 width) */}
-                            <div style={{ flex: '0 0 65%', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                              <label className='sectiontitle' style={{ marginLeft: '0px' }}>Ratings</label>
-                              {selectedRiskFactors.length === 0 ? (
-                                <p style={{ color: '#666', fontStyle: 'italic' }}>
-                                  Select one or more risk factors to rate their subcategories
-                                </p>
-                              ) : (
-                                selectedRiskFactors.map(factorId => {
-                                  const factor = riskFactorsList.find(f => f.riskfactorid === factorId);
-                                  const subcategories = subcategoriesList.filter(s => s.riskfactorid === factorId);
-
-                                  return (
-                                    <div key={factorId} style={{ marginBottom: '10px' }}>
-                                      <h4 style={{ margin: '0 0 10px 0' }}>{factor.riskfactor}</h4>
-                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                        {subcategories.map(subcat => {
-                                          const isChecked = riskRatings[subcat.subcategoryid] !== undefined && riskRatings[subcat.subcategoryid] !== null;
-
-                                          return (
-                                            <div key={subcat.subcategoryid} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                              <input
-                                                type="checkbox"
-                                                id={`subcat-${subcat.subcategoryid}`}
-                                                checked={isChecked}
-                                                onChange={(e) => {
-                                                  if (e.target.checked) {
-                                                    // When checked, set to empty string to show dropdown
-                                                    setRiskRatings({
-                                                      ...riskRatings,
-                                                      [subcat.subcategoryid]: ''
-                                                    });
-                                                  } else {
-                                                    // When unchecked, remove from ratings
-                                                    const newRatings = { ...riskRatings };
-                                                    delete newRatings[subcat.subcategoryid];
-                                                    setRiskRatings(newRatings);
-                                                  }
-                                                }}
-                                                style={{ cursor: 'pointer' }}
-                                              />
-                                              <label
-                                                htmlFor={`subcat-${subcat.subcategoryid}`}
-                                                style={{ flex: '1', margin: 0, cursor: 'pointer' }}
-                                              >
-                                                {subcat.subcategory}
-                                              </label>
-                                              {isChecked && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', minWidth: '200px' }}>
-                                                  <label style={{ fontSize: '0.85em', marginBottom: '3px' }}>
-                                                    Rating<span style={{ color: 'red' }}>*</span>
-                                                  </label>
-                                                  <Select
-                                                    value={riskRatings[subcat.subcategoryid] ?
-                                                      { value: riskRatings[subcat.subcategoryid], label: riskRatings[subcat.subcategoryid] === 1 ? 'Low Risk' : riskRatings[subcat.subcategoryid] === 2 ? 'Medium Risk' : 'High Risk' }
-                                                      : null}
-                                                    onChange={(selectedOption) => {
-                                                      setRiskRatings({
-                                                        ...riskRatings,
-                                                        [subcat.subcategoryid]: selectedOption ? selectedOption.value : ''
-                                                      });
-                                                    }}
-                                                    options={[
-                                                      { value: 1, label: 'Low Risk' },
-                                                      { value: 2, label: 'Medium Risk' },
-                                                      { value: 3, label: 'High Risk' }
-                                                    ]}
-                                                    styles={customStyles}
-                                                    placeholder="Select Rating"
-                                                    isClearable
-                                                  />
-                                                </div>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  );
-                                })
-                              )}
                             </div>
                           </div>
                         </div>
@@ -1657,29 +1448,31 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </button>
                           </div>
                         )}
-                      </>
+                      </div>
                     ) :
                     (<>
                       <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
                         This audit has been submitted for final approval and cannot be edited.
                       </h2>
-                      <button
-                        type="button"
-                        onClick={unlockAudit}
-                        style={{
-                          backgroundColor: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          padding: '12px 24px',
-                          fontSize: '16px',
-                          cursor: 'pointer',
-                          borderRadius: '4px',
-                          fontWeight: 'bold',
-                          marginBottom: '10px'
-                        }}
-                      >
-                        Undo Submission
-                      </button>
+                      {!isViewOnly && (
+                        <button
+                          type="button"
+                          onClick={unlockAudit}
+                          style={{
+                            backgroundColor: '#f44336',
+                            color: 'white',
+                            border: 'none',
+                            padding: '12px 24px',
+                            fontSize: '16px',
+                            cursor: 'pointer',
+                            borderRadius: '4px',
+                            fontWeight: 'bold',
+                            marginBottom: '10px'
+                          }}
+                        >
+                          Undo Submission
+                        </button>
+                      )}
                       <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
                         Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
                       </p>

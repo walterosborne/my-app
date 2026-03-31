@@ -600,6 +600,22 @@
     padding-bottom: 0.5rem;
 }
 
+.risk-factor-source {
+    margin: 0 0 1rem 0;
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+}
+
+.risk-factor-cluster + .risk-factor-cluster {
+    margin-top: 1rem;
+}
+
+.risk-factor-cluster h4 {
+    margin: 0 0 0.75rem 0;
+    color: var(--color-section-heading);
+    font-size: 1rem;
+}
+
 .risk-subcategories {
     display: flex;
     flex-direction: column;

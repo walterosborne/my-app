@@ -1,4 +1,6 @@
 import React from 'react';
+import Select from 'react-select';
+import { adminSelectStyles } from '../../Utilities.jsx';
 
 const ProgramsSection = ({
     actionOptions,
@@ -18,6 +20,9 @@ const ProgramsSection = ({
     onDivisionChange,
     sortedDivisions,
     onClearDivision,
+    auditorOptions,
+    selectedAuditorIds,
+    onAuditorChange,
     programFieldErrors,
     onSubmit,
     onArchiveToggle,
@@ -160,6 +165,20 @@ const ProgramsSection = ({
                     {programFieldErrors.divisionId && (
                         <p className="admin-field-error">{programFieldErrors.divisionId}</p>
                     )}
+                </div>
+                <div className="admin-form-row">
+                    <label className="admin-label">
+                        Assigned Auditors
+                    </label>
+                    <Select
+                        isMulti
+                        isClearable
+                        options={auditorOptions}
+                        styles={adminSelectStyles}
+                        placeholder="Select Auditors"
+                        value={auditorOptions.filter((option) => selectedAuditorIds.includes(option.value))}
+                        onChange={onAuditorChange}
+                    />
                 </div>
                 <div className="admin-button-row">
                     <button

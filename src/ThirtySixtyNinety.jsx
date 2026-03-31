@@ -21,14 +21,12 @@ import {
   getFunctions,
   getIntExt,
   getStandards,
-  getRiskFactors,
-  getSubcategories,
-  getRiskRatings,
   getCauses,
   getSafetyEquipment,
   getTrainingRequirements,
   getSeverities,
   getRoster,
+  getProps,
   getNonconformances
 } from './assets/data/apiData';
 
@@ -73,13 +71,12 @@ const ThirtySixtyNinety = () => {
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
-  const [riskFactorsList, setRiskFactorsList] = useState([]);
-  const [subcategoriesList, setSubcategoriesList] = useState([]);
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
   const [rosterList, setRosterList] = useState([]);
   const [causesList, setCausesList] = useState([]);
+  const [propsList, setPropsList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
   const [sectorFilter, setSectorFilter] = useState(null);
@@ -118,10 +115,10 @@ const ThirtySixtyNinety = () => {
     },
     'rollup-results': { title: 'Rollup Audit Results', description: '', ready: true },
     'rollup-findings': { title: 'Rollup Audit Findings', description: '', ready: false },
-    'rollup-schedule': { title: 'Rollup Audit Schedule', description: '', ready: false },
-    'clauses-audited': { title: 'Clauses Audited', description: '', ready: false },
-    'processes-audited': { title: 'Processes Audited', description: '', ready: false },
-    'schedule-comments': { title: 'Schedule Comments', description: '', ready: false }
+    'rollup-schedule': { title: 'Rollup Audit Schedule', description: '', ready: true },
+    'clauses-audited': { title: 'Clauses Audited', description: '', ready: true },
+    'processes-audited': { title: 'Processes Audited', description: '', ready: true },
+    'schedule-comments': { title: 'Schedule Comments', description: '', ready: true }
   }), []);
 
   const activeReport = reportConfigs[reportType] || {
@@ -147,14 +144,13 @@ const ThirtySixtyNinety = () => {
           functions,
           intExt,
           standards,
-          riskFactors,
-          subcategories,
           safetyEquipment,
           trainingRequirements,
           roster,
           severities,
           causes,
-          nonconformancesData
+          nonconformancesData,
+          props
         ] = await Promise.all([
           getAuditsAll(true),
           getPrograms(),
@@ -169,14 +165,13 @@ const ThirtySixtyNinety = () => {
           getFunctions(),
           getIntExt(),
           getStandards(),
-          getRiskFactors(),
-          getSubcategories(),
           getSafetyEquipment(),
           getTrainingRequirements(),
           getRoster(),
           getSeverities(),
           getCauses(),
-          getNonconformances()
+          getNonconformances(),
+          getProps()
         ]);
 
         setAudits(auditsData);
@@ -192,14 +187,13 @@ const ThirtySixtyNinety = () => {
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
-        setRiskFactorsList(riskFactors);
-        setSubcategoriesList(subcategories);
         setSafetyEquipmentList(safetyEquipment);
         setTrainingRequirementsList(trainingRequirements);
         setRosterList(roster);
         setSeveritiesList(severities);
         setCausesList(causes);
         setNonconformances(nonconformancesData);
+        setPropsList(props);
         setLoading(false);
       } catch (error) {
         console.error('Error loading report data:', error);
@@ -235,6 +229,60 @@ const ThirtySixtyNinety = () => {
       const site = sitesList.find((entry) => entry.siteId === id);
       return site ? getSiteLabel(site) : id;
     }).join(', ');
+  };
+
+  const getPropName = (propId) => {
+    if (propId === null || propId === undefined) return '';
+    const prop = propsList.find((item) => item.propId === propId);
+    return prop ? prop.PrOP : propId;
+  };
+
+  const getAuditNonconformances = (scheduleId) => {
+    const targetId = Number(scheduleId);
+    return nonconformances.filter((nc) => {
+      const ncScheduleId = Number(nc.scheduleId ?? nc.scheduleid);
+      return Number.isFinite(ncScheduleId) && ncScheduleId === targetId;
+    });
+  };
+
+  const getPropDocumentsListForAudit = (scheduleId) => {
+    const propIds = new Set();
+    getAuditNonconformances(scheduleId).forEach((nc) => {
+      ['division', 'sector', 'qma', 'other'].forEach((field) => {
+        const entries = Array.isArray(nc[field]) ? nc[field] : [];
+        entries.forEach((value) => {
+          if (value !== null && value !== undefined && value !== '') {
+            propIds.add(Number(value));
+          }
+        });
+      });
+    });
+    const names = Array.from(propIds)
+      .map((id) => getPropName(id))
+      .filter(Boolean);
+    return [...new Set(names)];
+  };
+
+  const getStandardClausesForAudit = (scheduleId) => {
+    const clauseMap = new Map();
+    getAuditNonconformances(scheduleId).forEach((nc) => {
+      if (!nc.section) return;
+      const section = nc.section;
+      const subsection = nc.subsection;
+      const question = nc.question;
+      const key = `${section}-${subsection || ''}`;
+      if (clauseMap.has(key)) return;
+      const label = `Clause ${section}${subsection ? `.${subsection}` : ''}${question ? ` - ${question}` : ''}`;
+      clauseMap.set(key, label);
+    });
+    return Array.from(clauseMap.values());
+  };
+
+  const getPrOpsForAudit = (scheduleId) => {
+    const propDocs = getPropDocumentsListForAudit(scheduleId);
+    const clauses = getStandardClausesForAudit(scheduleId);
+    const combined = [...propDocs, ...clauses].filter(Boolean);
+    return [...new Set(combined)];
   };
 
   const parseDate = (value) => {
@@ -630,6 +678,197 @@ const ThirtySixtyNinety = () => {
     standardsList
   ]);
 
+  const rollupScheduleRows = useMemo(() => {
+    if (reportType !== 'rollup-schedule') {
+      return [];
+    }
+    return sortedFilteredAudits.map((audit) => {
+      const leadAuditor = formatSingle(audit.leadAuditorId, auditorsList, 'auditorId', 'auditorName');
+      const additionalAuditors = normalizeIdArray(audit.additionalAuditorIds)
+        .map((id) => {
+          const auditor = auditorsList.find((entry) => entry.auditorId === id);
+          return auditor ? auditor.auditorName : id;
+        })
+        .filter(Boolean)
+        .join('; ');
+      const auditors = [leadAuditor, additionalAuditors].filter(Boolean).join('; ');
+      const prOpsList = getPrOpsForAudit(audit.scheduleId);
+      return {
+        id: audit.scheduleId,
+        scheduleId: audit.scheduleId,
+        divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+        businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+        operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+        programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+        props: prOpsList.join('; '),
+        auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+        intExt: formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
+        stage: getStageLabel(audit),
+        scheduledMonth: formatMonth(audit.expectedStartDate),
+        auditors
+      };
+    });
+  }, [
+    reportType,
+    sortedFilteredAudits,
+    auditorsList,
+    divisionsList,
+    businessUnitsList,
+    operatingUnitsList,
+    programsList,
+    auditTypesList,
+    intExtList,
+    nonconformances,
+    propsList
+  ]);
+
+  const formatClauseLabel = (section, subsection) => {
+    if (section === null || section === undefined || section === '') {
+      return '';
+    }
+    return subsection === null || subsection === undefined || subsection === ''
+      ? String(section)
+      : `${section}.${subsection}`;
+  };
+
+  const clausesAuditedRows = useMemo(() => {
+    if (reportType !== 'clauses-audited') {
+      return [];
+    }
+
+    const clauseRows = [];
+
+    sortedFilteredAudits.forEach((audit) => {
+      const auditStandardIds = new Set(normalizeIdArray(audit.standardIds).map((id) => Number(id)));
+      const matchingStandardFindings = getAuditNonconformances(audit.scheduleId)
+        .filter((nc) => {
+          const standardId = Number(nc.type);
+          const section = nc.section;
+          if (!Number.isFinite(standardId)) return false;
+          if (section === null || section === undefined || section === '') return false;
+          if (auditStandardIds.size > 0 && !auditStandardIds.has(standardId)) return false;
+          return true;
+        })
+        .sort((a, b) => {
+          const standardDiff = Number(a.type) - Number(b.type);
+          if (standardDiff !== 0) return standardDiff;
+          const sectionDiff = Number(a.section) - Number(b.section);
+          if (sectionDiff !== 0) return sectionDiff;
+          return Number(a.subsection ?? 0) - Number(b.subsection ?? 0);
+        });
+
+      matchingStandardFindings.forEach((nc) => {
+        const standardId = Number(nc.type);
+        clauseRows.push({
+          id: nc.ncId ?? `${audit.scheduleId}-${standardId}-${nc.section}-${nc.subsection ?? 'na'}-${clauseRows.length}`,
+          scheduleId: audit.scheduleId,
+          standard: formatSingle(standardId, standardsList, 'standardId', 'standardName') || `Standard ${standardId}`,
+          clause: formatClauseLabel(nc.section, nc.subsection),
+          divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+          businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+          operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+          programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+          auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+          stage: getStageLabel(audit),
+          scheduledMonth: formatMonth(audit.expectedStartDate)
+        });
+      });
+    });
+
+    return clauseRows;
+  }, [
+    reportType,
+    sortedFilteredAudits,
+    nonconformances,
+    standardsList,
+    divisionsList,
+    businessUnitsList,
+    operatingUnitsList,
+    programsList,
+    auditTypesList
+  ]);
+
+  const processesAuditedRows = useMemo(() => {
+    if (reportType !== 'processes-audited') {
+      return [];
+    }
+
+    const processRows = [];
+
+    sortedFilteredAudits.forEach((audit) => {
+      const auditProcessIds = new Set();
+      getAuditNonconformances(audit.scheduleId).forEach((nc) => {
+        ['qma', 'sector', 'division', 'other'].forEach((field) => {
+          const values = Array.isArray(nc[field]) ? nc[field] : [];
+          values.forEach((value) => {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed)) {
+              auditProcessIds.add(parsed);
+            }
+          });
+        });
+      });
+
+      Array.from(auditProcessIds)
+        .sort((a, b) => getPropName(a).toString().localeCompare(getPropName(b).toString()))
+        .forEach((propId) => {
+          processRows.push({
+            id: `${audit.scheduleId}-${propId}`,
+            process: getPropName(propId),
+            scheduleId: audit.scheduleId,
+            divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+            businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+            operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+            programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+            auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+            stage: getStageLabel(audit),
+            scheduledMonth: formatMonth(audit.expectedStartDate),
+            auditTime: audit.auditorsTime ?? audit.auditorstime ?? ''
+          });
+        });
+    });
+
+    return processRows;
+  }, [
+    reportType,
+    sortedFilteredAudits,
+    nonconformances,
+    propsList,
+    divisionsList,
+    businessUnitsList,
+    operatingUnitsList,
+    programsList,
+    auditTypesList
+  ]);
+
+  const scheduleCommentsRows = useMemo(() => {
+    if (reportType !== 'schedule-comments') {
+      return [];
+    }
+
+    return sortedFilteredAudits.map((audit) => ({
+      id: audit.scheduleId,
+      scheduleId: audit.scheduleId,
+      divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+      businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+      operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+      programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+      processes: getPrOpsForAudit(audit.scheduleId).join('; '),
+      stage: getStageLabel(audit),
+      startDate: audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
+      comment: audit.comment || ''
+    }));
+  }, [
+    reportType,
+    sortedFilteredAudits,
+    divisionsList,
+    businessUnitsList,
+    operatingUnitsList,
+    programsList,
+    nonconformances,
+    propsList
+  ]);
+
   const rollupResultsColumns = [
     { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
     { field: 'intExt', headerName: 'Int/Ext', width: 140 },
@@ -646,16 +885,84 @@ const ThirtySixtyNinety = () => {
     { field: 'ofi', headerName: 'OFIs', width: 110 }
   ];
 
+  const rollupScheduleColumns = [
+    { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
+    { field: 'divisions', headerName: 'Division(s)', width: 180 },
+    { field: 'businessUnits', headerName: 'BU(s)', width: 180 },
+    { field: 'operatingUnits', headerName: 'OU(s)', width: 180 },
+    { field: 'programs', headerName: 'Program(s)', width: 200 },
+    { field: 'props', headerName: 'PrOPs', width: 260 },
+    { field: 'auditType', headerName: 'Audit Type', width: 160 },
+    { field: 'intExt', headerName: 'Int/Ext', width: 140 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
+    { field: 'scheduledMonth', headerName: 'Scheduled Month', width: 170 },
+    { field: 'auditors', headerName: 'Auditors', width: 220 }
+  ];
+
+  const clausesAuditedColumns = [
+    { field: 'standard', headerName: 'Standard', width: 180 },
+    { field: 'clause', headerName: 'Clause', width: 140 },
+    { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
+    { field: 'divisions', headerName: 'Div', width: 180 },
+    { field: 'businessUnits', headerName: 'BU', width: 180 },
+    { field: 'operatingUnits', headerName: 'OU', width: 180 },
+    { field: 'programs', headerName: 'Program', width: 200 },
+    { field: 'auditType', headerName: 'Audit Type', width: 160 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
+    { field: 'scheduledMonth', headerName: 'Scheduled Month', width: 170 }
+  ];
+
+  const processesAuditedColumns = [
+    { field: 'process', headerName: 'Process', width: 220 },
+    { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
+    { field: 'divisions', headerName: 'Division', width: 180 },
+    { field: 'businessUnits', headerName: 'BU', width: 180 },
+    { field: 'operatingUnits', headerName: 'OU', width: 180 },
+    { field: 'programs', headerName: 'Program', width: 200 },
+    { field: 'auditType', headerName: 'Audit Type', width: 160 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
+    { field: 'scheduledMonth', headerName: 'Scheduled Month', width: 170 },
+    { field: 'auditTime', headerName: 'Audit Time (hrs)', width: 150 }
+  ];
+
+  const scheduleCommentsColumns = [
+    { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
+    { field: 'divisions', headerName: 'Division', width: 180 },
+    { field: 'businessUnits', headerName: 'BU', width: 180 },
+    { field: 'operatingUnits', headerName: 'OU', width: 180 },
+    { field: 'programs', headerName: 'Program', width: 200 },
+    { field: 'processes', headerName: 'Processes', width: 260 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
+    { field: 'startDate', headerName: 'Start Date', width: 140 },
+    { field: 'comment', headerName: 'Comment', width: 320 }
+  ];
+
   const rows = reportType === 'planned-vs-completed'
     ? groupedReportRows
     : reportType === 'rollup-results'
       ? rollupResultsRows
-      : defaultRows;
+      : reportType === 'rollup-schedule'
+        ? rollupScheduleRows
+        : reportType === 'clauses-audited'
+          ? clausesAuditedRows
+          : reportType === 'processes-audited'
+            ? processesAuditedRows
+            : reportType === 'schedule-comments'
+              ? scheduleCommentsRows
+          : defaultRows;
   const columns = reportType === 'planned-vs-completed'
     ? plannedCompletedColumns
     : reportType === 'rollup-results'
       ? rollupResultsColumns
-      : defaultColumns;
+      : reportType === 'rollup-schedule'
+        ? rollupScheduleColumns
+        : reportType === 'clauses-audited'
+          ? clausesAuditedColumns
+          : reportType === 'processes-audited'
+            ? processesAuditedColumns
+            : reportType === 'schedule-comments'
+              ? scheduleCommentsColumns
+          : defaultColumns;
 
   const getPreviousCarsEffectiveLabel = (value) => {
     const parsed = Number(value);
@@ -797,6 +1104,222 @@ const ThirtySixtyNinety = () => {
       XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Results');
       XLSX.writeFile(wb, 'rollup-audit-results.xlsx');
       toast.success('Exported rollup audit results report.');
+      return;
+    }
+
+    if (reportType === 'rollup-schedule') {
+      if (rows.length === 0) {
+        toast.error('No audits match the selected filters.');
+        return;
+      }
+
+      const headers = [
+        'Schedule ID',
+        'Division(s)',
+        'BU(s)',
+        'OU(s)',
+        'Program(s)',
+        'PrOPs',
+        'Audit Type',
+        'Int/Ext',
+        'Stage',
+        'Scheduled Month',
+        'Auditors'
+      ];
+
+      const exportRows = rows.map((row) => ([
+        row.scheduleId,
+        row.divisions,
+        row.businessUnits,
+        row.operatingUnits,
+        row.programs,
+        row.props,
+        row.auditType,
+        row.intExt,
+        row.stage,
+        row.scheduledMonth,
+        row.auditors
+      ]));
+
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
+      headers.forEach((_, idx) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: idx });
+        if (sheet[cellAddress]) {
+          sheet[cellAddress].s = { font: { bold: true } };
+        }
+      });
+      const colWidths = headers.map((header, idx) => {
+        const maxCell = exportRows.reduce((max, row) => {
+          const cell = row[idx] ?? '';
+          return Math.max(max, cell.toString().length);
+        }, header.length);
+        return { wch: maxCell + 2 };
+      });
+      sheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Schedule');
+      XLSX.writeFile(wb, 'rollup-audit-schedule.xlsx');
+      toast.success('Exported rollup audit schedule report.');
+      return;
+    }
+
+    if (reportType === 'clauses-audited') {
+      if (rows.length === 0) {
+        toast.error('No audits match the selected filters.');
+        return;
+      }
+
+      const headers = [
+        'Standard',
+        'Clause',
+        'Schedule ID',
+        'Div',
+        'BU',
+        'OU',
+        'Program',
+        'Audit Type',
+        'Stage',
+        'Scheduled Month'
+      ];
+
+      const exportRows = rows.map((row) => ([
+        row.standard,
+        row.clause,
+        row.scheduleId,
+        row.divisions,
+        row.businessUnits,
+        row.operatingUnits,
+        row.programs,
+        row.auditType,
+        row.stage,
+        row.scheduledMonth
+      ]));
+
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
+      headers.forEach((_, idx) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: idx });
+        if (sheet[cellAddress]) {
+          sheet[cellAddress].s = { font: { bold: true } };
+        }
+      });
+      const colWidths = headers.map((header, idx) => {
+        const maxCell = exportRows.reduce((max, row) => {
+          const cell = row[idx] ?? '';
+          return Math.max(max, cell.toString().length);
+        }, header.length);
+        return { wch: maxCell + 2 };
+      });
+      sheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, sheet, 'Clauses Audited');
+      XLSX.writeFile(wb, 'clauses-audited-report.xlsx');
+      toast.success('Exported clauses audited report.');
+      return;
+    }
+
+    if (reportType === 'processes-audited') {
+      if (rows.length === 0) {
+        toast.error('No audits match the selected filters.');
+        return;
+      }
+
+      const headers = [
+        'Process',
+        'Schedule ID',
+        'Division',
+        'BU',
+        'OU',
+        'Program',
+        'Audit Type',
+        'Stage',
+        'Scheduled Month',
+        'Audit Time (hrs)'
+      ];
+
+      const exportRows = rows.map((row) => ([
+        row.process,
+        row.scheduleId,
+        row.divisions,
+        row.businessUnits,
+        row.operatingUnits,
+        row.programs,
+        row.auditType,
+        row.stage,
+        row.scheduledMonth,
+        row.auditTime
+      ]));
+
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
+      headers.forEach((_, idx) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: idx });
+        if (sheet[cellAddress]) {
+          sheet[cellAddress].s = { font: { bold: true } };
+        }
+      });
+      const colWidths = headers.map((header, idx) => {
+        const maxCell = exportRows.reduce((max, row) => {
+          const cell = row[idx] ?? '';
+          return Math.max(max, cell.toString().length);
+        }, header.length);
+        return { wch: maxCell + 2 };
+      });
+      sheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, sheet, 'Processes Audited');
+      XLSX.writeFile(wb, 'processes-audited-report.xlsx');
+      toast.success('Exported processes audited report.');
+      return;
+    }
+
+    if (reportType === 'schedule-comments') {
+      if (rows.length === 0) {
+        toast.error('No audits match the selected filters.');
+        return;
+      }
+
+      const headers = [
+        'Schedule ID',
+        'Division',
+        'BU',
+        'OU',
+        'Program',
+        'Processes',
+        'Stage',
+        'Start Date',
+        'Comment'
+      ];
+
+      const exportRows = rows.map((row) => ([
+        row.scheduleId,
+        row.divisions,
+        row.businessUnits,
+        row.operatingUnits,
+        row.programs,
+        row.processes,
+        row.stage,
+        row.startDate,
+        row.comment
+      ]));
+
+      const wb = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...exportRows]);
+      headers.forEach((_, idx) => {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: idx });
+        if (sheet[cellAddress]) {
+          sheet[cellAddress].s = { font: { bold: true } };
+        }
+      });
+      const colWidths = headers.map((header, idx) => {
+        const maxCell = exportRows.reduce((max, row) => {
+          const cell = row[idx] ?? '';
+          return Math.max(max, cell.toString().length);
+        }, header.length);
+        return { wch: maxCell + 2 };
+      });
+      sheet['!cols'] = colWidths;
+      XLSX.utils.book_append_sheet(wb, sheet, 'Schedule Comments');
+      XLSX.writeFile(wb, 'schedule-comments-report.xlsx');
+      toast.success('Exported schedule comments report.');
       return;
     }
 
@@ -1193,9 +1716,7 @@ const ThirtySixtyNinety = () => {
 
         <div className="reports-table">
           <h2>
-            {reportType === 'planned-vs-completed'
-              ? `Report Preview (${rows.length})`
-              : `Audits to Export (${filteredAudits.length})`}
+            {`Report Preview (${rows.length})`}
           </h2>
           <DataGrid
             rows={rows}

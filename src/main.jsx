@@ -26,6 +26,9 @@ import RequestAuditorAccess from './RequestAuditorAccess.jsx'
 import TableTest from './TableTest.jsx'
 import Headers from './Headers.jsx'
 import Metrics from './Metrics.jsx'
+import RiskAnalysis from './RiskAnalysis.jsx'
+import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
+import RiskAnalysisView from './RiskAnalysisView.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -58,6 +61,9 @@ createRoot(document.getElementById('root')).render(
         <Route path="/nonconformaties" element={<Nonconformaties />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/metrics" element={<Metrics />} />
+        <Route path="/risk-analysis" element={<RiskAnalysis />} />
+        <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
+        <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
         <Route path="/foe" element={<FOE />} />
         <Route path="/info-support" element={<InfoSupport />} />
         <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />

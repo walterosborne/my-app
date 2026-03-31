@@ -22,9 +22,6 @@ import {
   getFunctions,
   getIntExt,
   getStandards,
-  getRiskFactors,
-  getSubcategories,
-  getRiskRatings,
   getCauses,
   getSafetyEquipment,
   getTrainingRequirements,
@@ -71,8 +68,6 @@ const AllReports = () => {
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
-  const [riskFactorsList, setRiskFactorsList] = useState([]);
-  const [subcategoriesList, setSubcategoriesList] = useState([]);
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
@@ -117,8 +112,6 @@ const AllReports = () => {
           functions,
           intExt,
           standards,
-          riskFactors,
-          subcategories,
           safetyEquipment,
           trainingRequirements,
           roster,
@@ -139,8 +132,6 @@ const AllReports = () => {
           getFunctions(),
           getIntExt(),
           getStandards(),
-          getRiskFactors(),
-          getSubcategories(),
           getSafetyEquipment(),
           getTrainingRequirements(),
           getRoster(),
@@ -162,8 +153,6 @@ const AllReports = () => {
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
-        setRiskFactorsList(riskFactors);
-        setSubcategoriesList(subcategories);
         setSafetyEquipmentList(safetyEquipment);
         setTrainingRequirementsList(trainingRequirements);
         setRosterList(roster);
@@ -415,14 +404,13 @@ const AllReports = () => {
     };
 
     const auditIds = exportAudits.map((audit) => audit.scheduleId);
-    const [nonconformanceSets, carSets, riskRatingsSets] = await Promise.all([
+    const [nonconformanceSets, carSets] = await Promise.all([
       Promise.all(auditIds.map((scheduleId) =>
         fetch(`http://localhost:3001/api/nonconformances/${scheduleId}`).then((res) => res.json())
       )),
       Promise.all(auditIds.map((scheduleId) =>
         fetch(`http://localhost:3001/api/cars/${scheduleId}`).then((res) => res.json())
-      )),
-      Promise.all(auditIds.map((scheduleId) => getRiskRatings(scheduleId)))
+      ))
     ]);
 
     const wb = XLSX.utils.book_new();
@@ -496,7 +484,6 @@ const AllReports = () => {
       'MA Lead Manager',
       'Related Items',
       'Auditor\'s Time (Hours)',
-      'Previous CARs Effective',
       'Delay Cause'
     ];
     const resultsRows = exportAudits
@@ -511,38 +498,12 @@ const AllReports = () => {
         audit.maLeadManager || '',
         audit.relatedItems || '',
         audit.auditorsTime ?? '',
-        getPreviousCarsEffectiveLabel(audit.previousCarsEffective ?? audit.previouscarseffective),
         audit.delayCause != null ? formatSingle(audit.delayCause, causesList, 'causeId', 'cause') : ''
       ]));
     addSheet(wb, 'Results', resultsHeaders, resultsRows);
 
-    // Risk factors sheet
-    const riskHeaders = ['Schedule ID', 'Risk Factor', 'Subcategory', 'Rating'];
-    const riskRows = [];
-    exportAudits.forEach((audit, idx) => {
-      if (getStageValue(audit) < 1) return;
-      const ratings = riskRatingsSets[idx] || [];
-      riskFactorsList.forEach((riskFactor) => {
-        const subcategories = subcategoriesList.filter(
-          (sub) => sub.riskfactorid === riskFactor.riskfactorid
-        );
-        subcategories.forEach((sub) => {
-          const rating = ratings.find((r) => r.subcategoryid === sub.subcategoryid);
-          if (!rating) return;
-          const ratingLabel = rating.rating === 1 ? 'Low' : rating.rating === 2 ? 'Medium' : rating.rating === 3 ? 'High' : 'Very High';
-          riskRows.push([
-            audit.scheduleId,
-            riskFactor.riskfactor,
-            sub.subcategory || sub.subcategoryname || sub.name || sub.label || '',
-            ratingLabel
-          ]);
-        });
-      });
-    });
-    addSheet(wb, 'Risk Factors', riskHeaders, riskRows);
-
     // PEQs sheet
-    const peqHeaders = ['Schedule ID', 'NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+    const peqHeaders = ['Schedule ID', 'NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Action Item Number'];
     const peqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -558,7 +519,6 @@ const AllReports = () => {
             nc.response || '',
             nc.auditorComment || '',
             nc.details || '',
-            nc.ncDetails || '',
             nc.AIN || ''
           ]);
         });
@@ -566,7 +526,7 @@ const AllReports = () => {
     addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
     // ETQs sheet
-    const etqHeaders = ['Schedule ID', 'NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+    const etqHeaders = ['Schedule ID', 'NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Action Item Number'];
     const etqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -582,7 +542,6 @@ const AllReports = () => {
             nc.response || '',
             nc.auditorComment || '',
             nc.details || '',
-            nc.ncDetails || '',
             nc.AIN || ''
           ]);
         });
@@ -590,7 +549,7 @@ const AllReports = () => {
     addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
     // Standard-based questions sheet
-    const standardHeaders = ['Schedule ID', 'NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'NC Details', 'Action Item Number'];
+    const standardHeaders = ['Schedule ID', 'NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'Action Item Number'];
     const standardRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -609,7 +568,6 @@ const AllReports = () => {
             nc.response || '',
             nc.auditorComment || '',
             nc.details || '',
-            nc.ncDetails || '',
             nc.AIN || ''
           ]);
         });
@@ -617,7 +575,7 @@ const AllReports = () => {
     addSheet(wb, 'Standard Questions', standardHeaders, standardRows);
 
     // CARs sheet
-    const carHeaders = ['Schedule ID', 'Previous CARs Effective', 'CAR', 'Reviewer'];
+    const carHeaders = ['Schedule ID', 'CAR', 'Reviewer', 'Effective'];
     const carRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 4) return;
@@ -625,7 +583,7 @@ const AllReports = () => {
       if (cars.length === 0) {
         carRows.push([
           audit.scheduleId,
-          getPreviousCarsEffectiveLabel(audit.previousCarsEffective ?? audit.previouscarseffective),
+          '',
           '',
           ''
         ]);
@@ -634,9 +592,9 @@ const AllReports = () => {
       cars.forEach((car) => {
         carRows.push([
           audit.scheduleId,
-          getPreviousCarsEffectiveLabel(audit.previousCarsEffective ?? audit.previouscarseffective),
           car.car || '',
-          car.reviewer ? formatSingle(car.reviewer, rosterList, 'myId', 'rosterName') : ''
+          car.reviewer ? formatSingle(car.reviewer, rosterList, 'myId', 'rosterName') : '',
+          getPreviousCarsEffectiveLabel(car.effective)
         ]);
       });
     });

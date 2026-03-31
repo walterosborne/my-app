@@ -1,4 +1,4 @@
-import { React, useEffect, useMemo, useState } from 'react'
+import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
 import { Box } from '@mui/material';
@@ -27,6 +27,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
+  const readOnlyToastRef = useRef(null);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -35,6 +36,9 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
   const [rosterList, setRosterList] = useState([]);
+  const [planningCars, setPlanningCars] = useState([]);
+  const [loadedCars, setLoadedCars] = useState([]);
+  const [carCounter, setCarCounter] = useState(0);
 
   // Load all lookup data from API on mount
   useEffect(() => {
@@ -99,6 +103,8 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
 
   const [selectedAudit, setSelectedAudit] = useState(null);
+  const isViewOnly = Boolean(selectedAudit?.scheduleId && selectedAudit?.canEdit === false);
+  const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
@@ -116,6 +122,16 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
     return true;
   };
+
+  useEffect(() => {
+    if (!isViewOnly || !selectedAudit?.scheduleId) {
+      readOnlyToastRef.current = null;
+      return;
+    }
+    if (readOnlyToastRef.current === selectedAudit.scheduleId) return;
+    toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
+    readOnlyToastRef.current = selectedAudit.scheduleId;
+  }, [isViewOnly, selectedAudit]);
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
@@ -194,8 +210,37 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
       } else {
         setValue('SpecCon', '');
       }
+      setPlanningCars([]);
+      setLoadedCars([]);
+      setCarCounter(0);
       // Clear any validation errors when loading saved data
       clearErrors();
+
+      if (selectedAudit?.scheduleId) {
+        fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`)
+          .then((res) => res.json())
+          .then((carsData) => {
+            const normalizedCars = Array.isArray(carsData)
+              ? carsData.map((car, index) => ({
+                id: car.carid ?? `existing-${index}`,
+                carId: car.carid ?? null,
+                car: car.car || '',
+                reviewer: car.reviewer || null,
+                effective: car.effective ?? null
+              }))
+              : [];
+
+            normalizedCars.forEach((car) => {
+              setValue(`car${car.id}`, car.car);
+              setValue(`carReviewer${car.id}`, car.reviewer);
+            });
+
+            setPlanningCars(normalizedCars);
+            setLoadedCars(normalizedCars);
+            setCarCounter(normalizedCars.length);
+          })
+          .catch((err) => console.error('Error loading CARs:', err));
+      }
 
       // Check locked status
       if (selectedAudit?.scheduleId) {
@@ -208,6 +253,9 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
       // Reset form when no schedule selected
       reset();
       setAuditLocked(false);
+      setPlanningCars([]);
+      setLoadedCars([]);
+      setCarCounter(0);
     }
   }, [schedule, selectedAudit, setValue, reset, clearErrors]);
 
@@ -268,8 +316,33 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
       }));
   }, [trainingRequirementsList]);
 
+  const reviewerOptions = useMemo(() => {
+    return [...rosterList]
+      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
+      .map((person) => ({
+        value: person.myId,
+        label: person.rosterName
+      }));
+  }, [rosterList]);
+
+  function addCAR() {
+    const nextId = `new-${carCounter}`;
+    setPlanningCars((current) => [...current, { id: nextId, effective: null }]);
+    setCarCounter((current) => current + 1);
+  }
+
+  function deleteCAR(carId) {
+    setPlanningCars((current) => current.filter((car) => car.id !== carId));
+    setValue(`car${carId}`, '');
+    setValue(`carReviewer${carId}`, null);
+  }
+
 
   async function unlockAudit() {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
       if (!selectedAudit?.scheduleId) {
         throw new Error('No audit selected');
@@ -299,6 +372,10 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
   }
 
   async function onSubmit(data) {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
     try {
       if (!selectedAudit?.scheduleId) {
         toast.error('Please select an audit from the table');
@@ -337,16 +414,59 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       const result = await response.json();
 
-      if (result.success) {
-        toast.success('Submitted!');
-
-        // Reload audit data if reloadAudits function is available
-        if (reloadAudits) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await reloadAudits();
-        }
-      } else {
+      if (!result.success) {
         throw new Error(result.error || 'Failed to save planning data');
+      }
+
+      const carsPayload = planningCars
+        .map((car) => ({
+          carId: car.carId ?? null,
+          car: data[`car${car.id}`] || '',
+          reviewer: data[`carReviewer${car.id}`] || null,
+          effective: car.effective ?? null
+        }))
+        .filter((car) => car.car);
+
+      const carsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ cars: carsPayload })
+      });
+
+      const carsResult = await carsResponse.json();
+      if (!carsResult.success) {
+        throw new Error(carsResult.error || 'Failed to save CAR data');
+      }
+
+      toast.success('Submitted!');
+
+      const refreshedCarsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`);
+      const refreshedCarsData = await refreshedCarsResponse.json();
+      const normalizedCars = Array.isArray(refreshedCarsData)
+        ? refreshedCarsData.map((car, index) => ({
+          id: car.carid ?? `existing-${index}`,
+          carId: car.carid ?? null,
+          car: car.car || '',
+          reviewer: car.reviewer || null,
+          effective: car.effective ?? null
+        }))
+        : [];
+
+      normalizedCars.forEach((car) => {
+        setValue(`car${car.id}`, car.car);
+        setValue(`carReviewer${car.id}`, car.reviewer);
+      });
+
+      setLoadedCars(normalizedCars);
+      setPlanningCars(normalizedCars);
+      setCarCounter(normalizedCars.length);
+
+      // Reload audit data if reloadAudits function is available
+      if (reloadAudits) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await reloadAudits();
       }
     }
     catch (error) {
@@ -368,6 +488,11 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         division: getDivisionName(selectedAudit.divisionId),
         programs: getProgramNames(selectedAudit.programIds)
       });
+      loadedCars.forEach((car) => {
+        setValue(`car${car.id}`, car.car || '');
+        setValue(`carReviewer${car.id}`, car.reviewer || null);
+      });
+      setPlanningCars(loadedCars.map((car) => ({ ...car })));
       // The useEffect will repopulate the form from selectedAudit
     }
   }
@@ -464,23 +589,25 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                 <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
                   Audit {schedule.scheduleId} has been submitted for final approval and cannot be edited.
                 </h2>
-                <button
-                  type="button"
-                  onClick={unlockAudit}
-                  style={{
-                    backgroundColor: '#f44336',
-                    color: 'white',
-                    border: 'none',
-                    padding: '12px 24px',
-                    fontSize: '16px',
-                    cursor: 'pointer',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    marginBottom: '10px'
-                  }}
-                >
-                  Undo Submission
-                </button>
+                {!isViewOnly && (
+                  <button
+                    type="button"
+                    onClick={unlockAudit}
+                    style={{
+                      backgroundColor: '#f44336',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      marginBottom: '10px'
+                    }}
+                  >
+                    Undo Submission
+                  </button>
+                )}
                 <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
                   Note: Undoing submission will revoke approvers' ability to approve the audit and clear previous approvals.
                 </p>
@@ -488,6 +615,12 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
             ) : schedule ? (
               <>
                 <h2 style={{ marginTop: '5px' }}>Currently Planning Schedule: {schedule.scheduleId}</h2>
+                {isViewOnly && (
+                  <p style={{ marginTop: '6px', color: '#666' }}>
+                    You are not assigned as an auditor on this audit. Fields are view-only.
+                  </p>
+                )}
+                <div style={readOnlyStyle}>
                 <div className='section'>
                   <div className='sectionrow'>
                     <div className="fieldboxwhole">
@@ -644,6 +777,68 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                       />
                     </div>
                   </div>
+                  <div className='sectionrow'>
+                    <div className="fieldboxwhole">
+                      <label>Previous CARs</label>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                        <button
+                          type='button'
+                          onClick={addCAR}
+                          className='button'
+                          style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', alignSelf: 'flex-start' }}
+                        >
+                          Add New
+                        </button>
+                        {planningCars.length === 0 && (
+                          <p style={{ margin: 0, color: '#666' }}>No previous CARs entered.</p>
+                        )}
+                        {planningCars.map((car, index) => (
+                          <div
+                            key={car.id}
+                            className='sectionrow'
+                            style={{ border: '1px solid #ccc', borderRadius: '8px', padding: '10px', boxSizing: 'border-box' }}
+                          >
+                            <div className="fieldboxthird">
+                              <label>CAR {index + 1}</label>
+                              <input
+                                type="text"
+                                {...register(`car${car.id}`)}
+                                id={`car${car.id}`}
+                                className='textfield'
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <label>Reviewer</label>
+                              <Controller
+                                name={`carReviewer${car.id}`}
+                                control={control}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={reviewerOptions}
+                                    styles={customStyles}
+                                    placeholder="Reviewer"
+                                    value={reviewerOptions.find(r => r.value === field.value) || null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                  />
+                                )}
+                              />
+                            </div>
+                            <div className="fieldboxthird">
+                              <button
+                                type='button'
+                                onClick={() => deleteCAR(car.id)}
+                                className='button'
+                                style={{ backgroundColor: 'red', marginTop: '20px', width: 'auto', padding: '8px 16px' }}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 <div style={{
@@ -656,6 +851,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                   <button type="button" onClick={handleReset} disabled={isSubmitting} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black' }}>
                     Reset
                   </button>
+                </div>
                 </div>
               </>
             ) : null}

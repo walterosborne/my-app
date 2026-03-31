@@ -59,7 +59,7 @@
     font-size: 0.95rem;
     font-family: 'Source Sans Pro', system-ui, sans-serif;
     color: #0f172a;
-    background: #fbfcfe;
+    background: #ffffff;
 }
 
 .admin-input::placeholder {
@@ -254,6 +254,15 @@
     gap: 1rem;
 }
 
+.admin-grid-two-up {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    margin-bottom: 1rem;
+}
+
+.admin-grid-three-up {
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+}
+
 .admin-grid-item {
     display: flex;
     flex-direction: column;
@@ -281,6 +290,13 @@
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+    .admin-grid-two-up,
+    .admin-grid-three-up {
+        grid-template-columns: 1fr;
+    }
 }
 
 .admin-primary,

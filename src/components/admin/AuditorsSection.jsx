@@ -1,4 +1,6 @@
 import React from 'react';
+import Select from 'react-select';
+import { adminSelectStyles } from '../../Utilities.jsx';
 
 const AuditorsSection = ({
     actionOptions,
@@ -26,11 +28,16 @@ const AuditorsSection = ({
     firstName,
     lastName,
     divisionId,
+    cuiApproved,
     sortedDivisions,
+    programOptions,
+    selectedProgramIds,
     onFirstNameChange,
     onLastNameChange,
     onDivisionChange,
     onClearDivision,
+    onCuiApprovedChange,
+    onProgramChange,
     onSubmit,
     submitting,
     onArchiveToggle,
@@ -206,72 +213,94 @@ const AuditorsSection = ({
                     </label>
                 )}
                 {showFields && (
-                    <div className="admin-grid">
-                        <div className="admin-grid-item">
-                            <label htmlFor="first-name" className="admin-label">
-                                First Name <span className="admin-required">*</span>
-                            </label>
-                            <input
-                                id="first-name"
-                                type="text"
-                                className="admin-input"
-                                value={firstName}
-                                onChange={onFirstNameChange}
-                            />
-                            {fieldErrors.firstName && (
-                                <p className="admin-field-error">{fieldErrors.firstName}</p>
-                            )}
-                        </div>
-                        <div className="admin-grid-item">
-                            <label htmlFor="last-name" className="admin-label">
-                                Last Name <span className="admin-required">*</span>
-                            </label>
-                            <input
-                                id="last-name"
-                                type="text"
-                                className="admin-input"
-                                value={lastName}
-                                onChange={onLastNameChange}
-                            />
-                            {fieldErrors.lastName && (
-                                <p className="admin-field-error">{fieldErrors.lastName}</p>
-                            )}
-                        </div>
-                        <div className="admin-grid-item">
-                            <label htmlFor="division-select" className="admin-label">
-                                User Division <span className="admin-required">*</span>
-                            </label>
-                            <div className="admin-select-wrapper">
-                                <select
-                                    id="division-select"
-                                    value={divisionId}
-                                    onChange={onDivisionChange}
+                    <>
+                        <div className="admin-grid admin-grid-two-up">
+                            <div className="admin-grid-item">
+                                <label htmlFor="first-name" className="admin-label">
+                                    First Name <span className="admin-required">*</span>
+                                </label>
+                                <input
+                                    id="first-name"
+                                    type="text"
                                     className="admin-input"
-                                >
-                                    <option value="" disabled hidden>
-                                        Select Division
-                                    </option>
-                                    {sortedDivisions.map((division) => (
-                                        <option key={division.divisionId} value={division.divisionId}>
-                                            {division.divisionName}
-                                        </option>
-                                    ))}
-                                </select>
-                                {divisionId && (
-                                    <button
-                                        type="button"
-                                        className="admin-clear-button"
-                                        onClick={onClearDivision}
-                                    >
-                                        &times;
-                                    </button>
+                                    value={firstName}
+                                    onChange={onFirstNameChange}
+                                />
+                                {fieldErrors.firstName && (
+                                    <p className="admin-field-error">{fieldErrors.firstName}</p>
                                 )}
                             </div>
-                            {fieldErrors.divisionId && (
-                                <p className="admin-field-error">{fieldErrors.divisionId}</p>
-                            )}
+                            <div className="admin-grid-item">
+                                <label htmlFor="last-name" className="admin-label">
+                                    Last Name <span className="admin-required">*</span>
+                                </label>
+                                <input
+                                    id="last-name"
+                                    type="text"
+                                    className="admin-input"
+                                    value={lastName}
+                                    onChange={onLastNameChange}
+                                />
+                                {fieldErrors.lastName && (
+                                    <p className="admin-field-error">{fieldErrors.lastName}</p>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                        <div className="admin-grid admin-grid-three-up">
+                            <div className="admin-grid-item">
+                                <label htmlFor="division-select" className="admin-label">
+                                    User Division <span className="admin-required">*</span>
+                                </label>
+                                <Select
+                                    inputId="division-select"
+                                    isClearable
+                                    options={sortedDivisions.map((division) => ({
+                                        value: division.divisionId,
+                                        label: division.divisionName
+                                    }))}
+                                    styles={adminSelectStyles}
+                                    placeholder="Select Division"
+                                    value={sortedDivisions
+                                        .filter((division) => Number(division.divisionId) === Number(divisionId))
+                                        .map((division) => ({
+                                            value: division.divisionId,
+                                            label: division.divisionName
+                                        }))[0] || null}
+                                    onChange={(selectedOption) => onDivisionChange(selectedOption)}
+                                />
+                                {fieldErrors.divisionId && (
+                                    <p className="admin-field-error">{fieldErrors.divisionId}</p>
+                                )}
+                            </div>
+                            <div className="admin-grid-item">
+                                <label className="admin-label">
+                                    Assigned Programs
+                                </label>
+                                <Select
+                                    isMulti
+                                    isClearable
+                                    options={programOptions}
+                                    styles={adminSelectStyles}
+                                    placeholder="Select Programs"
+                                    value={programOptions.filter((option) => selectedProgramIds.includes(option.value))}
+                                    onChange={onProgramChange}
+                                />
+                            </div>
+                            <div className="admin-grid-item">
+                                <label className="admin-label">
+                                    CUI Approved
+                                </label>
+                                <label className="admin-option-label" style={{ marginTop: '0.65rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={cuiApproved}
+                                        onChange={onCuiApprovedChange}
+                                    />
+                                    Auditor is approved for CUI audits
+                                </label>
+                            </div>
+                        </div>
+                    </>
                 )}
                 <div className="admin-button-row">
                     <button

@@ -22,13 +22,14 @@ import {
     getRoster,
     getSafetyEquipment,
     getTrainingRequirements,
-    getRiskFactors,
-    getSubcategories,
-    getRiskRatings,
     getCauses,
     getProps,
-    getCurrentUser
+    getCurrentUser,
+    getRiskFactors,
+    getSubcategories,
+    getRiskRatings
 } from './assets/data/apiData';
+import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
 
 const Audit = () => {
     const { id } = useParams();
@@ -52,15 +53,15 @@ const Audit = () => {
     const [rosterList, setRosterList] = React.useState([]);
     const [safetyEquipmentList, setSafetyEquipmentList] = React.useState([]);
     const [trainingRequirementsList, setTrainingRequirementsList] = React.useState([]);
-    const [riskFactorsList, setRiskFactorsList] = React.useState([]);
-    const [subcategoriesList, setSubcategoriesList] = React.useState([]);
-    const [riskRatings, setRiskRatings] = React.useState([]);
     const [nonconformances, setNonconformances] = React.useState([]);
     const [cars, setCars] = React.useState([]);
     const [causesList, setCausesList] = React.useState([]);
     const [approvals, setApprovals] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [propsList, setPropsList] = React.useState([]);
+    const [riskFactorsList, setRiskFactorsList] = React.useState([]);
+    const [riskSubcategoriesList, setRiskSubcategoriesList] = React.useState([]);
+    const [riskRatingsList, setRiskRatingsList] = React.useState([]);
     const [accessErrorShown, setAccessErrorShown] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState(null);
 
@@ -68,7 +69,7 @@ const Audit = () => {
     React.useEffect(() => {
         async function loadAllData() {
             try {
-                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster, safetyEquipment, trainingRequirements, props, riskFactors, subcategories, causes, userData] = await Promise.all([
+                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
                     getAuditsReport(true),
                     getPrograms(),
                     getDivisions(),
@@ -87,9 +88,10 @@ const Audit = () => {
                     getSafetyEquipment(),
                     getTrainingRequirements(),
                     getProps(),
+                    getCauses(),
                     getRiskFactors(),
                     getSubcategories(),
-                    getCauses(),
+                    getRiskRatings(),
                     getCurrentUser()
                 ]);
 
@@ -111,9 +113,10 @@ const Audit = () => {
                 setRosterList(roster);
                 setSafetyEquipmentList(safetyEquipment);
                 setTrainingRequirementsList(trainingRequirements);
-                setRiskFactorsList(riskFactors);
-                setSubcategoriesList(subcategories);
                 setCausesList(causes);
+                setRiskFactorsList(riskFactors);
+                setRiskSubcategoriesList(riskSubcategories);
+                setRiskRatingsList(riskRatings);
                 setLoading(false);
                 setPropsList(props);
             } catch (error) {
@@ -295,6 +298,56 @@ const Audit = () => {
         return prop ? prop.PrOP : propId;
     };
 
+    const getPropNames = (propIds) => {
+        const ids = normalizeIdArray(propIds);
+        if (ids.length === 0) return '';
+        return ids
+            .map((id) => getPropName(id))
+            .filter(Boolean)
+            .join('; ');
+    };
+
+    const getPropGroupLabel = (prop) => {
+        const typeId = Number(prop?.propTypeId);
+        if (typeId === 1) return 'Corporate';
+        if (typeId === 2) return 'Sector';
+        if (typeId === 3) return 'Division';
+        if (typeId === 4) return 'Site';
+        if (typeId === 5) return 'Business Unit';
+        if (typeId === 6) return 'Operating Unit';
+        if (typeId === 7) return 'Program';
+        return 'Other';
+    };
+
+    const getPropDisplayName = (propId) => {
+        if (propId === null || propId === undefined) return '';
+        const prop = propsList.find((item) => Number(item.propId) === Number(propId));
+        if (!prop) return String(propId);
+        return `${prop.PrOP} (${getPropGroupLabel(prop)})`;
+    };
+
+    const getFindingPropSummary = (finding) => {
+        const orderedIds = [
+            ...normalizeIdArray(finding.qma),
+            ...normalizeIdArray(finding.sector),
+            ...normalizeIdArray(finding.division),
+            ...normalizeIdArray(finding.other)
+        ];
+        const seen = new Set();
+        const values = [];
+
+        orderedIds.forEach((id) => {
+            const numericId = Number(id);
+            const key = Number.isFinite(numericId) ? numericId : id;
+            if (seen.has(key)) return;
+            seen.add(key);
+            const display = getPropDisplayName(id);
+            if (display) values.push(display);
+        });
+
+        return values.join('; ');
+    };
+
     const getPropDocumentsList = () => {
         const propIds = new Set();
         nonconformances.forEach(nc => {
@@ -354,7 +407,10 @@ const Audit = () => {
         }
         return cars.map(car => {
             const reviewer = car.reviewer ? ` (Reviewer: ${getRosterName(car.reviewer)})` : '';
-            return `${car.car}${reviewer}`;
+            const effective = car.effective !== null && car.effective !== undefined
+                ? ` - Effective: ${getPreviousCarsEffectiveLabel(car.effective)}`
+                : ' - Effective: No response provided';
+            return `${car.car}${reviewer}${effective}`;
         });
     };
 
@@ -430,12 +486,6 @@ const Audit = () => {
         }).join(', ');
     };
 
-    // Helper function to get risk factor name from riskFactorId
-    const getRiskFactorName = (riskFactorId) => {
-        const riskFactor = riskFactorsList.find(rf => rf.riskfactorid === riskFactorId);
-        return riskFactor ? riskFactor.riskfactorname : riskFactorId;
-    };
-
     // Helper function to get severity label from severity integer
     const getSeverityLabel = (severity) => {
         if (severity == null) return 'N/A';
@@ -471,6 +521,10 @@ const Audit = () => {
     const isApproved = Boolean(auditData?.approvedAt);
     const showNcDetailFallbacks = Boolean(isLocked || auditData?.submittedAt || stageValue >= 4);
     const auditNotFound = Boolean(id) && !auditData;
+    const additionalAuditorIdsForPage = Array.isArray(auditData?.additionalAuditorIds)
+        ? auditData.additionalAuditorIds
+        : [];
+    const additionalAuditorNamesForPage = getAdditionalAuditorNames(additionalAuditorIdsForPage);
     const isRosterNonAuditor = currentUser?.myId && !currentUser?.auditorId;
     const additionalApproverIds = Array.isArray(auditData?.additionalApprovers)
         ? auditData.additionalApprovers
@@ -497,6 +551,118 @@ const Audit = () => {
                 return 'Unknown Stage';
         }
     };
+
+    const getAuditRiskYear = React.useMemo(() => {
+        const candidateDate = auditData?.expectedStartDate || auditData?.actualStartDate || auditData?.expectedCompletionDate;
+        if (!candidateDate) return new Date().getFullYear();
+        const parsedDate = new Date(candidateDate);
+        const parsedYear = parsedDate.getFullYear();
+        return Number.isNaN(parsedYear) ? new Date().getFullYear() : parsedYear;
+    }, [auditData?.expectedStartDate, auditData?.actualStartDate, auditData?.expectedCompletionDate]);
+
+    const auditRiskGroups = React.useMemo(() => {
+        if (!auditData) return [];
+
+        const divisionIds = normalizeIdArray(auditData.divisionId).map(Number).filter(Number.isFinite);
+        const siteIds = normalizeIdArray(auditData.siteIds).map(Number).filter(Number.isFinite);
+        const businessUnitIds = normalizeIdArray(auditData.businessUnitIds).map(Number).filter(Number.isFinite);
+        const operatingUnitIds = normalizeIdArray(auditData.operatingUnitIds).map(Number).filter(Number.isFinite);
+        const programIds = normalizeIdArray(auditData.programIds).map(Number).filter(Number.isFinite);
+        const sectorIds = normalizeIdArray(auditData.sectorId).map(Number).filter(Number.isFinite);
+
+        const matchesAuditScope = (row) => {
+            const typeId = Number(row.risktypeid);
+            if (Number(row.year) !== Number(getAuditRiskYear)) return false;
+            switch (typeId) {
+                case 2:
+                    return sectorIds.includes(Number(row.sectorid));
+                case 3:
+                    return divisionIds.includes(Number(row.divisionid));
+                case 4:
+                    return siteIds.includes(Number(row.siteid));
+                case 5:
+                    return businessUnitIds.includes(Number(row.buid));
+                case 6:
+                    return operatingUnitIds.includes(Number(row.ouid));
+                case 7:
+                    return programIds.includes(Number(row.programid));
+                default:
+                    return false;
+            }
+        };
+
+        const grouped = new Map();
+
+        riskRatingsList.filter(matchesAuditScope).forEach((row) => {
+            const subcategory = riskSubcategoriesList.find((item) => Number(item.subcategoryid) === Number(row.subcategoryid));
+            const riskFactor = riskFactorsList.find((item) => Number(item.riskfactorid) === Number(subcategory?.riskfactorid));
+            const groupKey = `${row.risktypeid}-${row.sectorid || ''}-${row.divisionid || ''}-${row.siteid || ''}-${row.buid || ''}-${row.ouid || ''}-${row.programid || ''}-${row.processarea}-${row.year}`;
+            if (!grouped.has(groupKey)) {
+                grouped.set(groupKey, {
+                    key: groupKey,
+                    processArea: row.processarea || 'Unknown Process Area',
+                    year: Number(row.year),
+                    orgGroupLabel: getOrgGroupLabel(row.risktypeid),
+                    orgTargetLabel: getOrgTargetLabel({
+                        riskTypeId: row.risktypeid,
+                        sectorId: row.sectorid,
+                        divisionId: row.divisionid,
+                        siteId: row.siteid,
+                        buId: row.buid,
+                        ouId: row.ouid,
+                        programId: row.programid,
+                        sectorsList,
+                        divisionsList,
+                        sitesList,
+                        businessUnitsList,
+                        operatingUnitsList,
+                        programsList
+                    }),
+                    factors: new Map()
+                });
+            }
+
+            const group = grouped.get(groupKey);
+            const factorName = riskFactor?.riskfactor || 'Unassigned Risk Factor';
+            if (!group.factors.has(factorName)) {
+                group.factors.set(factorName, []);
+            }
+            group.factors.get(factorName).push({
+                subcategoryName: subcategory?.subcategory || subcategory?.subCategory || 'Unknown Subcategory',
+                rating: Number(row.rating)
+            });
+        });
+
+        return Array.from(grouped.values())
+            .map((group) => ({
+                ...group,
+                factorGroups: Array.from(group.factors.entries())
+                    .map(([factorName, items]) => ({
+                        factorName,
+                        items: [...items].sort((a, b) => a.subcategoryName.localeCompare(b.subcategoryName))
+                    }))
+                    .sort((a, b) => a.factorName.localeCompare(b.factorName))
+            }))
+            .sort((a, b) => {
+                const orgCompare = (a.orgGroupLabel || '').localeCompare(b.orgGroupLabel || '');
+                if (orgCompare !== 0) return orgCompare;
+                const targetCompare = (a.orgTargetLabel || '').localeCompare(b.orgTargetLabel || '');
+                if (targetCompare !== 0) return targetCompare;
+                return (a.processArea || '').localeCompare(b.processArea || '');
+            });
+    }, [
+        auditData,
+        getAuditRiskYear,
+        riskRatingsList,
+        riskSubcategoriesList,
+        riskFactorsList,
+        sectorsList,
+        divisionsList,
+        sitesList,
+        businessUnitsList,
+        operatingUnitsList,
+        programsList
+    ]);
 
     // Load nonconformances for the selected audit
     React.useEffect(() => {
@@ -565,22 +731,6 @@ const Audit = () => {
         }
         loadCars();
     }, [auditData?.scheduleId]);
-
-    // Load risk ratings for the selected audit
-    React.useEffect(() => {
-        async function loadRiskRatings() {
-            if (auditData?.scheduleId && subcategoriesList.length > 0) {
-                try {
-                    const ratings = await getRiskRatings(auditData.scheduleId);
-                    setRiskRatings(ratings);
-                } catch (error) {
-                    console.error('Error loading risk ratings:', error);
-                    setRiskRatings([]);
-                }
-            }
-        }
-        loadRiskRatings();
-    }, [auditData?.scheduleId, subcategoriesList]);
 
     React.useEffect(() => {
         if (loading) return;
@@ -691,6 +841,10 @@ const Audit = () => {
         return 'No response provided';
     };
 
+    const getCarReviewerLabel = (car) => {
+        return car?.reviewer ? getRosterName(car.reviewer) : 'No reviewer';
+    };
+
     const getFindingTypeLabel = (findingType) => {
         switch (findingType) {
             case 1:
@@ -756,7 +910,6 @@ const Audit = () => {
         };
 
         const auditorsTimeValue = auditData.auditorsTime ?? auditData.auditorstime;
-        const previousCarsEffectiveValue = auditData.previousCarsEffective ?? auditData.previouscarseffective;
 
         const wb = XLSX.utils.book_new();
 
@@ -790,26 +943,6 @@ const Audit = () => {
         ];
         addSheet(wb, 'Schedule', scheduleHeaders, [scheduleValues]);
 
-        // Risk factors sheet
-        const riskHeaders = ['Risk Factor', 'Subcategory', 'Rating'];
-        const riskRows = [];
-        riskFactorsList.forEach((riskFactor) => {
-            const subcategories = subcategoriesList.filter(
-                (sub) => sub.riskfactorid === riskFactor.riskfactorid
-            );
-            subcategories.forEach((sub) => {
-                const rating = riskRatings.find((r) => r.subcategoryid === sub.subcategoryid);
-                if (!rating) return;
-                const ratingLabel = rating.rating === 1 ? 'Low' : rating.rating === 2 ? 'Medium' : rating.rating === 3 ? 'High' : 'Very High';
-                riskRows.push([
-                    riskFactor.riskfactor,
-                    sub.subcategory || sub.subcategoryname || sub.name || sub.label || '',
-                    ratingLabel
-                ]);
-            });
-        });
-        addSheet(wb, 'Risk Factors', riskHeaders, riskRows);
-
         // Planning sheet
         const planningHeaders = [
             'Scope',
@@ -841,7 +974,6 @@ const Audit = () => {
             'MA Lead Manager',
             'Related Items',
             'Auditor\'s Time (Hours)',
-            'Previous CARs Effective',
             'Delay Cause'
         ];
         const resultsValues = [
@@ -853,13 +985,12 @@ const Audit = () => {
             auditData.maLeadManager || '',
             auditData.relatedItems || '',
             auditorsTimeValue ?? '',
-            getPreviousCarsEffectiveLabel(previousCarsEffectiveValue),
             auditData.delayCause != null ? getCauseName(auditData.delayCause) : ''
         ];
         addSheet(wb, 'Results', resultsHeaders, [resultsValues]);
 
         // PEQs sheet
-        const peqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+        const peqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Action Item Number'];
         const peqRows = nonconformances
             .filter((nc) => nc.type === 'PEQ')
             .map((nc) => [
@@ -869,14 +1000,17 @@ const Audit = () => {
                 nc.question || '',
                 nc.response || '',
                 nc.auditorComment || '',
+                getPropNames(nc.qma),
+                getPropNames(nc.sector),
+                getPropNames(nc.division),
+                getPropNames(nc.other),
                 nc.details || '',
-                nc.ncDetails || '',
                 nc.AIN || ''
             ]);
         addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
         // ETQs sheet
-        const etqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'NC Details', 'Action Item Number'];
+        const etqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Action Item Number'];
         const etqRows = nonconformances
             .filter((nc) => nc.type === 'ETQ')
             .map((nc) => [
@@ -886,14 +1020,17 @@ const Audit = () => {
                 nc.question || '',
                 nc.response || '',
                 nc.auditorComment || '',
+                getPropNames(nc.qma),
+                getPropNames(nc.sector),
+                getPropNames(nc.division),
+                getPropNames(nc.other),
                 nc.details || '',
-                nc.ncDetails || '',
                 nc.AIN || ''
             ]);
         addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
         // Standard-based questions sheet
-        const standardHeaders = ['NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'NC Details', 'Action Item Number'];
+        const standardHeaders = ['NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Action Item Number'];
         const standardRows = nonconformances
             .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
             .map((nc) => [
@@ -906,17 +1043,21 @@ const Audit = () => {
                 nc.question || '',
                 nc.response || '',
                 nc.auditorComment || '',
+                getPropNames(nc.qma),
+                getPropNames(nc.sector),
+                getPropNames(nc.division),
+                getPropNames(nc.other),
                 nc.details || '',
-                nc.ncDetails || '',
                 nc.AIN || ''
             ]);
         addSheet(wb, 'Standard Questions', standardHeaders, standardRows);
 
         // CARs sheet
-        const carHeaders = ['CAR', 'Reviewer'];
+        const carHeaders = ['CAR', 'Reviewer', 'Effective'];
         const carRows = cars.map((car) => [
             car.car || '',
-            car.reviewer ? getRosterName(car.reviewer) : ''
+            car.reviewer ? getRosterName(car.reviewer) : '',
+            getPreviousCarsEffectiveLabel(car.effective)
         ]);
         addSheet(wb, 'CARs', carHeaders, carRows);
 
@@ -1076,12 +1217,13 @@ const Audit = () => {
             const auditorCommentHtml = nc.auditorComment
                 ? escapeHtml(nc.auditorComment)
                 : '<span class="muted">No response provided.</span>';
-            const hasNcDetailContent = Boolean(nc.details || nc.ncDetails || nc.AIN);
+            const findingPropSummary = getFindingPropSummary(nc);
+            const propRowsHtml = `
+                <div class="nc-field"><strong>PrOPs:</strong> ${findingPropSummary ? escapeHtml(findingPropSummary) : '<span class="muted">No response provided.</span>'}</div>
+            `;
+            const hasNcDetailContent = Boolean(nc.details || nc.AIN);
             const detailsHtml = nc.details
                 ? escapeHtml(nc.details)
-                : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
-            const ncDetailsHtml = nc.ncDetails
-                ? escapeHtml(nc.ncDetails)
                 : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
             const ainHtml = nc.AIN
                 ? escapeHtml(nc.AIN)
@@ -1095,9 +1237,9 @@ const Audit = () => {
                     <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
+                    ${propRowsHtml}
                     ${(showNcDetailFallbacks || hasNcDetailContent) ? `
                     <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
-                    <div class="nc-field"><strong>NC Details:</strong> ${ncDetailsHtml}</div>
                     <div class="nc-field"><strong>Action Item Number:</strong> ${ainHtml}</div>
                     ` : ''}
                 </div>
@@ -1266,8 +1408,6 @@ const Audit = () => {
       </div>
 
       <div class="section-box">
-        <strong>Was previous CAR deemed effective?</strong>
-        <p class="answer">${escapeHtml(getPreviousCarsEffectiveLabel(auditData.previousCarsEffective ?? auditData.previouscarseffective))}</p>
         <strong>CARs Reviewed:</strong>
         ${carLinesHtml}
       </div>
@@ -1611,10 +1751,12 @@ const Audit = () => {
                         <label>Lead Auditor:</label>
                         <span className="lead-auditor">{getLeadAuditorName(auditData.leadAuditorId)}</span>
                     </div>
-                    <div style={{ marginTop: '1rem' }} className="info-item">
-                        <label>Additional Auditors:</label>
-                        <span>{getAdditionalAuditorNames(auditData.additionalAuditorIds)}</span>
-                    </div>
+                    {additionalAuditorNamesForPage && (
+                        <div style={{ marginTop: '1rem' }} className="info-item">
+                            <label>Additional Auditors:</label>
+                            <span>{additionalAuditorNamesForPage}</span>
+                        </div>
+                    )}
                 </div>
 
                 {/* Schedule Details Section */}
@@ -1638,49 +1780,38 @@ const Audit = () => {
                     </div>
                 </div>
 
-                {/* Risk Factors Section */}
-                {riskRatings && riskRatings.length > 0 && (
+                {/* Planning Details */}
+                {auditRiskGroups.length > 0 && (
                     <div className="audit-section">
-                        <h2 className="section-title">Risk Assessment</h2>
+                        <h2 className="section-title">Risk Factors</h2>
                         <div className="risk-factors">
-                            {riskFactorsList.map(riskFactor => {
-                                // Get subcategories for this risk factor
-                                const subcategories = subcategoriesList.filter(
-                                    sub => sub.riskfactorid === riskFactor.riskfactorid
-                                );
-
-                                // Get ratings for these subcategories
-                                const subcategoryRatings = subcategories
-                                    .map(sub => {
-                                        const rating = riskRatings.find(r => r.subcategoryid === sub.subcategoryid);
-                                        return rating ? { ...sub, rating: rating.rating } : null;
-                                    })
-                                    .filter(item => item !== null);
-
-                                // Only show risk factor if it has ratings
-                                if (subcategoryRatings.length === 0) return null;
-
-                                return (
-                                    <div key={riskFactor.riskfactorid} className="risk-factor-group">
-                                        <h3>{riskFactor.riskfactor}</h3>
-                                        <div className="risk-subcategories">
-                                            {subcategoryRatings.map(item => (
-                                                <div key={item.subcategoryid} className="risk-subcategory">
-                                                    <span className="risk-subcategory-name">{item.subcategory || item.subcategoryname || item.name || item.label || 'No subcategory name'}</span>
-                                                    <span className={`risk-rating risk-rating-${item.rating}`}>
-                                                        {item.rating === 1 ? 'Low' : item.rating === 2 ? 'Medium' : item.rating === 3 ? 'High' : 'Very High'}
-                                                    </span>
-                                                </div>
-                                            ))}
+                            {auditRiskGroups.map((group) => (
+                                <div key={group.key} className="risk-factor-group">
+                                    <h3>{group.processArea}</h3>
+                                    <p className="risk-factor-source">
+                                        Source Org Group: {group.orgGroupLabel} - {group.orgTargetLabel || 'Unknown'} ({group.year})
+                                    </p>
+                                    {group.factorGroups.map((factorGroup) => (
+                                        <div key={factorGroup.factorName} className="risk-factor-cluster">
+                                            <h4>{factorGroup.factorName}</h4>
+                                            <div className="risk-subcategories">
+                                                {factorGroup.items.map((item) => (
+                                                    <div key={`${group.key}-${factorGroup.factorName}-${item.subcategoryName}`} className="risk-subcategory">
+                                                        <span className="risk-subcategory-name">{item.subcategoryName}</span>
+                                                        <span className={`risk-rating risk-rating-${item.rating}`}>
+                                                            {getRiskToneLabel(item.rating)} Risk
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                );
-                            })}
+                                    ))}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
 
-                {/* Planning Details */}
                 {auditData.stage > 1 && (
                     <div className="audit-section">
                         <h2 className="section-title">Planning Details</h2>
@@ -1767,30 +1898,24 @@ const Audit = () => {
                 )}
 
                 {/* CARs Section */}
-                {(cars.length > 0 || auditData.previousCarsEffective != null || auditData.previouscarseffective != null) && (
+                {cars.length > 0 && (
                     <div className="audit-section">
                         <h2 className="section-title">Corrective Action Requests (CARs)</h2>
-                        <div className="planning-content" style={{ marginBottom: '1rem' }}>
-                            <div className="planning-item">
-                                <h3>Previous CARs Effective?</h3>
-                                <p>{getPreviousCarsEffectiveLabel(auditData.previousCarsEffective ?? auditData.previouscarseffective)}</p>
-                            </div>
-                        </div>
-                        {cars.length > 0 && (
-                            <div className="risk-factors">
-                                <div className="risk-factor-group">
-                                    <h3>Associated CARs</h3>
-                                    <div className="risk-subcategories">
-                                        {cars.map((car, index) => (
-                                            <div key={car.carid || index} className="risk-subcategory">
-                                                <span className="risk-subcategory-name">{car.car || `CAR ${index + 1}`}</span>
-                                                <span className="risk-rating">{car.reviewer ? getRosterName(car.reviewer) : 'No reviewer'}</span>
-                                            </div>
-                                        ))}
-                                    </div>
+                        <div className="risk-factors">
+                            <div className="risk-factor-group">
+                                <h3>Associated CARs</h3>
+                                <div className="risk-subcategories">
+                                    {cars.map((car, index) => (
+                                        <div key={car.carid || index} className="risk-subcategory">
+                                            <span className="risk-subcategory-name">{car.car || `CAR ${index + 1}`}</span>
+                                            <span className="risk-rating">
+                                                Reviewer: {getCarReviewerLabel(car)} | Effective: {getPreviousCarsEffectiveLabel(car.effective)}
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
@@ -1888,22 +2013,19 @@ const Audit = () => {
                                         <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
                                     </div>
 
+                                    <div className="finding-item">
+                                        <strong>PrOPs:</strong>
+                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
                                     {finding.findingType === 1 && (
                                         <>
-                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
                                                 <>
                                                     <div className="finding-item">
                                                         <strong>Details:</strong>
                                                         <p>
                                                             {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>NC Details:</strong>
-                                                        <p>
-                                                            {finding.ncDetails
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
                                                         </p>
                                                     </div>
@@ -1968,22 +2090,19 @@ const Audit = () => {
                                         <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
                                     </div>
 
+                                    <div className="finding-item">
+                                        <strong>PrOPs:</strong>
+                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
                                     {finding.findingType === 1 && (
                                         <>
-                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
                                                 <>
                                                     <div className="finding-item">
                                                         <strong>Details:</strong>
                                                         <p>
                                                             {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>NC Details:</strong>
-                                                        <p>
-                                                            {finding.ncDetails
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
                                                         </p>
                                                     </div>
@@ -2057,22 +2176,19 @@ const Audit = () => {
                                         <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
                                     </div>
 
+                                    <div className="finding-item">
+                                        <strong>PrOPs:</strong>
+                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
+                                    </div>
+
                                     {finding.findingType === 1 && (
                                         <>
-                                            {(showNcDetailFallbacks || finding.details || finding.ncDetails || finding.AIN) && (
+                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
                                                 <>
                                                     <div className="finding-item">
                                                         <strong>Details:</strong>
                                                         <p>
                                                             {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>NC Details:</strong>
-                                                        <p>
-                                                            {finding.ncDetails
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
                                                         </p>
                                                     </div>
