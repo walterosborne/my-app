@@ -1,12 +1,28 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './Entry.css';
 import foeLinks from './config/foeLinks.js';
+import { getCurrentUser } from './assets/data/apiData';
 
 const FOE = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const type = searchParams.get('type');
+  const [networkId, setNetworkId] = useState('');
+
+  useEffect(() => {
+    async function loadCurrentUser() {
+      const user = await getCurrentUser();
+      setNetworkId(user?.networkId || '');
+    }
+    loadCurrentUser();
+  }, []);
+
+  const appendNetworkId = (url) => {
+    if (!url || !networkId) return url;
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}networkId=${encodeURIComponent(networkId)}`;
+  };
 
   const getIframeConfig = (value) => {
     const config = foeLinks[value];
@@ -14,7 +30,7 @@ const FOE = () => {
       return null;
     }
     return {
-      iframeSrc: config.iframeSrc
+      iframeSrc: appendNetworkId(config.iframeSrc)
     };
   };
 
@@ -22,7 +38,7 @@ const FOE = () => {
     window.open(foeLinks.metrics.url, '_blank', 'noopener,noreferrer');
   };
 
-  const iframeConfig = getIframeConfig(type);
+  const iframeConfig = useMemo(() => getIframeConfig(type), [type, networkId]);
 
   const renderContent = () => {
     if (!type) {
