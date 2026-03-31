@@ -158,11 +158,7 @@ const smtpTransport = nodemailer.createTransport({
     secure: false
 });
 
-//const HARD_CODED_NETWORK_ID = 'Z12345'; // auditor test Jaime Lopez, no audits
-//const HARD_CODED_NETWORK_ID = 'B00002'; // auditor test Jennifer Brown, has audits
-//const HARD_CODED_NETWORK_ID = 'R12345'; // roster non-auditor approver test Alex Nguyen
-//const HARD_CODED_NETWORK_ID = 'A00001'; // roster non-auditor auditee test Anderson Michael
-const HARD_CODED_NETWORK_ID = 'E00001'; // Auditor and admin John Smith
+const HARD_CODED_NETWORK_ID = 'N35589';
 
 const getNetworkIdFromRequest = (req) => {
     // const networkId = req.get('X-Auth-Header');

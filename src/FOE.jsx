@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import './Entry.css';
+import foeLinks from './config/foeLinks.js';
 
 const FOE = () => {
   const [searchParams] = useSearchParams();
@@ -8,29 +9,17 @@ const FOE = () => {
   const type = searchParams.get('type');
 
   const getIframeConfig = (value) => {
-    switch (value) {
-      case 'audits':
-        return {
-          iframeSrc: 'https://example.com/?foe=audits',
-          targetUrl: 'https://www.google.com/images'
-        };
-      case 'download':
-        return {
-          iframeSrc: 'https://example.com/?foe=download',
-          targetUrl: 'https://www.google.com/maps'
-        };
-      case 'admin':
-        return {
-          iframeSrc: 'https://example.com/?foe=admin',
-          targetUrl: 'https://www.bing.com'
-        };
-      default:
-        return null;
+    const config = foeLinks[value];
+    if (!config || config.external) {
+      return null;
     }
+    return {
+      iframeSrc: config.iframeSrc
+    };
   };
 
   const handleMetrics = () => {
-    window.open('https://www.yahoo.com', '_blank', 'noopener,noreferrer');
+    window.open(foeLinks.metrics.url, '_blank', 'noopener,noreferrer');
   };
 
   const iframeConfig = getIframeConfig(type);
@@ -46,28 +35,28 @@ const FOE = () => {
               className="button"
               style={{ backgroundColor: '#0066cc', width: '200px' }}
             >
-              Metrics
+              {foeLinks.metrics.label}
             </button>
             <button
               onClick={() => navigate('/foe?type=audits')}
               className="button"
               style={{ backgroundColor: '#0066cc', width: '200px' }}
             >
-              Audits
+              {foeLinks.audits.label}
             </button>
             <button
               onClick={() => navigate('/foe?type=download')}
               className="button"
               style={{ backgroundColor: '#0066cc', width: '200px' }}
             >
-              Download Audit Info
+              {foeLinks.download.label}
             </button>
             <button
               onClick={() => navigate('/foe?type=admin')}
               className="button"
               style={{ backgroundColor: '#0066cc', width: '200px' }}
             >
-              Admin Menu
+              {foeLinks.admin.label}
             </button>
           </div>
         </div>

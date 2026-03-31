@@ -72,3 +72,6 @@ migrate-all-data.sql
 # Local assets
 src/assets/NG.png
 src/assets/placeholder.jpg
+
+# Local FOE link config
+src/config/foeLinks.js

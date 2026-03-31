@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Navbar.css';
 import logo from './assets/NG.png';
+import foeLinks from './config/foeLinks.js';
 
 const Navbar = () => {
     const [openDropdown, setOpenDropdown] = useState(null);
@@ -13,6 +14,13 @@ const Navbar = () => {
     const handleMouseLeave = () => {
         setOpenDropdown(null);
     };
+
+    const foeDropdownItems = [
+        { label: foeLinks.metrics.label, path: foeLinks.metrics.url, external: true },
+        { label: foeLinks.audits.label, path: '/foe?type=audits' },
+        { label: foeLinks.download.label, path: '/foe?type=download' },
+        { label: foeLinks.admin.label, path: '/foe?type=admin' }
+    ];
 
     const dropdownOptions = {
         'Auditing Steps': [
@@ -26,12 +34,7 @@ const Navbar = () => {
             { label: 'All My Audits', path: '/myaudits' },
             { label: 'Reports', path: '/audit-reports' }
         ],
-        'FOE': [
-            { label: 'Metrics', path: 'https://www.yahoo.com', external: true },
-            { label: 'Audits', path: '/foe?type=audits' },
-            { label: 'Download Audit Info', path: '/foe?type=download' },
-            { label: 'Admin Menu', path: '/foe?type=admin' }
-        ],
+        'FOE': foeDropdownItems,
         'Tools': [
             { label: 'Admin Menu', path: '/admin' },
             { label: 'Audit Statuses', path: '/audit-statuses' },
