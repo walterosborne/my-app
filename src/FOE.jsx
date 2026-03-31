@@ -8,20 +8,23 @@ const FOE = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const type = searchParams.get('type');
-  const [networkId, setNetworkId] = useState('');
+  const [currentUser, setCurrentUser] = useState({ myId: '', name: '' });
 
   useEffect(() => {
     async function loadCurrentUser() {
       const user = await getCurrentUser();
-      setNetworkId(user?.networkId || '');
+      setCurrentUser({
+        myId: user?.myId || '',
+        name: user?.name || ''
+      });
     }
     loadCurrentUser();
   }, []);
 
-  const appendNetworkId = (url) => {
-    if (!url || !networkId) return url;
+  const appendUserContext = (url) => {
+    if (!url || !currentUser.myId) return url;
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}networkId=${encodeURIComponent(networkId)}`;
+    return `${url}${separator}usermyid=${encodeURIComponent(currentUser.myId)}&username=${encodeURIComponent(currentUser.name || currentUser.myId)}`;
   };
 
   const getIframeConfig = (value) => {
@@ -30,7 +33,7 @@ const FOE = () => {
       return null;
     }
     return {
-      iframeSrc: appendNetworkId(config.iframeSrc)
+      iframeSrc: appendUserContext(config.iframeSrc)
     };
   };
 
@@ -38,7 +41,7 @@ const FOE = () => {
     window.open(foeLinks.metrics.url, '_blank', 'noopener,noreferrer');
   };
 
-  const iframeConfig = useMemo(() => getIframeConfig(type), [type, networkId]);
+  const iframeConfig = useMemo(() => getIframeConfig(type), [type, currentUser.myId]);
 
   const renderContent = () => {
     if (!type) {
