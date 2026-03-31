@@ -20,12 +20,18 @@
 .foe-container--embed {
     padding: 0;
     overflow: hidden;
+    background-color: #ffffff;
+    display: flex;
+    min-height: calc(100vh - 120px);
+    height: calc(100vh - 120px);
 }
 
 .foe-container--embed iframe {
     display: block;
     width: 100%;
-    min-height: calc(100vh - 120px);
+    min-height: 100%;
+    height: 100%;
+    flex: 1 1 auto;
     border: none;
     border-radius: 20px;
     background-color: #ffffff;

@@ -95,11 +95,10 @@ const FOE = () => {
       <iframe
         title="FOE Content"
         src={iframeConfig.iframeSrc}
+        className="foe-iframe"
         style={{
           width: '100%',
-          height: '75vh',
           border: 'none',
-          borderRadius: '12px',
           backgroundColor: 'white'
         }}
       />
