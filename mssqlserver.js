@@ -21,9 +21,19 @@ const sqlConfig = {
     }
 };
 
+const rosterConfig = {
+    server: process.env.server || '',
+    database: process.env.database || '',
+    user: process.env.user || '',
+    password: process.env.password || '',
+    options: {
+        encrypt: true,
+        trustServerCertificate: true
+    }
+};
 const sqlPool = new sql.ConnectionPool(sqlConfig);
 const sqlPoolPromise = sqlPool.connect();
-const rosterSqlPool = new sql.ConnectionPool(sqlConfig);
+const rosterSqlPool = new sql.ConnectionPool(rosterConfig);
 const rosterPoolPromise = rosterSqlPool.connect();
 
 const normalizeRow = (row) => {
@@ -1323,14 +1333,11 @@ app.get('/api/programs', async (req, res) => {
         const result = await pool.query(`
             SELECT
                 p.*,
-                COALESCE(
-                    (
-                        SELECT json_agg(apa.auditorid ORDER BY apa.auditorid)
-                        FROM auditor_program_assignments_r apa
-                        WHERE apa.programid = p.programid
-                    ),
-                    '[]'::json
-                ) AS auditorids
+                ISNULL((
+                    SELECT CONCAT('[', STRING_AGG(CAST(apa.auditorid AS NVARCHAR(MAX)), ','), ']')
+                    FROM auditor_program_assignments_r apa
+                    WHERE apa.programid = p.programid
+                ), '[]') AS auditorids
             FROM programs_r p
             ORDER BY p.programid
         `);
@@ -1772,14 +1779,11 @@ app.get('/api/auditors', async (req, res) => {
         const result = await pool.query(`
             SELECT
                 a.*,
-                COALESCE(
-                    (
-                        SELECT json_agg(apa.programid ORDER BY apa.programid)
-                        FROM auditor_program_assignments_r apa
-                        WHERE apa.auditorid = a.auditorid
-                    ),
-                    '[]'::json
-                ) AS programids
+                ISNULL((
+                    SELECT CONCAT('[', STRING_AGG(CAST(apa.programid AS NVARCHAR(MAX)), ','), ']')
+                    FROM auditor_program_assignments_r apa
+                    WHERE apa.auditorid = a.auditorid
+                ), '[]') AS programids
             FROM auditors_r a
             ORDER BY a.auditorid
         `);
@@ -2599,12 +2603,12 @@ app.post('/api/audits', async (req, res) => {
                     $27, $28, $29, $30, $31, $32, $33, $34, $35
                 ) RETURNING scheduleId`,
                 [
-                audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
-                JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
-                audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
-                normalizeAuditArrayForStorage(audit.divisionId), JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
-                JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,
-                JSON.stringify(audit.additionalAuditorIds), audit.comment, audit.scope,
+                    audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
+                    JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
+                    audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
+                    normalizeAuditArrayForStorage(audit.divisionId), JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
+                    JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,
+                    JSON.stringify(audit.additionalAuditorIds), audit.comment, audit.scope,
                     audit.safety, audit.clearance,
                     JSON.stringify(audit.safetyEquipmentIds), JSON.stringify(audit.trainingRequirementIds), JSON.stringify(audit.famaIds),
                     JSON.stringify(audit.intervieweeIds), audit.specialConsiderations, audit.overview, audit.evaluator,
