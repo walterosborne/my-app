@@ -108,7 +108,7 @@ const FOE = () => {
 
   return (
     <div className="entry-page">
-      <div className="entry-container">
+      <div className={`entry-container ${iframeConfig ? 'foe-container--embed' : ''}`}>
         {renderContent()}
       </div>
     </div>

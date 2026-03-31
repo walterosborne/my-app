@@ -17,6 +17,20 @@
     min-height: calc(100vh - 120px);
 }
 
+.foe-container--embed {
+    padding: 0;
+    overflow: hidden;
+}
+
+.foe-container--embed iframe {
+    display: block;
+    width: 100%;
+    min-height: calc(100vh - 120px);
+    border: none;
+    border-radius: 20px;
+    background-color: #ffffff;
+}
+
 .entry-message {
     text-align: center;
     padding: 3rem;
