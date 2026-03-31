@@ -170,22 +170,67 @@ const getNetworkIdFromRequest = (req) => {
     return HARD_CODED_NETWORK_ID;
 };
 
+const getRosterRowsByMyIds = async (myIds = []) => {
+    const normalizedMyIds = [...new Set(
+        normalizeStringArray(myIds)
+            .map((myId) => String(myId).trim())
+            .filter(Boolean)
+    )];
+
+    if (normalizedMyIds.length === 0) {
+        return [];
+    }
+
+    const placeholders = normalizedMyIds.map((_, idx) => `$${idx + 1}`).join(', ');
+    const result = await rosterPool.query(
+        `SELECT rostername, email, myid, networkid
+         FROM roster_r
+         WHERE myid IN (${placeholders})`,
+        normalizedMyIds
+    );
+    return result.rows;
+};
+
 const getCurrentUserInfo = async (req) => {
     const networkId = getNetworkIdFromRequest(req);
     if (!networkId) return null;
-    const result = await rosterPool.query(
-        `SELECT TOP 1 r.rostername, r.myid, r.networkid, a.auditorid, a.divisionid, COALESCE(a.admin, 0) AS admin, COALESCE(a.cuiapproved, 0) AS cuiapproved,
-                ISNULL((
-                    SELECT CONCAT('[', STRING_AGG(CAST(apa.programid AS NVARCHAR(MAX)), ','), ']')
-                    FROM auditor_program_assignments_r apa
-                    WHERE apa.auditorid = a.auditorid
-                ), '[]') AS programids
-         FROM roster_r r
-         LEFT JOIN auditors_r a ON a.myid = r.myid
-         WHERE r.networkid = $1`,
+
+    const rosterResult = await rosterPool.query(
+        `SELECT TOP 1 rostername, myid, networkid, email
+         FROM roster_r
+         WHERE networkid = $1`,
         [networkId]
     );
-    return result.rows[0] ?? null;
+    const rosterRow = rosterResult.rows[0];
+    if (!rosterRow) {
+        return null;
+    }
+
+    const auditorResult = await pool.query(
+        `SELECT TOP 1
+            a.auditorid,
+            a.divisionid,
+            COALESCE(a.admin, 0) AS admin,
+            COALESCE(a.cuiapproved, 0) AS cuiapproved,
+            ISNULL((
+                SELECT CONCAT('[', STRING_AGG(CAST(apa.programid AS NVARCHAR(MAX)), ','), ']')
+                FROM auditor_program_assignments_r apa
+                WHERE apa.auditorid = a.auditorid
+            ), '[]') AS programids
+         FROM auditors_r a
+         WHERE a.myid = $1`,
+        [rosterRow.myid]
+    );
+    const auditorRow = auditorResult.rows[0] ?? {};
+
+    return {
+        ...rosterRow,
+        auditorid: auditorRow.auditorid ?? null,
+        divisionid: auditorRow.divisionid ?? null,
+        admin: auditorRow.admin ?? 0,
+        cuiapproved: auditorRow.cuiapproved ?? 0,
+        programids: auditorRow.programids ?? '[]'
+    };
 };
 
 const getCurrentAuditorId = async (req) => {
@@ -957,14 +1002,14 @@ app.post('/api/request-auditor-access', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Division lead not configured.' });
         }
 
-        const leadResult = await rosterPool.query(
-            `SELECT TOP 1 r.email, r.rostername
-             FROM auditors_r a
-             JOIN roster_r r ON r.myid = a.myid
-             WHERE a.auditorid = $1`,
+        const leadAuditorResult = await client.query(
+            `SELECT TOP 1 myid
+             FROM auditors_r
+             WHERE auditorid = $1`,
             [division.leadid]
         );
-        const lead = leadResult.rows[0];
+        const leadMyId = leadAuditorResult.rows[0]?.myid;
+        const lead = leadMyId ? (await getRosterRowsByMyIds([leadMyId]))[0] : null;
         if (!lead?.email) {
             return res.status(400).json({ success: false, error: 'Division lead email not found.' });
         }
@@ -2634,19 +2679,20 @@ app.post('/api/audits', async (req, res) => {
         if (shouldSendScheduleEmail && scheduleIdToNotify && emailAuditorIds.size > 0) {
             const emailAuditorIdsList = Array.from(emailAuditorIds);
             const auditorPlaceholders = emailAuditorIdsList.map((_, idx) => `$${idx + 1}`).join(', ');
-            const rosterResult = await rosterPool.query(
-                `SELECT DISTINCT r.email
-                 FROM auditors_r a
-                 JOIN roster_r r ON r.myid = a.myid
-                 WHERE a.auditorid IN (${auditorPlaceholders}) AND r.email IS NOT NULL`,
+            const auditorResult = await client.query(
+                `SELECT DISTINCT myid
+                 FROM auditors_r
+                 WHERE auditorid IN (${auditorPlaceholders}) AND myid IS NOT NULL`,
                 emailAuditorIdsList
             );
+            const auditorMyIds = auditorResult.rows.map((row) => row.myid).filter(Boolean);
+            const rosterRows = await getRosterRowsByMyIds(auditorMyIds);
 
             const reviewLink = `${appBaseUrl}/audit/${scheduleIdToNotify}`;
             const reviewChangesLink = `${appBaseUrl}/entry?type=schedule&audit=${scheduleIdToNotify}`;
             const planLink = `${appBaseUrl}/entry?type=planning&audit=${scheduleIdToNotify}`;
 
-            for (const row of rosterResult.rows) {
+            for (const row of rosterRows) {
                 const recipientEmail = row.email;
                 if (!recipientEmail) {
                     continue;
@@ -2775,14 +2821,15 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         if (auditorIds.size > 0) {
             const auditorIdList = Array.from(auditorIds);
             const auditorPlaceholders = auditorIdList.map((_, idx) => `$${idx + 1}`).join(', ');
-            const rosterResult = await rosterPool.query(
-                `SELECT DISTINCT r.email
-                 FROM auditors_r a
-                 JOIN roster_r r ON r.myid = a.myid
-                 WHERE a.auditorid IN (${auditorPlaceholders}) AND r.email IS NOT NULL`,
+            const auditorResult = await pool.query(
+                `SELECT DISTINCT myid
+                 FROM auditors_r
+                 WHERE auditorid IN (${auditorPlaceholders}) AND myid IS NOT NULL`,
                 auditorIdList
             );
-            auditorEmails = rosterResult.rows.map((row) => row.email).filter(Boolean);
+            const auditorMyIds = auditorResult.rows.map((row) => row.myid).filter(Boolean);
+            const rosterRows = await getRosterRowsByMyIds(auditorMyIds);
+            auditorEmails = rosterRows.map((row) => row.email).filter(Boolean);
         }
         const approverIds = audit.approver ? [audit.approver] : [];
         const additionalApproverIds = normalizeStringArray(audit.additionalapprovers);
