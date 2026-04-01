@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './AllReports.css';
-import { customStyles } from './Utilities.jsx';
+import { customStyles, formatDateForInput, formatMonthValue, parseCalendarDate } from './Utilities.jsx';
 import {
   getAuditsAll,
   getPrograms,
@@ -286,9 +286,7 @@ const ThirtySixtyNinety = () => {
   };
 
   const parseDate = (value) => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return parseCalendarDate(value);
   };
 
   const matchesDateRange = (value, start, end) => {
@@ -344,10 +342,7 @@ const ThirtySixtyNinety = () => {
   }, [severitiesList]);
 
   const formatMonth = (value) => {
-    const dateValue = parseDate(value);
-    if (!dateValue) return '';
-    const month = String(dateValue.getMonth() + 1).padStart(2, '0');
-    return `${dateValue.getFullYear()}-${month}`;
+    return formatMonthValue(value);
   };
 
   const getStageValue = (audit) => {
@@ -618,8 +613,8 @@ const ThirtySixtyNinety = () => {
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
     status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
-    expectedStartDate: audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
-    expectedCompletionDate: audit.expectedCompletionDate ? audit.expectedCompletionDate.split('T')[0] : ''
+    expectedStartDate: formatDateForInput(audit.expectedStartDate),
+    expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate)
   }));
 
   const defaultColumns = [
@@ -855,7 +850,7 @@ const ThirtySixtyNinety = () => {
       programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
       processes: getPrOpsForAudit(audit.scheduleId).join('; '),
       stage: getStageLabel(audit),
-      startDate: audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
+      startDate: formatDateForInput(audit.expectedStartDate),
       comment: audit.comment || ''
     }));
   }, [
@@ -1368,7 +1363,7 @@ const ThirtySixtyNinety = () => {
           return [
             audit.scheduleId || '',
             auditors,
-            audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
+            formatDateForInput(audit.expectedStartDate),
             audit.scope || '',
             formatArray(audit.programIds, programsList, 'programId', 'programName'),
             formatSiteArray(audit.siteIds)

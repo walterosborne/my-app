@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './AllReports.css';
-import { customStyles } from './Utilities.jsx';
+import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
   getAudits,
   getCurrentUser,
@@ -196,9 +196,7 @@ const AllReports = () => {
   };
 
   const parseDate = (value) => {
-    if (!value) return null;
-    const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    return parseCalendarDate(value);
   };
 
   const matchesDateRange = (value, start, end) => {
@@ -318,10 +316,10 @@ const AllReports = () => {
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
     status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
-    expectedStartDate: audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
-    expectedCompletionDate: audit.expectedCompletionDate ? audit.expectedCompletionDate.split('T')[0] : '',
-    submittedDate: audit.submittedAt ? audit.submittedAt.split('T')[0] : '',
-    approvalDate: audit.approvedAt ? audit.approvedAt.split('T')[0] : ''
+    expectedStartDate: formatDateForInput(audit.expectedStartDate),
+    expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate),
+    submittedDate: formatDateForInput(audit.submittedAt),
+    approvalDate: formatDateForInput(audit.approvedAt)
   }));
 
   const columns = [
@@ -436,15 +434,15 @@ const AllReports = () => {
       formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
       formatSingle(audit.leadAuditorId, auditorsList, 'auditorId', 'auditorName'),
       formatArray(audit.additionalAuditorIds, auditorsList, 'auditorId', 'auditorName'),
-      audit.expectedStartDate ? audit.expectedStartDate.split('T')[0] : '',
-      audit.expectedCompletionDate ? audit.expectedCompletionDate.split('T')[0] : '',
+      formatDateForInput(audit.expectedStartDate),
+      formatDateForInput(audit.expectedCompletionDate),
       formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
       formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
       formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
       audit.comment || '',
-      audit.submittedAt ? audit.submittedAt.split('T')[0] : '',
-      audit.approvedAt ? audit.approvedAt.split('T')[0] : ''
+      formatDateForInput(audit.submittedAt),
+      formatDateForInput(audit.approvedAt)
     ]));
     addSheet(wb, 'Schedule', scheduleHeaders, scheduleRows);
 
@@ -490,7 +488,7 @@ const AllReports = () => {
       .filter((audit) => getStageValue(audit) >= 3)
       .map((audit) => ([
         audit.scheduleId || '',
-        audit.startDate ? audit.startDate.split('T')[0] : '',
+        formatDateForInput(audit.startDate),
         audit.intervieweeIds ? formatArray(audit.intervieweeIds, rosterList, 'myId', 'rosterName') : '',
         audit.overview || '',
         audit.evaluator || '',

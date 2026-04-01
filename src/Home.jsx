@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import teamImage from './assets/placeholder.jpg';
 import { getAuditsAll, getAuditors, getCurrentUser } from './assets/data/apiData';
+import { formatDateForDisplay, parseCalendarDate } from './Utilities.jsx';
 
 const Home = () => {
     const navigate = useNavigate();
@@ -25,25 +26,21 @@ const Home = () => {
 
                 // Calculate date range for 30-day lookahead
                 const now = new Date();
+                now.setHours(0, 0, 0, 0);
                 const thirtyDaysFromNow = new Date();
+                thirtyDaysFromNow.setHours(23, 59, 59, 999);
                 thirtyDaysFromNow.setDate(now.getDate() + 30);
 
                 // Transform audit data to match the display format
                 const formatted = auditsData
                     .filter(a => {
                         if (!a.expectedStartDate) return false;
-                        const startDate = new Date(a.expectedStartDate);
+                        const startDate = parseCalendarDate(a.expectedStartDate);
+                        if (!startDate) return false;
                         // Only include audits with expected start date within next 30 days
                         return startDate >= now && startDate <= thirtyDaysFromNow;
                     })
                     .map(a => {
-                        // Format date as MM-DD-YYYY
-                        const date = new Date(a.expectedStartDate);
-                        const month = String(date.getMonth() + 1).padStart(2, '0');
-                        const day = String(date.getDate()).padStart(2, '0');
-                        const year = date.getFullYear();
-                        const formattedDate = `${month}-${day}-${year}`;
-
                         // Get auditor name from leadAuditorId
                         const auditor = auditorsData.find(aud => aud.auditorId === a.leadAuditorId);
                         const auditorName = auditor ? auditor.auditorName : 'TBD';
@@ -51,14 +48,14 @@ const Home = () => {
                         const title = a.title || 'Untitled Audit';
                         return {
                             id: String(a.scheduleId),
-                            date: formattedDate,
+                            date: formatDateForDisplay(a.expectedStartDate),
                             auditor: auditorName,
                             title,
                             scheduleLabel: `Schedule ID: ${a.scheduleId}`,
                             rawDate: a.expectedStartDate // Keep for sorting
                         };
                     })
-                    .sort((a, b) => new Date(a.rawDate) - new Date(b.rawDate)); // Sort by date
+                    .sort((a, b) => parseCalendarDate(a.rawDate) - parseCalendarDate(b.rawDate)); // Sort by date
                 setUpcomingAudits(formatted);
                 setLoading(false);
             } catch (error) {

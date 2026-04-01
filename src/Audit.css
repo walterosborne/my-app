@@ -42,6 +42,7 @@
 .audit-selector {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 1rem;
     margin-bottom: 2rem;
     padding: 1rem;
@@ -59,6 +60,9 @@
 
 .audit-select-dropdown {
     flex: 1;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
     padding: 0.75rem 1rem;
     border: 1px solid var(--color-grey-400);
     border-radius: 6px;
@@ -462,6 +466,8 @@
     font-size: 0.9rem;
     background-color: var(--color-grey-600);
     color: var(--color-white);
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
 .finding-type.major {
@@ -730,6 +736,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 0.75rem;
     background-color: var(--color-white);
     border: 1px solid var(--color-border-grey);
@@ -740,6 +747,9 @@
 .approval-name {
     font-weight: 600;
     color: var(--color-section-heading);
+    flex: 1 1 180px;
+    min-width: 0;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 1200px) {

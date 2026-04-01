@@ -97,4 +97,69 @@ const adminSelectStyles = {
     })
 };
 
-export { customStyles, adminSelectStyles };
+const padDatePart = (value) => String(value).padStart(2, "0");
+
+const getDateParts = (value) => {
+    if (!value) return null;
+
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return null;
+        return {
+            year: value.getFullYear(),
+            month: value.getMonth() + 1,
+            day: value.getDate()
+        };
+    }
+
+    const rawValue = String(value).trim();
+    const dateOnlyMatch = rawValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnlyMatch) {
+        return {
+            year: Number(dateOnlyMatch[1]),
+            month: Number(dateOnlyMatch[2]),
+            day: Number(dateOnlyMatch[3])
+        };
+    }
+
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return {
+        year: parsed.getFullYear(),
+        month: parsed.getMonth() + 1,
+        day: parsed.getDate()
+    };
+};
+
+const parseCalendarDate = (value) => {
+    const parts = getDateParts(value);
+    if (!parts) return null;
+    return new Date(parts.year, parts.month - 1, parts.day, 12, 0, 0, 0);
+};
+
+const formatDateForInput = (value) => {
+    const parts = getDateParts(value);
+    if (!parts) return '';
+    return `${parts.year}-${padDatePart(parts.month)}-${padDatePart(parts.day)}`;
+};
+
+const formatDateForDisplay = (value) => {
+    const parts = getDateParts(value);
+    if (!parts) return '';
+    return `${padDatePart(parts.month)}-${padDatePart(parts.day)}-${parts.year}`;
+};
+
+const formatMonthValue = (value) => {
+    const parts = getDateParts(value);
+    if (!parts) return '';
+    return `${parts.year}-${padDatePart(parts.month)}`;
+};
+
+export {
+    customStyles,
+    adminSelectStyles,
+    getDateParts,
+    parseCalendarDate,
+    formatDateForInput,
+    formatDateForDisplay,
+    formatMonthValue
+};

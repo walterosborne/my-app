@@ -30,6 +30,7 @@ import {
     getRiskRatings
 } from './assets/data/apiData';
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
+import { formatDateForDisplay, getDateParts } from './Utilities.jsx';
 
 const Audit = () => {
     const { id } = useParams();
@@ -494,14 +495,7 @@ const Audit = () => {
     };
 
     // Helper function to format date as MM-DD-YYYY
-    const formatDate = (dateString) => {
-        if (!dateString) return '';
-        const date = new Date(dateString);
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const year = date.getFullYear();
-        return `${month}-${day}-${year}`;
-    };
+    const formatDate = (dateString) => formatDateForDisplay(dateString);
 
 
     // Find the audit based on URL param or default to highest numbered
@@ -555,9 +549,8 @@ const Audit = () => {
     const getAuditRiskYear = React.useMemo(() => {
         const candidateDate = auditData?.expectedStartDate || auditData?.actualStartDate || auditData?.expectedCompletionDate;
         if (!candidateDate) return new Date().getFullYear();
-        const parsedDate = new Date(candidateDate);
-        const parsedYear = parsedDate.getFullYear();
-        return Number.isNaN(parsedYear) ? new Date().getFullYear() : parsedYear;
+        const parsedYear = getDateParts(candidateDate)?.year;
+        return Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
     }, [auditData?.expectedStartDate, auditData?.actualStartDate, auditData?.expectedCompletionDate]);
 
     const auditRiskGroups = React.useMemo(() => {
@@ -1212,6 +1205,9 @@ const Audit = () => {
             const clauseLabel = nc.section
                 ? `Clause ${nc.section}${nc.subsection ? `.${nc.subsection}` : ''}`
                 : '';
+            const severityHtml = (nc.severity !== null && nc.severity !== undefined && nc.severity !== '')
+                ? escapeHtml(getSeverityLabel(nc.severity))
+                : '';
             const questionHtml = nc.question ? escapeHtml(nc.question) : '<span class="muted">No response provided.</span>';
             const responseHtml = nc.response ? escapeHtml(nc.response) : '<span class="muted">No response provided.</span>';
             const auditorCommentHtml = nc.auditorComment
@@ -1234,6 +1230,7 @@ const Audit = () => {
                         <span class="nc-id">NC-${nc.ncId}</span>
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
+                    ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
                     <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
@@ -1653,19 +1650,43 @@ const Audit = () => {
                 <div className="audit-section-row">
                     <div className="audit-section">
                         <h2 className="section-title">Audit Information</h2>
-                        <div className="info-grid">
-                            <div className="info-item">
-                                <label>Audit Type:</label>
-                                <span>{getAuditTypeName(auditData.auditTypeId)}</span>
-                            </div>
-                            <div className="info-item">
-                                <label>Function:</label>
-                                <span>{getFunctionName(auditData.functionId)}</span>
-                            </div>
-                            <div className="info-item">
-                                <label>Standards:</label>
-                                <span>{getStandardNames(auditData.standardIds)}</span>
-                            </div>
+                        <div className="info-grid-two">
+                            {getAuditTypeName(auditData.auditTypeId) && (
+                                <div className="info-item">
+                                    <label>Audit Type:</label>
+                                    <span>{getAuditTypeName(auditData.auditTypeId)}</span>
+                                </div>
+                            )}
+                            {getStatusName(auditData.statusId) && (
+                                <div className="info-item">
+                                    <label>Status:</label>
+                                    <span>{getStatusName(auditData.statusId)}</span>
+                                </div>
+                            )}
+                            {getFunctionName(auditData.functionId) && (
+                                <div className="info-item">
+                                    <label>Function:</label>
+                                    <span>{getFunctionName(auditData.functionId)}</span>
+                                </div>
+                            )}
+                            {getIntExtName(auditData.intExtId) && (
+                                <div className="info-item">
+                                    <label>Internal/External:</label>
+                                    <span>{getIntExtName(auditData.intExtId)}</span>
+                                </div>
+                            )}
+                            {getStandardNames(auditData.standardIds || []) && (
+                                <div className="info-item" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Standards:</label>
+                                    <span>{getStandardNames(auditData.standardIds || [])}</span>
+                                </div>
+                            )}
+                            {auditData.comment && (
+                                <div className="info-item" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Comment:</label>
+                                    <span>{auditData.comment}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1709,12 +1730,12 @@ const Audit = () => {
                     <h2 className="section-title">Organization</h2>
                     <div className="info-grid-three">
                         <div className="info-item">
-                            <label>Division:</label>
-                            <span>{getDivisionName(auditData.divisionId)}</span>
-                        </div>
-                        <div className="info-item">
                             <label>Sector:</label>
                             <span>{getSectorName(auditData.sectorId)}</span>
+                        </div>
+                        <div className="info-item">
+                            <label>Division:</label>
+                            <span>{getDivisionName(auditData.divisionId)}</span>
                         </div>
                         <div className="info-item">
                             <label>Site:</label>
@@ -1757,27 +1778,6 @@ const Audit = () => {
                             <span>{additionalAuditorNamesForPage}</span>
                         </div>
                     )}
-                </div>
-
-                {/* Schedule Details Section */}
-                <div className="audit-section">
-                    <h2 className="section-title">Schedule Details</h2>
-                    <div className="info-grid">
-                        <div className="info-item">
-                            <label>Internal/External:</label>
-                            <span>{getIntExtName(auditData.intExtId)}</span>
-                        </div>
-                        <div className="info-item">
-                            <label>Status:</label>
-                            <span>{getStatusName(auditData.statusId)}</span>
-                        </div>
-                        {auditData.comment && (
-                            <div className="info-item" style={{ gridColumn: '1 / -1' }}>
-                                <label>Comment:</label>
-                                <span>{auditData.comment}</span>
-                            </div>
-                        )}
-                    </div>
                 </div>
 
                 {/* Planning Details */}

@@ -5,6 +5,7 @@ import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
+import smtpConfig from './smtpConfig.js';
 
 const app = express();
 app.use(cors());
@@ -149,9 +150,7 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const SMTP_HOST = 'replace me';
-const SMTP_PORT = 25;
-const SMTP_FROM = 'NGAT@ngc.com';
+const { host: SMTP_HOST, port: SMTP_PORT, from: SMTP_FROM } = smtpConfig;
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,

@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import './App.css'
 import { grey } from '@mui/material/colors';
-import { customStyles } from './Utilities.jsx';
+import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
   getPrograms,
   getDivisions,
@@ -312,7 +312,9 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   // Clear completion date if start date is set later than completion date
   useEffect(() => {
-    if (startDate && completionDate && new Date(startDate) > new Date(completionDate)) {
+    const parsedStartDate = parseCalendarDate(startDate);
+    const parsedCompletionDate = parseCalendarDate(completionDate);
+    if (parsedStartDate && parsedCompletionDate && parsedStartDate > parsedCompletionDate) {
       setValue('ExpCompDate', '');
     }
   }, [startDate, completionDate, setValue]);
@@ -651,12 +653,12 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
       // Set expected start date if available
       if (selectedAudit && selectedAudit.expectedStartDate) {
-        const startDate = selectedAudit.expectedStartDate.split('T')[0]; // Extract YYYY-MM-DD
+        const startDate = formatDateForInput(selectedAudit.expectedStartDate);
         setValue("StartDate", startDate);
       }
       // Set expected completion date if available
       if (selectedAudit && selectedAudit.expectedCompletionDate) {
-        const compDate = selectedAudit.expectedCompletionDate.split('T')[0]; // Extract YYYY-MM-DD
+        const compDate = formatDateForInput(selectedAudit.expectedCompletionDate);
         setValue("ExpCompDate", compDate);
       }
       // Set comment if available
@@ -700,8 +702,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         standardIds: data.standards || [],
         statusId: data.status,
         stage: computeStage(1),
-        expectedStartDate: data.StartDate ? new Date(data.StartDate).toISOString() : null,
-        expectedCompletionDate: data.ExpCompDate ? new Date(data.ExpCompDate).toISOString() : null,
+        expectedStartDate: data.StartDate || null,
+        expectedCompletionDate: data.ExpCompDate || null,
         divisionId: data.division || [],
         programIds: data.program || [],
         sectorId: data.sector,

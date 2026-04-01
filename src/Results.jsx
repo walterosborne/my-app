@@ -11,7 +11,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
-import { customStyles } from './Utilities.jsx';
+import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
   getPrograms,
   getDivisions,
@@ -456,12 +456,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const auditDate = watch('auditDate');
   const expectedStartDate = selectedAudit?.expectedStartDate
-    ? selectedAudit.expectedStartDate.split('T')[0]
+    ? formatDateForInput(selectedAudit.expectedStartDate)
     : '';
   const isDelayed = Boolean(
     auditDate &&
     expectedStartDate &&
-    new Date(auditDate) > new Date(expectedStartDate)
+    parseCalendarDate(auditDate) > parseCalendarDate(expectedStartDate)
   );
 
   const areArrayValuesEqual = (left = [], right = []) => {
@@ -523,7 +523,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       // Set start date if available
       if (selectedAudit.startDate) {
-        const startDate = selectedAudit.startDate.split('T')[0]; // Extract YYYY-MM-DD
+        const startDate = formatDateForInput(selectedAudit.startDate);
         setValue('auditDate', startDate);
       }
 

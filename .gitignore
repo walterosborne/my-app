@@ -75,3 +75,6 @@ src/assets/placeholder.jpg
 
 # Local FOE link config
 src/config/foeLinks.js
+
+# Local SMTP config
+smtpConfig.js

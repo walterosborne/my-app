@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Calendar.css';
 import './Entry.css';
 import { getAuditsAll, getAuditors, getDivisions, getSites } from './assets/data/apiData';
+import { formatDateForInput } from './Utilities.jsx';
 
 const VIEW_MODES = ['monthly', 'weekly', 'daily'];
 
@@ -126,7 +127,8 @@ const Calendar = () => {
         audits.forEach((audit) => {
             const dateString = audit.expectedStartDate;
             if (!dateString) return;
-            const key = dateString.split('T')[0];
+            const key = formatDateForInput(dateString);
+            if (!key) return;
             if (!map[key]) map[key] = [];
             const siteIds = Array.isArray(audit.siteIds)
                 ? audit.siteIds

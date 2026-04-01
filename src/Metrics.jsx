@@ -18,7 +18,7 @@ import { getValueToPositionMapper, useXScale, useYScale } from '@mui/x-charts/ho
 import { toPng } from 'html-to-image';
 import './Entry.css';
 import './Metrics.css';
-import { customStyles } from './Utilities.jsx';
+import { customStyles, parseCalendarDate } from './Utilities.jsx';
 import {
   getAuditsAll,
   getAuditors,
@@ -358,20 +358,19 @@ const Metrics = () => {
         if (!dateValue) {
           return false;
         }
-        const auditDate = new Date(dateValue);
-        if (Number.isNaN(auditDate.getTime())) {
+        const auditDate = parseCalendarDate(dateValue);
+        if (!auditDate || Number.isNaN(auditDate.getTime())) {
           return false;
         }
         if (filters.dateFrom) {
-          const fromDate = new Date(filters.dateFrom);
-          if (auditDate < fromDate) {
+          const fromDate = parseCalendarDate(filters.dateFrom);
+          if (fromDate && auditDate < fromDate) {
             return false;
           }
         }
         if (filters.dateTo) {
-          const toDate = new Date(filters.dateTo);
-          toDate.setHours(23, 59, 59, 999);
-          if (auditDate > toDate) {
+          const toDate = parseCalendarDate(filters.dateTo);
+          if (toDate && auditDate > toDate) {
             return false;
           }
         }
@@ -506,9 +505,9 @@ const Metrics = () => {
 
     filteredAudits.forEach((audit) => {
       if (!audit.expectedStartDate || !audit.startDate) return;
-      const expected = new Date(audit.expectedStartDate);
-      const actual = new Date(audit.startDate);
-      if (Number.isNaN(expected.getTime()) || Number.isNaN(actual.getTime())) return;
+      const expected = parseCalendarDate(audit.expectedStartDate);
+      const actual = parseCalendarDate(audit.startDate);
+      if (!expected || !actual || Number.isNaN(expected.getTime()) || Number.isNaN(actual.getTime())) return;
       total += 1;
       if (actual <= expected) {
         onTime += 1;
@@ -565,8 +564,8 @@ const Metrics = () => {
     };
 
     const getKeyAndLabel = (dateValue) => {
-      const date = new Date(dateValue);
-      if (Number.isNaN(date.getTime())) return null;
+      const date = parseCalendarDate(dateValue);
+      if (!date || Number.isNaN(date.getTime())) return null;
       if (severityTimelineGranularity === 'Annual') {
         return {
           key: `${date.getFullYear()}`,
@@ -616,8 +615,8 @@ const Metrics = () => {
       const keyData = getKeyAndLabel(dateValue);
       if (!keyData) return;
       if (severityTimelineGranularity === 'This Week' && weekRange) {
-        const date = new Date(dateValue);
-        if (Number.isNaN(date.getTime()) || date < weekRange.start || date > weekRange.end) {
+        const date = parseCalendarDate(dateValue);
+        if (!date || Number.isNaN(date.getTime()) || date < weekRange.start || date > weekRange.end) {
           return;
         }
       }
@@ -783,8 +782,8 @@ const Metrics = () => {
     const auditsWithDates = filteredAudits.filter((audit) => resolveAuditDate(audit));
 
     const getKeyAndLabel = (dateValue) => {
-      const date = new Date(dateValue);
-      if (Number.isNaN(date.getTime())) return null;
+      const date = parseCalendarDate(dateValue);
+      if (!date || Number.isNaN(date.getTime())) return null;
       if (timelineGranularity === 'Annual') {
         return {
           key: `${date.getFullYear()}`,
@@ -823,8 +822,8 @@ const Metrics = () => {
       ? auditsWithDates.filter((audit) => {
         const dateValue = resolveAuditDate(audit);
         if (!dateValue) return false;
-        const date = new Date(dateValue);
-        if (Number.isNaN(date.getTime())) return false;
+        const date = parseCalendarDate(dateValue);
+        if (!date || Number.isNaN(date.getTime())) return false;
         return weekRange && date >= weekRange.start && date <= weekRange.end;
       })
       : auditsWithDates;
