@@ -898,6 +898,113 @@ const Metrics = () => {
   const EXPORT_IMAGE_WIDTH = 1600;
   const EXPORT_IMAGE_HEIGHT = 900;
 
+  const inlineSvgStyles = (source, target) => {
+    if (!source || !target) return;
+    const computed = window.getComputedStyle(source);
+    const styleText = Array.from(computed)
+      .map((prop) => `${prop}:${computed.getPropertyValue(prop)};`)
+      .join('');
+    if (styleText) {
+      target.setAttribute('style', styleText);
+    }
+    const sourceChildren = source.children || [];
+    const targetChildren = target.children || [];
+    for (let i = 0; i < sourceChildren.length; i += 1) {
+      if (targetChildren[i]) {
+        inlineSvgStyles(sourceChildren[i], targetChildren[i]);
+      }
+    }
+  };
+
+  const waitForSvg = async (container, timeoutMs = 2500) => {
+    const start = performance.now();
+    while (performance.now() - start < timeoutMs) {
+      const svg = container?.querySelector?.('svg');
+      if (svg) {
+        return svg;
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return null;
+  };
+
+  const exportSvgToPng = async (svg, filenameBase, width = EXPORT_IMAGE_WIDTH, height = EXPORT_IMAGE_HEIGHT) => {
+    if (!svg) return false;
+
+    const clone = svg.cloneNode(true);
+    inlineSvgStyles(svg, clone);
+
+    const existingViewBox = clone.getAttribute('viewBox');
+    if (!existingViewBox) {
+      try {
+        const bbox = svg.getBBox();
+        clone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
+      } catch (error) {
+        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      }
+    }
+
+    clone.setAttribute('width', `${width}`);
+    clone.setAttribute('height', `${height}`);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+
+    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    background.setAttribute('x', '0');
+    background.setAttribute('y', '0');
+    background.setAttribute('width', '100%');
+    background.setAttribute('height', '100%');
+    background.setAttribute('fill', '#ffffff');
+    clone.insertBefore(background, clone.firstChild);
+
+    const svgString = new XMLSerializer().serializeToString(clone);
+    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+
+    try {
+      await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvas context unavailable.'));
+              return;
+            }
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((pngBlob) => {
+              if (!pngBlob) {
+                reject(new Error('Failed to render PNG blob.'));
+                return;
+              }
+              const pngUrl = URL.createObjectURL(pngBlob);
+              const link = document.createElement('a');
+              link.href = pngUrl;
+              link.download = `${filenameBase}.png`;
+              document.body.appendChild(link);
+              link.click();
+              link.remove();
+              URL.revokeObjectURL(pngUrl);
+              resolve();
+            }, 'image/png');
+          } catch (error) {
+            reject(error);
+          }
+        };
+        img.onerror = () => reject(new Error('Failed to load SVG export image.'));
+        img.src = url;
+      });
+      return true;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
   const exportChartFallback = async (wrapperRef, filenameBase) => {
     const wrapper = wrapperRef?.current;
     if (!wrapper) return false;
@@ -918,75 +1025,7 @@ const Metrics = () => {
       console.warn('html-to-image export failed, falling back to SVG:', error);
     }
     const svg = wrapper.querySelector('svg');
-    if (!svg) return false;
-    const clone = svg.cloneNode(true);
-    const inlineStyles = (source, target) => {
-      const computed = window.getComputedStyle(source);
-      const styleText = Array.from(computed)
-        .map((prop) => `${prop}:${computed.getPropertyValue(prop)};`)
-        .join('');
-      if (styleText) {
-        target.setAttribute('style', styleText);
-      }
-      const sourceChildren = source.children || [];
-      const targetChildren = target.children || [];
-      for (let i = 0; i < sourceChildren.length; i += 1) {
-        if (targetChildren[i]) {
-          inlineStyles(sourceChildren[i], targetChildren[i]);
-        }
-      }
-    };
-    inlineStyles(svg, clone);
-    const width = EXPORT_IMAGE_WIDTH;
-    const height = EXPORT_IMAGE_HEIGHT;
-    clone.setAttribute('width', `${width}`);
-    clone.setAttribute('height', `${height}`);
-    if (!clone.getAttribute('viewBox')) {
-      try {
-        const bbox = svg.getBBox();
-        clone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
-      } catch (error) {
-        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
-      }
-    }
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-    const svgString = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        return;
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, width, height);
-      ctx.drawImage(img, 0, 0, width, height);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((pngBlob) => {
-        if (!pngBlob) {
-          return;
-        }
-        const pngUrl = URL.createObjectURL(pngBlob);
-        const link = document.createElement('a');
-        link.href = pngUrl;
-        link.download = `${filenameBase}.png`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(pngUrl);
-      }, 'image/png');
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
-    return true;
+    return exportSvgToPng(svg, filenameBase);
   };
 
   const exportChartWithRender = async (renderChart, filenameBase) => {
@@ -999,56 +1038,87 @@ const Metrics = () => {
     container.style.left = '-10000px';
     container.style.top = '0';
     container.style.zIndex = '-1';
+    container.style.overflow = 'hidden';
     document.body.appendChild(container);
     const root = createRoot(container);
     root.render(renderChart(EXPORT_IMAGE_WIDTH, EXPORT_IMAGE_HEIGHT));
-    await new Promise((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(resolve);
-      });
-    });
     try {
-      const dataUrl = await toPng(container, {
-        cacheBust: true,
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        width: EXPORT_IMAGE_WIDTH,
-        height: EXPORT_IMAGE_HEIGHT
-      });
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `${filenameBase}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      root.unmount();
-      container.remove();
-      return true;
+      const svg = await waitForSvg(container);
+      if (!svg) {
+        throw new Error('Rendered chart SVG not found.');
+      }
+      return await exportSvgToPng(svg, filenameBase);
     } catch (error) {
       console.warn('Chart export render failed:', error);
+      return false;
+    } finally {
       root.unmount();
       container.remove();
-      return false;
     }
   };
 
   const handleExport = async (apiRef, wrapperRef, filenameBase, renderChart) => {
+    const toastId = toast.info('Exporting metric image...', {
+      autoClose: false,
+      closeButton: false
+    });
     const api = apiRef?.current;
-    if (api?.exportAsImage) {
-      api.exportAsImage();
-      return;
-    }
-    if (api?.exportAsPrint) {
-      api.exportAsPrint();
-      return;
-    }
-    const rendered = await exportChartWithRender(renderChart, filenameBase);
-    if (rendered) {
-      return;
-    }
-    const fallbackWorked = await exportChartFallback(wrapperRef, filenameBase);
-    if (!fallbackWorked) {
+    try {
+      if (api?.exportAsImage) {
+        api.exportAsImage();
+        toast.update(toastId, {
+          render: 'Metric export started.',
+          type: 'success',
+          autoClose: 2000,
+          closeButton: true
+        });
+        return;
+      }
+      if (api?.exportAsPrint) {
+        api.exportAsPrint();
+        toast.update(toastId, {
+          render: 'Metric export started.',
+          type: 'success',
+          autoClose: 2000,
+          closeButton: true
+        });
+        return;
+      }
+      const rendered = await exportChartWithRender(renderChart, filenameBase);
+      if (rendered) {
+        toast.update(toastId, {
+          render: 'Metric exported.',
+          type: 'success',
+          autoClose: 2000,
+          closeButton: true
+        });
+        return;
+      }
+      const fallbackWorked = await exportChartFallback(wrapperRef, filenameBase);
+      if (fallbackWorked) {
+        toast.update(toastId, {
+          render: 'Metric exported.',
+          type: 'success',
+          autoClose: 2000,
+          closeButton: true
+        });
+        return;
+      }
       console.warn('Chart export is not available with the current MUI X Charts build.');
+      toast.update(toastId, {
+        render: 'Metric export failed.',
+        type: 'error',
+        autoClose: 4000,
+        closeButton: true
+      });
+    } catch (error) {
+      console.error('Metric export failed:', error);
+      toast.update(toastId, {
+        render: 'Metric export failed.',
+        type: 'error',
+        autoClose: 4000,
+        closeButton: true
+      });
     }
   };
 

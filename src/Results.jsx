@@ -38,6 +38,40 @@ import {
   searchRoster
 } from './assets/data/apiData';
 
+const markdownTextStyle = {
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+  margin: 0
+};
+
+const markdownBlockStyle = {
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word'
+};
+
+const markdownComponents = {
+  p: ({ children }) => <p style={markdownTextStyle}>{children}</p>,
+  li: ({ children }) => <li style={markdownTextStyle}>{children}</li>,
+  ul: ({ children }) => <ul style={{ ...markdownBlockStyle, paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ ...markdownBlockStyle, paddingLeft: '1.25rem', margin: '0.25rem 0' }}>{children}</ol>,
+  h1: ({ children }) => <h1 style={{ ...markdownBlockStyle, margin: '0 0 0.5rem 0', fontSize: '1.4rem' }}>{children}</h1>,
+  h2: ({ children }) => <h2 style={{ ...markdownBlockStyle, margin: '0 0 0.5rem 0', fontSize: '1.25rem' }}>{children}</h2>,
+  h3: ({ children }) => <h3 style={{ ...markdownBlockStyle, margin: '0 0 0.5rem 0', fontSize: '1.1rem' }}>{children}</h3>,
+  strong: ({ children }) => <strong style={markdownBlockStyle}>{children}</strong>,
+  em: ({ children }) => <em style={markdownBlockStyle}>{children}</em>,
+  code: ({ children }) => <code style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{children}</code>
+};
+
+const normalizeMarkdownText = (value) => {
+  const text = String(value || '');
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '    ');
+};
+
 
 function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
@@ -2007,6 +2041,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     const maxLength = 200;
                                     const requiresTruncation = question.text.length > maxLength;
                                     const displayText = (!isTextExpanded && requiresTruncation) ? question.text.substring(0, maxLength) + '...' : question.text;
+                                    const markdownText = normalizeMarkdownText(displayText);
                                     const additionalKey = `${standardId}_${sectionNum}_${question.subsection}`;
                                     const additionalCount = standardAdditional[additionalKey] || 0;
 
@@ -2038,9 +2073,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                               padding: '10px',
                                               backgroundColor: '#f9f9f9',
                                               borderRadius: '4px',
-                                              marginBottom: '15px'
+                                              marginBottom: '15px',
+                                              overflowWrap: 'anywhere',
+                                              wordBreak: 'break-word'
                                             }}>
-                                              <ReactMarkdown>{displayText}</ReactMarkdown>
+                                              <ReactMarkdown components={markdownComponents}>{markdownText}</ReactMarkdown>
                                               {requiresTruncation && (
                                                 <button
                                                   type="button"
