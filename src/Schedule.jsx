@@ -744,6 +744,9 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         }
 
         toast.success('Submitted!');
+        if (result.emailWarning) {
+          toast.error(result.emailWarning);
+        }
         setSubmitted(true);
         setSubmittedScheduleId(finalScheduleId);
 

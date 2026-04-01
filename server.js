@@ -85,6 +85,7 @@ const sendSmtpEmail = async ({ toAddress, subject, body }) => {
 const queueEmail = async (client, { toAddress, subject, body }) => {
     try {
         await sendSmtpEmail({ toAddress, subject, body });
+        return;
     } catch (error) {
         console.error('SMTP send failed:', error);
     }

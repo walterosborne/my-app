@@ -239,8 +239,7 @@ const sanitizeFilename = (name) => {
 
 const sendSmtpEmail = async ({ toAddress, subject, body }) => {
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
-        console.warn('SMTP host not configured. Skipping SMTP send.');
-        return;
+        throw new Error('SMTP host not configured.');
     }
     await smtpTransport.sendMail({
         from: SMTP_FROM,
@@ -250,17 +249,18 @@ const sendSmtpEmail = async ({ toAddress, subject, body }) => {
     });
 };
 
-const queueEmail = async (client, { toAddress, subject, body }) => {
+const queueEmail = async (_client, { toAddress, subject, body }) => {
     try {
         await sendSmtpEmail({ toAddress, subject, body });
+        return { success: true };
     } catch (error) {
-        console.error('SMTP send failed:', error);
+        console.error(`SMTP send failed for ${toAddress}:`, error);
+        return {
+            success: false,
+            toAddress,
+            error: error?.message || 'Unknown SMTP error'
+        };
     }
-    await client.query(
-        `INSERT INTO email_outbox_r (toAddress, subject, body)
-         VALUES ($1, $2, $3)`,
-        [toAddress, subject, body]
-    );
 };
 
 const buildApprovalEmail = ({ approverName, auditTitle, scheduleId, approvalLink, reviewLink }) => {
@@ -1020,13 +1020,18 @@ app.post('/api/request-auditor-access', async (req, res) => {
             approveLink
         });
 
-        await queueEmail(client, {
+        const emailResult = await queueEmail(client, {
             toAddress: lead.email,
             subject,
             body
         });
 
-        res.json({ success: true });
+        res.json({
+            success: true,
+            emailWarning: emailResult?.success === false
+                ? 'Request submitted, but the notification email could not be sent. Check the server logs for the SMTP error.'
+                : null
+        });
     } catch (error) {
         console.error('Error requesting auditor access:', error);
         res.status(500).json({ success: false, error: error.message });
@@ -2687,6 +2692,7 @@ app.post('/api/audits', async (req, res) => {
             const reviewChangesLink = `${appBaseUrl}/entry?type=schedule&audit=${scheduleIdToNotify}`;
             const planLink = `${appBaseUrl}/entry?type=planning&audit=${scheduleIdToNotify}`;
 
+            const emailFailures = [];
             for (const row of rosterRows) {
                 const recipientEmail = row.email;
                 if (!recipientEmail) {
@@ -2707,16 +2713,26 @@ app.post('/api/audits', async (req, res) => {
                         auditTitle: audit.title
                     });
 
-                await queueEmail(client, {
+                const emailResult = await queueEmail(client, {
                     toAddress: recipientEmail,
                     subject: emailPayload.subject,
                     body: emailPayload.body
                 });
+                if (emailResult?.success === false) {
+                    emailFailures.push(emailResult);
+                }
             }
+            audit.emailWarning = emailFailures.length > 0
+                ? `Audit saved, but ${emailFailures.length} notification email${emailFailures.length === 1 ? '' : 's'} could not be sent. Check the server logs for the SMTP error.`
+                : null;
         }
 
         await client.query('COMMIT');
-        res.json({ success: true, scheduleId: audit.scheduleId });
+        res.json({
+            success: true,
+            scheduleId: audit.scheduleId,
+            emailWarning: audit.emailWarning || null
+        });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error saving audit:', error);
@@ -3125,6 +3141,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 [audit.scheduleId]
             );
 
+            const emailFailures = [];
             for (const approverId of approvalMyIds) {
                 await client.query(
                     `IF EXISTS (
@@ -3154,13 +3171,19 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                         approvalLink,
                         reviewLink
                     });
-                    await queueEmail(client, {
+                    const emailResult = await queueEmail(client, {
                         toAddress: approver.email,
                         subject,
                         body
                     });
+                    if (emailResult?.success === false) {
+                        emailFailures.push(emailResult);
+                    }
                 }
             }
+            audit.emailWarning = emailFailures.length > 0
+                ? `Audit submitted, but ${emailFailures.length} approval request email${emailFailures.length === 1 ? '' : 's'} could not be sent. Check the server logs for the SMTP error.`
+                : null;
 
         } else {
             await client.query('DELETE FROM approvals_r WHERE scheduleid = $1', [audit.scheduleId]);
@@ -3171,7 +3194,10 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
 
         await client.query('COMMIT');
         console.log('Transaction committed successfully');
-        res.json({ success: true });
+        res.json({
+            success: true,
+            emailWarning: audit.emailWarning || null
+        });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('Error saving nonconformities data:', error);

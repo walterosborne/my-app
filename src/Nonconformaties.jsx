@@ -557,6 +557,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         }
 
         toast.success(lockedValue ? 'Nonconformities submitted successfully!' : 'Changes saved successfully!');
+        if (result.emailWarning) {
+          toast.error(result.emailWarning);
+        }
 
         // Reload the audit data to refresh the form
         const auditResponse = await fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`);

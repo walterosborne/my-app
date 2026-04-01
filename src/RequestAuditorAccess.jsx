@@ -79,10 +79,14 @@ const RequestAuditorAccess = () => {
                     reason: reason.trim()
                 })
             });
+            const result = await response.json();
             if (!response.ok) {
-                throw new Error('Request failed.');
+                throw new Error(result?.error || 'Request failed.');
             }
             toast.success('Submitted!');
+            if (result?.emailWarning) {
+                toast.error(result.emailWarning);
+            }
             setRequestSubmitted(true);
         } catch (error) {
             console.error('Error submitting access request:', error);
