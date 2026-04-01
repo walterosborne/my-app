@@ -111,7 +111,10 @@ const getPageTitle = (location) => {
     case '/headers':
       return 'Headers';
     default:
-      if (location.pathname.startsWith('/audit/')) return 'Individual Audit Report';
+      if (location.pathname.startsWith('/audit/')) {
+        const auditId = location.pathname.split('/')[2];
+        return auditId ? `Audit ${auditId}` : 'Audit';
+      }
       if (location.pathname.startsWith('/approve/')) return 'Audit Approval';
       return 'NGAT';
   }
