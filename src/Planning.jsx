@@ -96,7 +96,9 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
     const options = people
       .map((person) => ({
         value: person.myId,
-        label: person.rosterName || person.myId
+        label: person.rosterName
+          ? `${person.rosterName} (${person.myId})`
+          : String(person.myId)
       }))
       .filter((option) => option.value)
 
@@ -123,7 +125,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const loadRosterOptions = useCallback(async (inputValue) => {
     const trimmedInput = String(inputValue || '').trim()
-    if (trimmedInput.length < 2) {
+    if (trimmedInput.length < 3) {
       return []
     }
 
@@ -630,7 +632,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                               loadOptions={loadRosterOptions}
                               styles={customStyles}
                               placeholder="Functional Area Manager/Auditees"
-                              noOptionsMessage={({ inputValue }) => inputValue.trim().length < 2 ? 'Type at least 2 characters' : 'No matches found'}
+                              noOptionsMessage={({ inputValue }) => inputValue.trim().length < 3 ? 'Type at least 3 characters' : 'No matches found'}
                               value={Array.isArray(field.value) ? field.value.map((id) => getRosterOption(id)).filter(Boolean) : []}
                               onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map((option) => option.value) : [])}
                             />
@@ -813,7 +815,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       loadOptions={loadRosterOptions}
                                       styles={customStyles}
                                       placeholder="Reviewer"
-                                      noOptionsMessage={({ inputValue }) => inputValue.trim().length < 2 ? 'Type at least 2 characters' : 'No matches found'}
+                                      noOptionsMessage={({ inputValue }) => inputValue.trim().length < 3 ? 'Type at least 3 characters' : 'No matches found'}
                                       value={getRosterOption(field.value)}
                                       onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                                     />
