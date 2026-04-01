@@ -323,6 +323,34 @@ const queueEmail = async (_client, { toAddress, subject, body }) => {
     }
 };
 
+const buildEmailButton = ({ href, label, backgroundColor, textColor }) => `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate;">
+  <tr>
+    <td bgcolor="${backgroundColor}" style="background-color: ${backgroundColor}; border-radius: 6px; mso-padding-alt: 12px 18px;">
+      <a href="${href}" style="display: block; padding: 12px 18px; font-family: Arial, sans-serif; font-size: 15px; font-weight: 700; line-height: 1.2; color: ${textColor}; text-decoration: none;">
+        ${label}
+      </a>
+    </td>
+  </tr>
+</table>
+`.trim();
+
+const buildStackedEmailButtons = (buttons) => `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; width: 100%; max-width: 320px;">
+  ${buttons.map((button, index) => `
+  <tr>
+    <td align="left">
+      ${buildEmailButton(button)}
+    </td>
+  </tr>
+  ${index < buttons.length - 1 ? `
+  <tr>
+    <td height="12" style="height: 12px; line-height: 12px; font-size: 12px;">&nbsp;</td>
+  </tr>` : ''}
+  `).join('')}
+</table>
+`.trim();
+
 const buildApprovalEmail = ({ approverName, auditTitle, scheduleId, approvalLink, reviewLink }) => {
     const safeApprover = approverName || 'Approver';
     const safeTitle = auditTitle || `Audit ${scheduleId}`;
@@ -357,16 +385,16 @@ const buildNewAuditNotificationEmail = ({ auditTitle, scheduleId, reviewLink, pl
   <h1 style="font-size: 24px; margin-bottom: 6px;">Audit ${scheduleId} has been created!</h1>
   <h2 style="font-size: 18px; color: #1d4ed8; margin-top: 0;">You have completed step 1/5 of the NGAT auditing process</h2>
   <p style="font-size: 16px; margin-bottom: 12px;">${safeTitle}</p>
-  <a href="${reviewLink}" style="background: #e5e7eb; color: #1f2937; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-bottom: 16px; display: inline-block;">
-    Review the audit
-  </a>
+  <div style="margin: 16px 0 20px;">
+    ${buildStackedEmailButtons([
+        { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
+        { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
+    ])}
+  </div>
   <h3 style="font-size: 16px; color: #1e293b; margin-top: 24px;">Next Steps</h3>
   <p style="margin-top: 4px; margin-bottom: 16px;">
     Finalize the planning details, prepare to conduct the audit, and capture any nonconformities that arise during the engagement.
   </p>
-  <a href="${planLink}" style="background: #1d4ed8; color: #ffffff; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-bottom: 16px; display: inline-block;">
-    Plan the audit
-  </a>
   <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
     You are receiving this email because you are listed as an auditor for this audit.
   </p>
@@ -384,12 +412,10 @@ const buildEditAuditNotificationEmail = ({ scheduleId, reviewLink, planLink, aud
   <h1 style="font-size: 24px; margin-bottom: 12px;">Audit ${scheduleId} has been edited</h1>
   <p>You are receiving this email because you are listed as an auditor for this audit.</p>
   <div style="margin-top: 16px;">
-    <a href="${reviewLink}" style="background: #e5e7eb; color: #1f2937; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-right: 12px; display: inline-block;">
-      Review changes
-    </a>
-    <a href="${planLink}" style="background: #1d4ed8; color: #ffffff; padding: 10px 16px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Plan the audit
-    </a>
+    ${buildStackedEmailButtons([
+        { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
+        { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
+    ])}
   </div>
 </div>
 `.trim();
@@ -1864,7 +1890,38 @@ app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
 // Get all roster
 app.get('/api/roster', async (req, res) => {
     try {
-        const result = await rosterPool.query('SELECT * FROM roster_r ORDER BY rosterName');
+        const { q, ids, limit } = req.query;
+        let result;
+
+        if (ids) {
+            const normalizedIds = String(ids)
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean);
+
+            if (normalizedIds.length === 0) {
+                return res.json([]);
+            }
+
+            const placeholders = normalizedIds.map((_, index) => `$${index + 1}`).join(', ');
+            result = await rosterPool.query(
+                `SELECT * FROM roster_r WHERE myid IN (${placeholders}) ORDER BY rostername`,
+                normalizedIds
+            );
+        } else if (q && String(q).trim()) {
+            const trimmedQuery = String(q).trim();
+            const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+            result = await rosterPool.query(
+                `SELECT TOP ${parsedLimit} *
+                 FROM roster_r
+                 WHERE rostername LIKE $1 OR myid LIKE $1 OR email LIKE $1 OR networkid LIKE $1
+                 ORDER BY CASE WHEN rostername LIKE $2 THEN 0 ELSE 1 END, rostername`,
+                [`%${trimmedQuery}%`, `${trimmedQuery}%`]
+            );
+        } else {
+            result = await rosterPool.query('SELECT * FROM roster_r ORDER BY rosterName');
+        }
+
         const data = result.rows.map(row => ({
             rosterName: row.rostername,
             myId: row.myid,
@@ -2750,7 +2807,7 @@ app.post('/api/audits', async (req, res) => {
             const rosterRows = await getRosterRowsByMyIds(auditorMyIds);
 
             const reviewLink = `${appBaseUrl}/audit/${scheduleIdToNotify}`;
-            const reviewChangesLink = `${appBaseUrl}/entry?type=schedule&audit=${scheduleIdToNotify}`;
+            const reviewAuditLink = `${appBaseUrl}/audit/${scheduleIdToNotify}`;
             const planLink = `${appBaseUrl}/entry?type=planning&audit=${scheduleIdToNotify}`;
 
             const emailFailures = [];
@@ -2764,12 +2821,12 @@ app.post('/api/audits', async (req, res) => {
                     ? buildNewAuditNotificationEmail({
                         auditTitle: audit.title,
                         scheduleId: scheduleIdToNotify,
-                        reviewLink,
+                        reviewLink: reviewAuditLink,
                         planLink
                     })
                     : buildEditAuditNotificationEmail({
                         scheduleId: scheduleIdToNotify,
-                        reviewLink: reviewChangesLink,
+                        reviewLink: reviewAuditLink,
                         planLink,
                         auditTitle: audit.title
                     });

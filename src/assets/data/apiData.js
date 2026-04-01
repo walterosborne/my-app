@@ -139,6 +139,41 @@ export async function getRoster() {
     return await fetchData('roster');
 }
 
+export async function searchRoster(query, limit = 50) {
+    const trimmedQuery = String(query || '').trim();
+    if (!trimmedQuery) {
+        return [];
+    }
+    const params = new URLSearchParams({
+        q: trimmedQuery,
+        limit: String(limit)
+    });
+    const response = await fetch(`${API_BASE}/roster?${params.toString()}`);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
+export async function getRosterByIds(ids = []) {
+    const normalizedIds = [...new Set(
+        (Array.isArray(ids) ? ids : [ids])
+            .map((id) => String(id ?? '').trim())
+            .filter(Boolean)
+    )];
+    if (normalizedIds.length === 0) {
+        return [];
+    }
+    const params = new URLSearchParams({
+        ids: normalizedIds.join(',')
+    });
+    const response = await fetch(`${API_BASE}/roster?${params.toString()}`);
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
 export async function getProps() {
     return await fetchData('props');
 }
