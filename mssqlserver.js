@@ -50,6 +50,42 @@ const formatResult = (result) => ({
     rowCount: Array.isArray(result?.rowsAffected) ? (result.rowsAffected[0] || 0) : 0
 });
 
+const truncateForLog = (value, maxLength = 300) => {
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    if (!text) {
+        return text;
+    }
+    return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+};
+
+const serializeSqlError = (error) => ({
+    name: error?.name,
+    message: error?.message,
+    code: error?.code,
+    number: error?.number,
+    state: error?.state,
+    class: error?.class,
+    lineNumber: error?.lineNumber,
+    serverName: error?.serverName,
+    procName: error?.procName,
+    precedingErrors: Array.isArray(error?.precedingErrors)
+        ? error.precedingErrors.map((item) => ({
+            message: item?.message,
+            code: item?.code,
+            number: item?.number,
+            lineNumber: item?.lineNumber,
+            procName: item?.procName
+        }))
+        : []
+});
+
+const logDatabaseError = (label, error, details = {}) => {
+    console.error(`[DB] ${label}`, {
+        ...details,
+        error: serializeSqlError(error)
+    });
+};
+
 const applyReturningClause = (queryText) => {
     const match = queryText.match(/\sRETURNING\s+([\s\S]+)$/i);
     if (!match) return queryText;
@@ -89,8 +125,25 @@ const runQuery = async (request, queryText, params = []) => {
     params.forEach((value, idx) => {
         request.input(`p${idx + 1}`, value);
     });
-    const result = await request.query(sqlText);
-    return formatResult(result);
+    try {
+        const result = await request.query(sqlText);
+        return formatResult(result);
+    } catch (error) {
+        logDatabaseError('Query failed', error, {
+            queryText: truncateForLog(queryText, 800),
+            sqlText: truncateForLog(sqlText, 800),
+            params: params.map((param) => truncateForLog(param, 200))
+        });
+        throw error;
+    }
+};
+
+const rollbackTransaction = async (client, context = 'transaction') => {
+    try {
+        await client.query('ROLLBACK');
+    } catch (rollbackError) {
+        logDatabaseError(`Rollback failed during ${context}`, rollbackError);
+    }
 };
 
 const pool = {
@@ -1122,7 +1175,7 @@ app.post('/api/save-nonconformances', async (req, res) => {
 
         res.json({ success: true, message: 'Nonconformances saved successfully' });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error saving nonconformances:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -1414,7 +1467,7 @@ app.post('/api/programs', async (req, res) => {
             [programName, divisionId]
         );
         if (existing.rowCount > 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
         const insert = await client.query(
@@ -1437,7 +1490,7 @@ app.post('/api/programs', async (req, res) => {
             active: saved.active
         });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error creating program:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -1460,7 +1513,7 @@ app.put('/api/programs/:programId', async (req, res) => {
             [programName, divisionId, programId]
         );
         if (conflict.rowCount > 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
         const update = await client.query(
@@ -1468,7 +1521,7 @@ app.put('/api/programs/:programId', async (req, res) => {
             [programName, divisionId, active, programId]
         );
         if (update.rowCount === 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(404).json({ success: false, error: 'Program not found.' });
         }
         await client.query('DELETE FROM auditor_program_assignments_r WHERE programId = $1', [programId]);
@@ -1488,7 +1541,7 @@ app.put('/api/programs/:programId', async (req, res) => {
             active: saved.active
         });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error updating program:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -1864,7 +1917,7 @@ app.post('/api/auditors', async (req, res) => {
         await client.query('BEGIN');
         const existing = await client.query('SELECT auditorId FROM auditors_r WHERE LOWER(TRIM(myId)) = LOWER(TRIM($1))', [myId]);
         if (existing.rowCount > 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'An auditor with that MyID already exists.' });
         }
         const insert = await client.query(
@@ -1891,7 +1944,7 @@ app.post('/api/auditors', async (req, res) => {
             active: saved.active
         });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error creating auditor:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -1917,7 +1970,7 @@ app.put('/api/auditors/:auditorId', async (req, res) => {
             [myId, auditorId]
         );
         if (conflict.rowCount > 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'An auditor with that MyID already exists.' });
         }
         const update = await client.query(
@@ -1925,7 +1978,7 @@ app.put('/api/auditors/:auditorId', async (req, res) => {
             [resolvedFirstName, resolvedLastName, myId, divisionId, Number(cuiApproved) === 1 ? 1 : 0, active, auditorId]
         );
         if (update.rowCount === 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(404).json({ success: false, error: 'Auditor not found.' });
         }
         await client.query('DELETE FROM auditor_program_assignments_r WHERE auditorId = $1', [auditorId]);
@@ -1949,7 +2002,7 @@ app.put('/api/auditors/:auditorId', async (req, res) => {
             active: saved.active
         });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error updating auditor:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -2595,7 +2648,7 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
         await client.query('COMMIT');
         res.json({ success: true, scheduleId: parseInt(scheduleId) });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error updating audit:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -2646,7 +2699,8 @@ app.post('/api/audits', async (req, res) => {
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
                     $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
                     $27, $28, $29, $30, $31, $32, $33, $34, $35
-                ) RETURNING scheduleId`,
+                );
+                SELECT CAST(SCOPE_IDENTITY() AS INT) AS scheduleId;`,
                 [
                     audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
                     JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
@@ -2734,8 +2788,13 @@ app.post('/api/audits', async (req, res) => {
             emailWarning: audit.emailWarning || null
         });
     } catch (error) {
-        await client.query('ROLLBACK');
-        console.error('Error saving audit:', error);
+        await rollbackTransaction(client, 'saving audit');
+        logDatabaseError('Error saving audit', error, {
+            scheduleId: req.body?.scheduleId ?? null,
+            title: req.body?.title ?? null,
+            stage: req.body?.stage ?? null,
+            targetStage: req.body?.targetStage ?? null
+        });
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
@@ -2930,7 +2989,7 @@ app.post('/api/approvals/:scheduleId/approve', async (req, res) => {
         );
 
         if (approvalResult.rows.length === 0) {
-            await client.query('ROLLBACK');
+            await rollbackTransaction(client);
             return res.status(403).json({ success: false, error: 'Not authorized' });
         }
 
@@ -2953,7 +3012,7 @@ app.post('/api/approvals/:scheduleId/approve', async (req, res) => {
         await client.query('COMMIT');
         res.json({ success: true, approved });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error approving audit:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -3020,7 +3079,7 @@ app.put('/api/cars/:scheduleId', async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error saving CARs:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -3057,7 +3116,7 @@ app.post('/api/unlock-audit', async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error unlocking audit:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
@@ -3199,7 +3258,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             emailWarning: audit.emailWarning || null
         });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error saving nonconformities data:', error);
         console.error('Error details:', error.message);
         res.status(500).json({ success: false, error: error.message });
@@ -3420,7 +3479,7 @@ app.post('/api/risk-ratings', async (req, res) => {
         await client.query('COMMIT');
         res.json({ success: true });
     } catch (error) {
-        await client.query('ROLLBACK');
+        await rollbackTransaction(client);
         console.error('Error saving risk ratings:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
