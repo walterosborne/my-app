@@ -1,9 +1,10 @@
-import { StrictMode } from 'react'
+import { StrictMode, useEffect } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
+import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
 import Home from './Home.jsx'
 import Audit from './Audit.jsx'
@@ -30,9 +31,116 @@ import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
 
+const getEntryTitle = (searchParams) => {
+  const type = searchParams.get('type');
+  if (type === 'schedule') return 'Schedule Entry';
+  if (type === 'planning') return 'Audit Planning';
+  if (type === 'results') return 'Conduct Audit';
+  if (type === 'nonconformaties') return 'Nonconformaties';
+  return 'Audit Entry';
+};
+
+const getReportTitle = (searchParams) => {
+  const type = searchParams.get('type');
+  if (type === 'planned-vs-completed') return 'Planned vs Completed';
+  if (type === 'rollup-results') return 'Rollup Audit Results';
+  if (type === 'rollup-schedule') return 'Rollup Audit Schedule';
+  if (type === 'clauses-audited') return 'Clauses Audited';
+  if (type === 'processes-audited') return 'Processes Audited';
+  if (type === 'schedule-comments') return 'Schedule Comments';
+  return '30/60/90 Report';
+};
+
+const getFoeTitle = (searchParams) => {
+  const type = searchParams.get('type');
+  if (type === 'audits') return 'FOE Audits';
+  if (type === 'download') return 'FOE Download Audit Info';
+  if (type === 'admin') return 'FOE Admin Menu';
+  return 'FOE';
+};
+
+const getPageTitle = (location) => {
+  const searchParams = new URLSearchParams(location.search);
+  switch (location.pathname) {
+    case '/':
+      return 'Home';
+    case '/audit':
+      return 'Individual Audit Report';
+    case '/myaudits':
+      return 'All My Audits';
+    case '/audit-reports':
+      return 'Audit Reports';
+    case '/reports':
+      return getReportTitle(searchParams);
+    case '/entry':
+      return getEntryTitle(searchParams);
+    case '/approve':
+      return 'Audit Approval';
+    case '/email-outbox':
+      return 'Email Outbox';
+    case '/schedule':
+      return 'Schedule Entry';
+    case '/planning':
+      return 'Audit Planning';
+    case '/results':
+      return 'Conduct Audit';
+    case '/nonconformaties':
+      return 'Nonconformaties';
+    case '/calendar':
+      return 'Calendar';
+    case '/metrics':
+      return 'Metrics';
+    case '/risk-analysis':
+      return 'Risk Analysis';
+    case '/risk-analysis/edit':
+      return 'Edit Risk Analysis';
+    case '/risk-analysis/view':
+      return 'View Risk Analysis';
+    case '/foe':
+      return getFoeTitle(searchParams);
+    case '/info-support':
+      return 'Info and Support';
+    case '/request-auditor-access':
+      return 'Request Auditor Access';
+    case '/audit-statuses':
+      return 'Audit Statuses';
+    case '/admin':
+      return 'Admin Menu';
+    case '/tabletest':
+      return 'Table Test';
+    case '/headers':
+      return 'Headers';
+    default:
+      if (location.pathname.startsWith('/audit/')) return 'Individual Audit Report';
+      if (location.pathname.startsWith('/approve/')) return 'Audit Approval';
+      return 'NGAT';
+  }
+};
+
+const AppMetadata = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    const pageTitle = getPageTitle(location);
+    document.title = `NGAT - ${pageTitle}`;
+
+    let favicon = document.querySelector("link[rel='icon']");
+    if (!favicon) {
+      favicon = document.createElement('link');
+      favicon.setAttribute('rel', 'icon');
+      document.head.appendChild(favicon);
+    }
+    favicon.setAttribute('type', 'image/png');
+    favicon.setAttribute('href', ngFavicon);
+  }, [location]);
+
+  return null;
+};
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
+      <AppMetadata />
       <ToastContainer
         position="top-right"
         autoClose={3000}

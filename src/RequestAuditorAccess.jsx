@@ -158,7 +158,7 @@ const RequestAuditorAccess = () => {
                         </div>
                         <div className="request-access-actions">
                             <button className="button request-access-submit" type="submit" disabled={isSubmitting || requestSubmitted}>
-                                Submit Request
+                                {requestSubmitted ? 'Request Submitted' : isSubmitting ? 'Submitting Request...' : 'Submit Request'}
                             </button>
                         </div>
                     </form>

@@ -2055,8 +2055,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     const isTextExpanded = expandedTexts[textKey];
                                     const maxLength = 200;
                                     const requiresTruncation = question.text.length > maxLength;
-                                    const displayText = (!isTextExpanded && requiresTruncation) ? question.text.substring(0, maxLength) + '...' : question.text;
-                                    const markdownText = normalizeMarkdownText(displayText);
+                                    const markdownText = normalizeMarkdownText(question.text);
                                     const additionalKey = `${standardId}_${sectionNum}_${question.subsection}`;
                                     const additionalCount = standardAdditional[additionalKey] || 0;
 
@@ -2090,7 +2089,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                               borderRadius: '4px',
                                               marginBottom: '15px',
                                               overflowWrap: 'anywhere',
-                                              wordBreak: 'break-word'
+                                              wordBreak: 'break-word',
+                                              maxHeight: !isTextExpanded && requiresTruncation ? '220px' : 'none',
+                                              overflow: !isTextExpanded && requiresTruncation ? 'hidden' : 'visible'
                                             }}>
                                               <ReactMarkdown components={markdownComponents}>{markdownText}</ReactMarkdown>
                                               {requiresTruncation && (

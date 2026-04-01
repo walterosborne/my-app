@@ -665,7 +665,13 @@ function RiskAnalysisEdit() {
                 onClick={handleSubmit}
                 disabled={submitting}
               >
-                {submitting ? 'Submitting...' : selectedAction === 'Edit' ? 'Submit Changes' : 'Submit'}
+                {submitting
+                  ? selectedAction === 'Edit'
+                    ? 'Submitting Changes...'
+                    : 'Submitting...'
+                  : selectedAction === 'Edit'
+                    ? 'Submit Changes'
+                    : 'Submit'}
               </button>
               {selectedAction === 'Edit' && (
                 <button

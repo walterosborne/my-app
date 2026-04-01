@@ -9,6 +9,7 @@ const Approval = () => {
     const [loading, setLoading] = React.useState(true);
     const [approvalInfo, setApprovalInfo] = React.useState(null);
     const [error, setError] = React.useState(null);
+    const [submittingApproval, setSubmittingApproval] = React.useState(false);
 
     React.useEffect(() => {
         async function loadApprovalInfo() {
@@ -29,6 +30,8 @@ const Approval = () => {
     }, [scheduleId]);
 
     const handleApprove = async () => {
+        if (submittingApproval) return;
+        setSubmittingApproval(true);
         try {
             const response = await fetch(`http://localhost:3001/api/approvals/${scheduleId}/approve`, {
                 method: 'POST',
@@ -46,6 +49,8 @@ const Approval = () => {
             }
         } catch (err) {
             toast.error(err.message || 'Approval failed');
+        } finally {
+            setSubmittingApproval(false);
         }
     };
 
@@ -115,10 +120,10 @@ const Approval = () => {
                             <button
                                 className="button"
                                 onClick={handleApprove}
-                                disabled={isApproved || alreadyApprovedByUser}
+                                disabled={isApproved || alreadyApprovedByUser || submittingApproval}
                                 style={{ backgroundColor: !alreadyApprovedByUser ? '#0b7a3b' : 'grey', width: '220px' }}
                             >
-                                {alreadyApprovedByUser ? 'Approval Already Submitted' : 'Approve Audit'}
+                                {alreadyApprovedByUser ? 'Approval Already Submitted' : submittingApproval ? 'Submitting Approval...' : 'Approve Audit'}
                             </button>
                             <button
                                 className="button"
