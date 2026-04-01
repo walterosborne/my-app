@@ -54,6 +54,10 @@ const getSiteLabel = (site) => {
 const ThirtySixtyNinety = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const exportToastOptions = {
+    progressStyle: { backgroundColor: '#2196f3' },
+    style: { borderLeft: '4px solid #2196f3' }
+  };
   const reportType = searchParams.get('type') || '30-60-90';
   const [loading, setLoading] = useState(true);
   const [audits, setAudits] = useState([]);
@@ -979,11 +983,15 @@ const ThirtySixtyNinety = () => {
       case 4:
         return 'Observation';
       default:
-        return 'Unknown';
+        return 'No finding type listed';
     }
   };
 
   const handleExport = () => {
+    const notifyExportStarting = () => {
+      toast.info('Now exporting...', exportToastOptions);
+    };
+
     if (!activeReport.ready) {
       toast.info('This report is not configured yet.');
       return;
@@ -1032,8 +1040,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Planned vs Completed');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'planned-vs-completed-report.xlsx');
-      toast.success('Exported planned vs completed report.');
       return;
     }
 
@@ -1092,8 +1100,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Results');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'rollup-audit-results.xlsx');
-      toast.success('Exported rollup audit results report.');
       return;
     }
 
@@ -1148,8 +1156,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Schedule');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'rollup-audit-schedule.xlsx');
-      toast.success('Exported rollup audit schedule report.');
       return;
     }
 
@@ -1202,8 +1210,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Clauses Audited');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'clauses-audited-report.xlsx');
-      toast.success('Exported clauses audited report.');
       return;
     }
 
@@ -1256,8 +1264,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Processes Audited');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'processes-audited-report.xlsx');
-      toast.success('Exported processes audited report.');
       return;
     }
 
@@ -1308,8 +1316,8 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Schedule Comments');
+      notifyExportStarting();
       XLSX.writeFile(wb, 'schedule-comments-report.xlsx');
-      toast.success('Exported schedule comments report.');
       return;
     }
 
@@ -1380,8 +1388,8 @@ const ThirtySixtyNinety = () => {
     addSheet(wb, 'Next 60 Days', headers, buildRows(60));
     addSheet(wb, 'Next 90 Days', headers, buildRows(90));
 
+    notifyExportStarting();
     XLSX.writeFile(wb, '30-60-90-report.xlsx');
-    toast.success('Exported 30/60/90 report.');
   };
 
   if (loading) {

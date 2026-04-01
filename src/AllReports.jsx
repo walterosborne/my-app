@@ -53,6 +53,10 @@ const getSiteLabel = (site) => {
 
 const AllReports = () => {
   const navigate = useNavigate();
+  const exportToastOptions = {
+    progressStyle: { backgroundColor: '#2196f3' },
+    style: { borderLeft: '4px solid #2196f3' }
+  };
   const [loading, setLoading] = useState(true);
   const [audits, setAudits] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -356,7 +360,7 @@ const AllReports = () => {
       case 4:
         return 'Observation';
       default:
-        return 'Unknown';
+        return 'No finding type listed';
     }
   };
 
@@ -619,8 +623,8 @@ const AllReports = () => {
     });
     addSheet(wb, 'CARs', carHeaders, carRows);
 
+    toast.info('Now exporting...', exportToastOptions);
     XLSX.writeFile(wb, 'all-audit-reports.xlsx');
-    toast.success(`Exported ${exportAudits.length} audit(s).`);
   };
 
   if (loading) {

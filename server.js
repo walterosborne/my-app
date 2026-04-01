@@ -131,27 +131,59 @@ const buildStackedEmailButtons = (buttons) => `
 </table>
 `.trim();
 
+const buildEmailDetailBox = (rows = []) => `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; width: 100%; background: #f3f4f6; border-radius: 6px; margin: 16px 0;">
+  ${rows.map(({ label, value }) => `
+  <tr>
+    <td style="padding: 8px 16px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #1f2937;">
+      <strong>${label}:</strong> ${value}
+    </td>
+  </tr>`).join('')}
+</table>
+`.trim();
+
+const buildEmailShell = ({
+    title,
+    subtitle = '',
+    lead = '',
+    detailRows = [],
+    buttons = [],
+    sectionTitle = '',
+    sectionBody = '',
+    footer = ''
+}) => `
+<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
+  <h1 style="font-size: 24px; margin-bottom: 6px;">${title}</h1>
+  ${subtitle ? `<h2 style="font-size: 18px; color: #1d4ed8; margin-top: 0;">${subtitle}</h2>` : ''}
+  ${lead ? `<p style="font-size: 16px; margin-bottom: 12px;">${lead}</p>` : ''}
+  ${detailRows.length > 0 ? `<div style="margin: 16px 0 20px;">${buildEmailDetailBox(detailRows)}</div>` : ''}
+  ${buttons.length > 0 ? `<div style="margin: 16px 0 20px;">${buildStackedEmailButtons(buttons)}</div>` : ''}
+  ${sectionTitle ? `<h3 style="font-size: 16px; color: #1e293b; margin-top: 24px;">${sectionTitle}</h3>` : ''}
+  ${sectionBody ? `<p style="margin-top: 4px; margin-bottom: 16px;">${sectionBody}</p>` : ''}
+  ${footer ? `<p style="font-size: 12px; color: #6b7280; margin-top: 20px;">${footer}</p>` : ''}
+</div>
+`.trim();
+
 const buildApprovalEmail = ({ approverName, auditTitle, scheduleId, approvalLink, reviewLink }) => {
     const safeApprover = approverName || 'Approver';
     const safeTitle = auditTitle || `Audit ${scheduleId}`;
     const subject = `Approval Request: ${safeTitle} (Schedule ID ${scheduleId})`;
-    const body = `
-<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-  <p>Hello ${safeApprover},</p>
-  <p>You have been selected as an approver for the audit below. Please review and confirm your approval.</p>
-  <div style="padding: 12px 16px; background: #f3f4f6; border-radius: 6px; margin: 16px 0;">
-    <strong>Audit:</strong> ${safeTitle}<br />
-    <strong>Schedule ID:</strong> ${scheduleId}
-  </div>
-  <p>
-    <a href="${reviewLink}" style="background: #e5e7eb; color: #1f2937; padding: 10px 14px; border-radius: 6px; text-decoration: none; margin-top: 8px; display: inline-block;">
-      Review Audit
-    </a>
-    <a href="${approvalLink}" style="background: green; color: #ffffff; padding: 10px 14px; border-radius: 6px; text-decoration: none; margin-top: 8px; margin-left: 12px;  display: inline-block;">
-      Approve
-    </a>
-</div>
-`.trim();
+    const body = buildEmailShell({
+        title: `Approval request for Audit ${scheduleId}`,
+        subtitle: 'You have been selected as an approver in NGAT',
+        lead: `Hello ${safeApprover},`,
+        detailRows: [
+            { label: 'Audit', value: safeTitle },
+            { label: 'Schedule ID', value: scheduleId }
+        ],
+        buttons: [
+            { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
+            { href: approvalLink, label: 'Approve', backgroundColor: 'green', textColor: '#ffffff' }
+        ],
+        sectionTitle: 'Next Steps',
+        sectionBody: 'Review the audit details and confirm your approval when you are ready.',
+        footer: 'You are receiving this email because you are listed as an approver for this audit.'
+    });
     return { subject, body };
 };
 
@@ -160,26 +192,18 @@ const buildNewAuditNotificationEmail = ({ auditTitle, scheduleId, reviewLink, pl
     const subject = auditTitle
         ? `Audit ${scheduleId} - ${auditTitle} has been created!`
         : `Audit ${scheduleId} has been created!`;
-    const body = `
-<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-  <h1 style="font-size: 24px; margin-bottom: 6px;">Audit ${scheduleId} has been created!</h1>
-  <h2 style="font-size: 18px; color: #1d4ed8; margin-top: 0;">You have completed step 1/5 of the NGAT auditing process</h2>
-  <p style="font-size: 16px; margin-bottom: 12px;">${safeTitle}</p>
-  <div style="margin: 16px 0 20px;">
-    ${buildStackedEmailButtons([
-        { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
-        { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
-    ])}
-  </div>
-  <h3 style="font-size: 16px; color: #1e293b; margin-top: 24px;">Next Steps</h3>
-  <p style="margin-top: 4px; margin-bottom: 16px;">
-    Finalize the planning details, prepare to conduct the audit, and capture any nonconformities that arise during the engagement.
-  </p>
-  <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
-    You are receiving this email because you are listed as an auditor for this audit.
-  </p>
-</div>
-`.trim();
+    const body = buildEmailShell({
+        title: `Audit ${scheduleId} has been created!`,
+        subtitle: 'You have completed step 1/5 of the NGAT auditing process',
+        lead: safeTitle,
+        buttons: [
+            { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
+            { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
+        ],
+        sectionTitle: 'Next Steps',
+        sectionBody: 'Finalize the planning details, prepare to conduct the audit, and capture any nonconformities that arise during the engagement.',
+        footer: 'You are receiving this email because you are listed as an auditor for this audit.'
+    });
     return { subject, body };
 };
 
@@ -187,18 +211,17 @@ const buildEditAuditNotificationEmail = ({ scheduleId, reviewLink, planLink, aud
     const subject = auditTitle
         ? `Audit ${scheduleId} - ${auditTitle} has been edited`
         : `Audit ${scheduleId} has been edited`;
-    const body = `
-<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-  <h1 style="font-size: 24px; margin-bottom: 12px;">Audit ${scheduleId} has been edited</h1>
-  <p>You are receiving this email because you are listed as an auditor for this audit.</p>
-  <div style="margin-top: 16px;">
-    ${buildStackedEmailButtons([
-        { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
-        { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
-    ])}
-  </div>
-</div>
-`.trim();
+    const body = buildEmailShell({
+        title: `Audit ${scheduleId} has been edited`,
+        lead: auditTitle || `Audit ${scheduleId}`,
+        buttons: [
+            { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' },
+            { href: planLink, label: 'Plan the Audit', backgroundColor: '#1d4ed8', textColor: '#ffffff' }
+        ],
+        sectionTitle: 'Next Steps',
+        sectionBody: 'Review the updated audit details and continue through the remaining audit steps as needed.',
+        footer: 'You are receiving this email because you are listed as an auditor for this audit.'
+    });
     return { subject, body };
 };
 
@@ -229,24 +252,19 @@ const buildAuditorAccessRequestEmail = ({
     const mailtoBody = `I am the division lead for ${divisionName || 'your division'}, and would like more information about your auditor approval request.`;
     const mailtoLink = `mailto:${encodeURIComponent(requestEmail || '')}?subject=${encodeURIComponent(mailtoSubject)}&body=${encodeURIComponent(mailtoBody)}`;
 
-    const body = `
-<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-  <h1 style="font-size: 22px; margin-bottom: 8px;">${safeName} (${safeMyId}) is requesting to be an auditor</h1>
-  <h2 style="font-size: 16px; margin: 12px 0 6px;">Reason for request:</h2>
-  <p style="margin-top: 0;">${safeReason}</p>
-  <div style="margin-top: 16px;">
-    <a href="${approveLink}" style="background: green; color: #ffffff; padding: 10px 16px; border-radius: 6px; text-decoration: none; margin-right: 12px; display: inline-block;">
-      Click here to approve this request
-    </a>
-    <a href="${mailtoLink}" target="_blank" rel="noreferrer" style="background: #dc2626; color: #ffffff; padding: 10px 16px; border-radius: 6px; text-decoration: none; display: inline-block;">
-      Request more information
-    </a>
-  </div>
-  <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
-    You are receiving this email because you are listed as the division lead for ${safeDivision}.
-  </p>
-</div>
-`.trim();
+    const body = buildEmailShell({
+        title: `${safeName} (${safeMyId}) is requesting to be an auditor`,
+        subtitle: 'A new auditor access request is ready for review',
+        detailRows: [
+            { label: 'Division', value: safeDivision },
+            { label: 'Reason for request', value: safeReason }
+        ],
+        buttons: [
+            { href: approveLink, label: 'Click here to approve this request', backgroundColor: 'green', textColor: '#ffffff' },
+            { href: mailtoLink, label: 'Request more information', backgroundColor: '#dc2626', textColor: '#ffffff' }
+        ],
+        footer: `You are receiving this email because you are listed as the division lead for ${safeDivision}.`
+    });
 
     return { subject, body };
 };

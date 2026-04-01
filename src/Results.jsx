@@ -115,7 +115,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     if (parsed === 2) return 'Conformity';
     if (parsed === 3) return 'OFI';
     if (parsed === 4) return 'Observation';
-    return value || 'No response provided';
+    return value || 'No finding type listed';
   };
 
   const [newPEQs, setNewPEQs] = useState(0);
@@ -659,7 +659,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         setValue(`peq${idx}`, nc.response || '');
         setValue(`auditorComment${idx}`, nc.auditorComment || '');
         setValue(`auditeeResponse${idx}`, nc.response || '');
-        setValue(`findingType${idx}`, findingTypeReverseMap[nc.findingType] || 'Nonconformity');
+        setValue(`findingType${idx}`, findingTypeReverseMap[nc.findingType] || null);
         setValue(`prOPCorporate${idx}`, nc.qma || []); // QMA goes in corporate
         setValue(`prOPSector${idx}`, nc.sector || []);
         setValue(`prOPDivision${idx}`, nc.division || []);
@@ -684,7 +684,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         if (etqNc) {
           setValue(`etqAuditeeResponse${idx}`, etqNc.response || '');
           setValue(`etqAuditorComment${idx}`, etqNc.auditorComment || '');
-          setValue(`etqFindingType${idx}`, findingTypeReverseMap[etqNc.findingType] || 'Nonconformity');
+          setValue(`etqFindingType${idx}`, findingTypeReverseMap[etqNc.findingType] || null);
           setValue(`etqPrOPCorporate${idx}`, etqNc.qma || []); // QMA goes in corporate
           setValue(`etqPrOPSector${idx}`, etqNc.sector || []);
           setValue(`etqPrOPDivision${idx}`, etqNc.division || []);
@@ -722,7 +722,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
         setValue(`standardAdditionalQuestion_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.question || '');
         setValue(`standardAdditionalAuditeeResponse_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.response || '');
-        setValue(`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, findingTypeReverseMap[nc.findingType] || 'Nonconformity');
+        setValue(`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, findingTypeReverseMap[nc.findingType] || null);
         setValue(`standardAdditionalAuditorComment_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.auditorComment || '');
         setValue(`standardAdditionalPrOPCorporate_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.qma || []);
         setValue(`standardAdditionalPrOPSector_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.sector || []);
@@ -1124,6 +1124,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   }
 
+  function onValidationError(validationErrors) {
+    const errorArray = Object.values(validationErrors)
+      .map((error) => error?.message)
+      .filter(Boolean);
+
+    const errorMessage = errorArray.length > 3
+      ? 'Please complete all required fields'
+      : errorArray.join(', ') || 'Please fill in all required fields';
+
+    toast.error(errorMessage, {
+      progressStyle: { backgroundColor: '#f44336' },
+      style: { borderLeft: '4px solid #f44336' }
+    });
+  }
+
 
   async function unlockAudit() {
     try {
@@ -1226,7 +1241,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       {errors.root ? <p className='error'>{errors.root.message}</p> :
         <>
           {/* Form that has certain built in properties like submit and reset */}
-          <form id='results-form' onSubmit={handleSubmit(onSubmit)} style={{ width: '100%' }}>
+          <form id='results-form' onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
             <Box sx={{ height: 400, width: '100%', marginTop: '10px' }}>
               <DataGrid
                 key={selectedAuditId || 'no-selection'}

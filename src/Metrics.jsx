@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Select from 'react-select';
+import { toast } from 'react-toastify';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart, MarkElement } from '@mui/x-charts/LineChart';
 import {
@@ -16,6 +17,7 @@ import { ChartsLabelMark } from '@mui/x-charts/ChartsLabel';
 import Typography from '@mui/material/Typography';
 import { getValueToPositionMapper, useXScale, useYScale } from '@mui/x-charts/hooks';
 import { toPng } from 'html-to-image';
+import 'react-toastify/dist/ReactToastify.css';
 import './Entry.css';
 import './Metrics.css';
 import { customStyles, parseCalendarDate } from './Utilities.jsx';
@@ -36,6 +38,10 @@ import {
 } from './assets/data/apiData';
 
 const Metrics = () => {
+  const exportToastOptions = {
+    progressStyle: { backgroundColor: '#2196f3' },
+    style: { borderLeft: '4px solid #2196f3' }
+  };
   const [audits, setAudits] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [businessUnitsList, setBusinessUnitsList] = useState([]);
@@ -1058,7 +1064,8 @@ const Metrics = () => {
   };
 
   const handleExport = async (apiRef, wrapperRef, filenameBase, renderChart) => {
-    const toastId = toast.info('Exporting metric image...', {
+    const toastId = toast.info('Now exporting metric image...', {
+      ...exportToastOptions,
       autoClose: false,
       closeButton: false
     });
@@ -1067,8 +1074,10 @@ const Metrics = () => {
       if (api?.exportAsImage) {
         api.exportAsImage();
         toast.update(toastId, {
-          render: 'Metric export started.',
-          type: 'success',
+          render: 'Now exporting metric image...',
+          type: 'info',
+          progressStyle: exportToastOptions.progressStyle,
+          style: exportToastOptions.style,
           autoClose: 2000,
           closeButton: true
         });
@@ -1077,8 +1086,10 @@ const Metrics = () => {
       if (api?.exportAsPrint) {
         api.exportAsPrint();
         toast.update(toastId, {
-          render: 'Metric export started.',
-          type: 'success',
+          render: 'Now exporting metric image...',
+          type: 'info',
+          progressStyle: exportToastOptions.progressStyle,
+          style: exportToastOptions.style,
           autoClose: 2000,
           closeButton: true
         });
@@ -1087,8 +1098,10 @@ const Metrics = () => {
       const rendered = await exportChartWithRender(renderChart, filenameBase);
       if (rendered) {
         toast.update(toastId, {
-          render: 'Metric exported.',
-          type: 'success',
+          render: 'Now exporting metric image...',
+          type: 'info',
+          progressStyle: exportToastOptions.progressStyle,
+          style: exportToastOptions.style,
           autoClose: 2000,
           closeButton: true
         });
@@ -1097,8 +1110,10 @@ const Metrics = () => {
       const fallbackWorked = await exportChartFallback(wrapperRef, filenameBase);
       if (fallbackWorked) {
         toast.update(toastId, {
-          render: 'Metric exported.',
-          type: 'success',
+          render: 'Now exporting metric image...',
+          type: 'info',
+          progressStyle: exportToastOptions.progressStyle,
+          style: exportToastOptions.style,
           autoClose: 2000,
           closeButton: true
         });

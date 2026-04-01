@@ -907,8 +907,16 @@ const Audit = () => {
             case 4:
                 return 'Observation';
             default:
-                return 'Unknown';
+                return 'No finding type listed';
         }
+    };
+
+    const getFindingChipMeta = (findingType) => {
+        if (findingType === 1) return { label: 'Nonconformity', className: 'nonconformity' };
+        if (findingType === 2) return { label: 'Conformity', className: 'conformity' };
+        if (findingType === 3) return { label: 'OFI', className: 'ofi' };
+        if (findingType === 4) return { label: 'Observation', className: 'observation' };
+        return null;
     };
 
     const handleExportXlsx = () => {
@@ -2037,11 +2045,15 @@ const Audit = () => {
                                 const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
                                 return (order[a.findingType] || 999) - (order[b.findingType] || 999);
                             })
-                            .map((finding, index) => (
-                                <div key={index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                            .map((finding, index) => {
+                                const chipMeta = getFindingChipMeta(finding.findingType);
+                                return (
+                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
-                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {chipMeta && (
+                                                <span className="finding-type">{chipMeta.label}</span>
+                                            )}
                                             {finding.findingType === 1 && (
                                                 <>
                                                     <span className="finding-id">NCID: {finding.ncId}</span>
@@ -2099,7 +2111,7 @@ const Audit = () => {
                                         </>
                                     )}
                                 </div>
-                            ))}
+                            )})}
                     </div>
                 )}
 
@@ -2114,11 +2126,15 @@ const Audit = () => {
                                 const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
                                 return (order[a.findingType] || 999) - (order[b.findingType] || 999);
                             })
-                            .map((finding, index) => (
-                                <div key={index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                            .map((finding, index) => {
+                                const chipMeta = getFindingChipMeta(finding.findingType);
+                                return (
+                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
-                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {chipMeta && (
+                                                <span className="finding-type">{chipMeta.label}</span>
+                                            )}
                                             {finding.findingType === 1 && (
                                                 <>
                                                     <span className="finding-id">NCID: {finding.ncId}</span>
@@ -2176,7 +2192,7 @@ const Audit = () => {
                                         </>
                                     )}
                                 </div>
-                            ))}
+                            )})}
                     </div>
                 )}
 
@@ -2189,12 +2205,15 @@ const Audit = () => {
                             const sectionLabel = finding.section !== null && finding.section !== undefined
                                 ? `${finding.section}${finding.subsection !== null && finding.subsection !== undefined ? `.${finding.subsection}` : ''}`
                                 : null;
+                            const chipMeta = getFindingChipMeta(finding.findingType);
 
                             return (
-                                <div key={finding.ncId || index} className={`finding-card ${finding.findingType === 1 ? 'nonconformity' : finding.findingType === 3 ? 'ofi' : finding.findingType === 4 ? 'observation' : 'conformity'}`}>
+                                <div key={finding.ncId || index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
-                                            <span className="finding-type">{finding.findingType === 1 ? 'Nonconformity' : finding.findingType === 3 ? 'OFI' : finding.findingType === 4 ? 'Observation' : 'Conformity'}</span>
+                                            {chipMeta && (
+                                                <span className="finding-type">{chipMeta.label}</span>
+                                            )}
                                             {finding.findingType === 1 && (
                                                 <>
                                                     <span className="finding-id">NCID: {finding.ncId}</span>
