@@ -5,8 +5,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import './Entry.css';
 import './App.css';
 import './RequestAuditorAccess.css';
-import { customStyles } from './Utilities.jsx';
-import { API_BASE, getCurrentUser, getDivisions, getRoster } from './assets/data/apiData';
+import { customStyles, formatRosterLabel } from './Utilities.jsx';
+import { API_BASE, getCurrentUser, getDivisions, getRosterByIds } from './assets/data/apiData';
 
 const RequestAuditorAccess = () => {
     const [loading, setLoading] = useState(true);
@@ -21,13 +21,13 @@ const RequestAuditorAccess = () => {
     useEffect(() => {
         async function loadUser() {
             try {
-                const [userData, rosterData, divisionsData] = await Promise.all([
+                const [userData, divisionsData] = await Promise.all([
                     getCurrentUser(),
-                    getRoster(),
                     getDivisions()
                 ]);
                 setUserInfo(userData);
                 if (userData?.myId) {
+                    const rosterData = await getRosterByIds([userData.myId]);
                     const match = rosterData.find((entry) => entry.myId === userData.myId)
                         || rosterData.find((entry) => entry.networkId === userData.networkId);
                     setRosterEntry(match || null);
@@ -43,7 +43,9 @@ const RequestAuditorAccess = () => {
     }, []);
 
     const isAuditor = Boolean(userInfo?.auditorId);
-    const displayName = rosterEntry?.rosterName || userInfo?.name || '';
+    const displayName = rosterEntry
+        ? formatRosterLabel(rosterEntry)
+        : formatRosterLabel(userInfo?.name || '', userInfo?.myId || '');
     const displayEmail = rosterEntry?.email || '';
 
     const activeDivisions = useMemo(() => {

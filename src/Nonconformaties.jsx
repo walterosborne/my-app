@@ -1,6 +1,7 @@
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
+import AsyncSelect from 'react-select/async'
 import { Box, Typography } from '@mui/material';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -9,7 +10,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import { grey } from '@mui/material/colors';
-import { customStyles } from './Utilities.jsx';
+import { buildRosterOption, customStyles } from './Utilities.jsx';
 import {
   getPrograms,
   getDivisions,
@@ -24,8 +25,9 @@ import {
   getIntExt,
   getStandards,
   getSeverities,
-  getRoster,
-  getCurrentUser
+  getCurrentUser,
+  getRosterByIds,
+  searchRoster
 } from './assets/data/apiData';
 
 
@@ -48,7 +50,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
-  const [rosterList, setRosterList] = useState([]);
+  const [rosterOptionsById, setRosterOptionsById] = useState({});
   const [loading, setLoading] = useState(true);
 
   // Load all lookup data from API on mount
@@ -57,7 +59,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -70,8 +72,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           getFunctions(),
           getIntExt(),
           getStandards(),
-          getSeverities(),
-          getRoster()
+          getSeverities()
         ]);
 
         setProgramsList(programs);
@@ -87,7 +88,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setIntExtList(intExt);
         setStandardsList(standards);
         setSeveritiesList(severities);
-        setRosterList(roster);
         setLoading(false);
       } catch (error) {
         console.error('Error loading lookup data:', error);
@@ -96,6 +96,43 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     }
     loadLookupData();
   }, []);
+
+  const mergeRosterOptions = useMemo(() => (people = []) => {
+    const options = people
+      .map((person) => buildRosterOption(person))
+      .filter(Boolean);
+
+    if (options.length > 0) {
+      setRosterOptionsById((current) => {
+        const next = { ...current };
+        options.forEach((option) => {
+          next[String(option.value)] = option;
+        });
+        return next;
+      });
+    }
+
+    return options;
+  }, []);
+
+  const getRosterOption = useMemo(() => (myId) => {
+    if (!myId) return null;
+    return rosterOptionsById[String(myId)] || { value: myId, label: String(myId) };
+  }, [rosterOptionsById]);
+
+  const getRosterLabel = useMemo(() => (myId) => {
+    if (!myId) return '';
+    return getRosterOption(myId)?.label || String(myId);
+  }, [getRosterOption]);
+
+  const loadRosterOptions = useMemo(() => async (inputValue) => {
+    const trimmedInput = String(inputValue || '').trim();
+    if (trimmedInput.length < 3) {
+      return [];
+    }
+    const matches = await searchRoster(trimmedInput, 50);
+    return mergeRosterOptions(matches);
+  }, [mergeRosterOptions]);
 
   // Helper function to get program names from programIds
   const getProgramNames = (programIds) => {
@@ -383,15 +420,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   }, [severitiesList]);
 
   // Generate options from API data
-  const approverOptions = useMemo(() => {
-    return [...rosterList]
-      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
-      .map(person => ({
-        value: person.myId,
-        label: person.rosterName
-      }));
-  }, [rosterList]);
-
   const leadAuditorOptions = useMemo(() => {
     return [...auditorsList]
       .sort((a, b) => (a.auditorName || '').localeCompare(b.auditorName || ''))
@@ -400,15 +428,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         label: auditor.auditorName
       }));
   }, [auditorsList]);
-
-  const additionalApproversOptions = useMemo(() => {
-    return [...rosterList]
-      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
-      .map(person => ({
-        value: person.myId,
-        label: person.rosterName
-      }));
-  }, [rosterList]);
 
   useEffect(() => {
     async function loadAuditData() {
@@ -464,6 +483,21 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               const carId = car.carid ?? idx;
               setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
             });
+          }
+
+          const rosterIds = [
+            auditData.approver,
+            ...existingAdditionalApprovers,
+            ...(Array.isArray(carsData) ? carsData.map((car) => car.reviewer) : [])
+          ].filter(Boolean);
+
+          if (rosterIds.length > 0) {
+            try {
+              const rosterMatches = await getRosterByIds(rosterIds);
+              mergeRosterOptions(rosterMatches);
+            } catch (rosterError) {
+              console.error('Error loading selected roster entries:', rosterError);
+            }
           }
         } catch (error) {
           console.error('Error loading audit data:', error);
@@ -1042,7 +1076,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                               <label>Reviewer</label>
                               <input
                                 type="text"
-                                value={car.reviewer ? (rosterList.find((person) => person.myId === car.reviewer)?.rosterName || car.reviewer) : ''}
+                                value={car.reviewer ? getRosterLabel(car.reviewer) : ''}
                                 className='textfield'
                                 disabled
                               />
@@ -1093,12 +1127,15 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                           control={control}
                           rules={{ required: "Approver is required" }}
                           render={({ field }) => (
-                            <Select
+                            <AsyncSelect
                               isClearable
-                              options={approverOptions}
+                              cacheOptions
+                              defaultOptions={false}
+                              loadOptions={loadRosterOptions}
                               styles={customStyles}
                               placeholder="Approver"
-                              value={approverOptions.find(a => a.value === field.value) || null}
+                              noOptionsMessage={({ inputValue }) => inputValue.trim().length < 3 ? 'Type at least 3 characters' : 'No matches found'}
+                              value={getRosterOption(field.value)}
                               onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                             />
                           )}
@@ -1130,13 +1167,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                           name="additionalApprovers"
                           control={control}
                           render={({ field }) => (
-                            <Select
+                            <AsyncSelect
                               isClearable
                               isMulti
-                              options={additionalApproversOptions}
+                              cacheOptions
+                              defaultOptions={false}
+                              loadOptions={loadRosterOptions}
                               styles={customStyles}
                               placeholder="Additional Approvers"
-                              value={field.value ? additionalApproversOptions.filter(a => field.value.includes(a.value)) : []}
+                              noOptionsMessage={({ inputValue }) => inputValue.trim().length < 3 ? 'Type at least 3 characters' : 'No matches found'}
+                              value={Array.isArray(field.value) ? field.value.map((id) => getRosterOption(id)).filter(Boolean) : []}
                               onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                             />
                           )}

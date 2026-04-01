@@ -1,7 +1,7 @@
 import React from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { API_BASE, getCurrentUser, getRoster, getAuditors, getDivisions, getAuditTypes, getBusinessUnits, getOperatingUnits, getCauses, getEveryTimeQuestions, getFunctions, getPrograms, getSites, getProps, getSectors, getTrainingRequirements, getSafetyEquipment } from './assets/data/apiData';
+import { API_BASE, getCurrentUser, getRosterByIds, getAuditors, getDivisions, getAuditTypes, getBusinessUnits, getOperatingUnits, getCauses, getEveryTimeQuestions, getFunctions, getPrograms, getSites, getProps, getSectors, getTrainingRequirements, getSafetyEquipment } from './assets/data/apiData';
 import './Entry.css';
 import './AdminMenu.css';
 import AuditorsSection from './components/admin/AuditorsSection';
@@ -315,9 +315,8 @@ const AdminMenu = () => {
         let mounted = true;
         const loadUser = async () => {
             try {
-                const [userData, rosterData, auditorsData, divisionsData, auditTypesData, businessUnitsData, operatingUnitsData, causesData, everyTimeQuestionsData, functionsData, programsData, sitesData, propsData, trainingRequirementsData, safetyEquipmentData, sectorsData] = await Promise.all([
+                const [userData, auditorsData, divisionsData, auditTypesData, businessUnitsData, operatingUnitsData, causesData, everyTimeQuestionsData, functionsData, programsData, sitesData, propsData, trainingRequirementsData, safetyEquipmentData, sectorsData] = await Promise.all([
                     getCurrentUser(),
-                    getRoster(true),
                     getAuditors(),
                     getDivisions(),
                     getAuditTypes(),
@@ -335,7 +334,6 @@ const AdminMenu = () => {
                 ]);
                 if (mounted) {
                     setCurrentUser(userData);
-                    setRosterList(rosterData);
                     setAuditorList(auditorsData.map(normalizeAuditorRow));
                     setDivisionsList(divisionsData.map(normalizeDivisionRow));
                     setAuditTypesList(auditTypesData.map(normalizeAuditTypeRow));
@@ -362,6 +360,32 @@ const AdminMenu = () => {
             mounted = false;
         };
     }, [normalizeAuditorRow, normalizeAuditTypeRow, normalizeBusinessUnitRow, normalizeOperatingUnitRow, normalizeDelayCauseRow, normalizeEveryTimeQuestionRow, normalizeFunctionRow, normalizeProgramRow, normalizeDivisionRow, normalizeSiteRow, normalizePropRow, normalizeTrainingRequirementRow, normalizeSafetyEquipmentRow]);
+
+    React.useEffect(() => {
+        let cancelled = false;
+        const loadRosterMatch = async () => {
+            const trimmed = myIdInput.trim();
+            if (trimmed.length < 3) {
+                setRosterList([]);
+                return;
+            }
+            try {
+                const rosterData = await getRosterByIds([trimmed]);
+                if (!cancelled) {
+                    setRosterList(rosterData);
+                }
+            } catch (error) {
+                console.error('Error loading roster entry:', error);
+                if (!cancelled) {
+                    setRosterList([]);
+                }
+            }
+        };
+        loadRosterMatch();
+        return () => {
+            cancelled = true;
+        };
+    }, [myIdInput]);
 
     React.useEffect(() => {
         if (loading) return;

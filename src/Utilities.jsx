@@ -154,6 +154,29 @@ const formatMonthValue = (value) => {
     return `${parts.year}-${padDatePart(parts.month)}`;
 };
 
+const formatRosterLabel = (entryOrName, maybeMyId) => {
+    if (entryOrName && typeof entryOrName === 'object') {
+        const name = entryOrName.rosterName ?? entryOrName.rostername ?? entryOrName.name ?? '';
+        const myId = entryOrName.myId ?? entryOrName.myid ?? '';
+        if (name && myId) return `${name} (${myId})`;
+        return name || String(myId || '');
+    }
+
+    const name = String(entryOrName || '').trim();
+    const myId = String(maybeMyId || '').trim();
+    if (name && myId) return `${name} (${myId})`;
+    return name || myId;
+};
+
+const buildRosterOption = (entry) => {
+    const myId = entry?.myId ?? entry?.myid;
+    if (!myId) return null;
+    return {
+        value: myId,
+        label: formatRosterLabel(entry)
+    };
+};
+
 export {
     customStyles,
     adminSelectStyles,
@@ -161,5 +184,7 @@ export {
     parseCalendarDate,
     formatDateForInput,
     formatDateForDisplay,
-    formatMonthValue
+    formatMonthValue,
+    formatRosterLabel,
+    buildRosterOption
 };

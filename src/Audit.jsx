@@ -19,7 +19,7 @@ import {
     getIntExt,
     getStandards,
     getSeverities,
-    getRoster,
+    getRosterByIds,
     getSafetyEquipment,
     getTrainingRequirements,
     getCauses,
@@ -30,7 +30,7 @@ import {
     getRiskRatings
 } from './assets/data/apiData';
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
-import { formatDateForDisplay, getDateParts } from './Utilities.jsx';
+import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
 const Audit = () => {
     const { id } = useParams();
@@ -70,7 +70,7 @@ const Audit = () => {
     React.useEffect(() => {
         async function loadAllData() {
             try {
-                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, roster, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
+                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
                     getAuditsReport(true),
                     getPrograms(),
                     getDivisions(),
@@ -85,7 +85,6 @@ const Audit = () => {
                     getIntExt(),
                     getStandards(),
                     getSeverities(),
-                    getRoster(),
                     getSafetyEquipment(),
                     getTrainingRequirements(),
                     getProps(),
@@ -111,7 +110,6 @@ const Audit = () => {
                 setIntExtList(intExt);
                 setStandardsList(standards);
                 setSeveritiesList(severities);
-                setRosterList(roster);
                 setSafetyEquipmentList(safetyEquipment);
                 setTrainingRequirementsList(trainingRequirements);
                 setCausesList(causes);
@@ -279,18 +277,30 @@ const Audit = () => {
             });
     }, [nonconformances, standardsList]);
 
+    const rosterLookup = React.useMemo(() => {
+        const next = new Map();
+        rosterList.forEach((entry) => {
+            const myId = entry?.myId ?? entry?.myid;
+            if (!myId) return;
+            next.set(String(myId), entry);
+        });
+        return next;
+    }, [rosterList]);
+
     // Helper function to get roster names from MyIDs
     const getRosterNames = (myIds) => {
-        return myIds.map(myId => {
-            const rosterMember = rosterList.find(r => r.myId === myId);
-            return rosterMember ? rosterMember.rosterName : myId;
-        }).join(', ');
+        return normalizeIdArray(myIds)
+            .map((myId) => {
+                const rosterMember = rosterLookup.get(String(myId));
+                return rosterMember ? formatRosterLabel(rosterMember) : String(myId);
+            })
+            .join(', ');
     };
 
     const getRosterName = (myId) => {
         if (myId === null || myId === undefined) return '';
-        const rosterMember = rosterList.find(r => r.myId === myId);
-        return rosterMember ? rosterMember.rosterName : myId;
+        const rosterMember = rosterLookup.get(String(myId));
+        return rosterMember ? formatRosterLabel(rosterMember) : String(myId);
     };
 
     const getPropName = (propId) => {
@@ -527,6 +537,54 @@ const Audit = () => {
     const isApprover = currentUser?.myId && auditData?.approver === currentUser.myId;
     const isAdditionalApprover = currentUser?.myId && additionalApproverIds.includes(currentUser.myId);
     const canApprove = isLeadAuditor || isApprover || isAdditionalApprover;
+
+    React.useEffect(() => {
+        let cancelled = false;
+
+        const rosterIds = [
+            ...normalizeIdArray(auditData?.famaIds),
+            ...normalizeIdArray(auditData?.intervieweeIds),
+            ...approvals.map((entry) => entry?.approvermyid).filter(Boolean),
+            ...cars.map((car) => car?.reviewer).filter(Boolean)
+        ];
+
+        if (currentUser?.myId) {
+            rosterIds.push(currentUser.myId);
+        }
+
+        const normalizedIds = [...new Set(
+            rosterIds
+                .map((value) => String(value ?? '').trim())
+                .filter(Boolean)
+        )];
+
+        if (normalizedIds.length === 0) {
+            setRosterList([]);
+            return () => {
+                cancelled = true;
+            };
+        }
+
+        async function loadRosterEntries() {
+            try {
+                const rosterData = await getRosterByIds(normalizedIds);
+                if (!cancelled) {
+                    setRosterList(rosterData);
+                }
+            } catch (error) {
+                console.error('Error loading roster entries:', error);
+                if (!cancelled) {
+                    setRosterList([]);
+                }
+            }
+        }
+
+        loadRosterEntries();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [auditData?.famaIds, auditData?.intervieweeIds, approvals, cars, currentUser?.myId]);
 
     const getStageLabel = (stage, locked, approved) => {
         if (stage === -1) return 'Historical';
@@ -1151,11 +1209,10 @@ const Audit = () => {
             ? escapeHtml(auditData.overview)
             : '<span class="muted">No response provided.</span>';
 
-        const preparedByRoster = rosterList.find((r) => {
-            if (!r.networkId || !currentUser?.networkId) return false;
-            return r.networkId.toLowerCase() === currentUser.networkId?.toLowerCase();
-        });
-        const preparedByName = preparedByRoster?.rosterName || currentUser?.name || 'Unknown Auditor';
+        const preparedByRoster = currentUser?.myId ? rosterLookup.get(String(currentUser.myId)) : null;
+        const preparedByName = preparedByRoster
+            ? formatRosterLabel(preparedByRoster)
+            : formatRosterLabel(currentUser?.name || 'Unknown Auditor', currentUser?.myId);
         const preparedOnValue = formatDate(new Date().toISOString()) || new Date().toLocaleDateString();
 
         const approvalEntries = getApprovalEntries();

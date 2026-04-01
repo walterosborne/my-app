@@ -25,7 +25,6 @@ import {
   getSafetyEquipment,
   getTrainingRequirements,
   getSeverities,
-  getRoster,
   getProps,
   getNonconformances
 } from './assets/data/apiData';
@@ -74,7 +73,6 @@ const ThirtySixtyNinety = () => {
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
-  const [rosterList, setRosterList] = useState([]);
   const [causesList, setCausesList] = useState([]);
   const [propsList, setPropsList] = useState([]);
 
@@ -146,7 +144,6 @@ const ThirtySixtyNinety = () => {
           standards,
           safetyEquipment,
           trainingRequirements,
-          roster,
           severities,
           causes,
           nonconformancesData,
@@ -167,7 +164,6 @@ const ThirtySixtyNinety = () => {
           getStandards(),
           getSafetyEquipment(),
           getTrainingRequirements(),
-          getRoster(),
           getSeverities(),
           getCauses(),
           getNonconformances(),
@@ -189,7 +185,6 @@ const ThirtySixtyNinety = () => {
         setStandardsList(standards);
         setSafetyEquipmentList(safetyEquipment);
         setTrainingRequirementsList(trainingRequirements);
-        setRosterList(roster);
         setSeveritiesList(severities);
         setCausesList(causes);
         setNonconformances(nonconformancesData);

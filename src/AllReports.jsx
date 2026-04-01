@@ -6,7 +6,7 @@ import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './AllReports.css';
-import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
+import { customStyles, formatDateForInput, formatRosterLabel, parseCalendarDate } from './Utilities.jsx';
 import {
   getAudits,
   getCurrentUser,
@@ -26,7 +26,7 @@ import {
   getSafetyEquipment,
   getTrainingRequirements,
   getSeverities,
-  getRoster
+  getRosterByIds
 } from './assets/data/apiData';
 
 const buildSortedOptions = (list = [], valueKey, labelKey) => {
@@ -71,7 +71,6 @@ const AllReports = () => {
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
-  const [rosterList, setRosterList] = useState([]);
   const [causesList, setCausesList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
@@ -114,7 +113,6 @@ const AllReports = () => {
           standards,
           safetyEquipment,
           trainingRequirements,
-          roster,
           severities,
           causes
         ] = await Promise.all([
@@ -134,7 +132,6 @@ const AllReports = () => {
           getStandards(),
           getSafetyEquipment(),
           getTrainingRequirements(),
-          getRoster(),
           getSeverities(),
           getCauses()
         ]);
@@ -155,7 +152,6 @@ const AllReports = () => {
         setStandardsList(standards);
         setSafetyEquipmentList(safetyEquipment);
         setTrainingRequirementsList(trainingRequirements);
-        setRosterList(roster);
         setSeveritiesList(severities);
         setCausesList(causes);
         setLoading(false);
@@ -411,6 +407,31 @@ const AllReports = () => {
       ))
     ]);
 
+    const rosterIds = [...new Set([
+      ...exportAudits.flatMap((audit) => normalizeIdArray(audit.famaIds)),
+      ...exportAudits.flatMap((audit) => normalizeIdArray(audit.intervieweeIds)),
+      ...carSets.flatMap((auditCars) => (Array.isArray(auditCars) ? auditCars : []).map((car) => car?.reviewer))
+    ].map((value) => String(value ?? '').trim()).filter(Boolean))];
+
+    const rosterRows = rosterIds.length > 0 ? await getRosterByIds(rosterIds) : [];
+    const rosterLookup = new Map(
+      rosterRows
+        .filter((entry) => entry?.myId)
+        .map((entry) => [String(entry.myId), entry])
+    );
+
+    const formatRosterSingle = (myId) => {
+      if (!myId) return '';
+      const match = rosterLookup.get(String(myId));
+      return match ? formatRosterLabel(match) : String(myId);
+    };
+
+    const formatRosterArray = (myIds) => {
+      const ids = normalizeIdArray(myIds);
+      if (ids.length === 0) return '';
+      return ids.map((myId) => formatRosterSingle(myId)).join(', ');
+    };
+
     const wb = XLSX.utils.book_new();
 
     // Schedule sheet
@@ -462,7 +483,7 @@ const AllReports = () => {
       .map((audit) => ([
         audit.scheduleId || '',
         audit.scope || '',
-        audit.famaIds ? formatArray(audit.famaIds, rosterList, 'myId', 'rosterName') : '',
+        formatRosterArray(audit.famaIds),
         audit.safety === 0 ? 'Yes' : audit.safety === 1 ? 'No' : 'Unknown',
         audit.safety === 0 ? formatArray(audit.safetyEquipmentIds, safetyEquipmentList, 'safetyEquipmentId', 'safetyEquipmentName') : '',
         audit.clearance === 0 ? 'Yes' : audit.clearance === 1 ? 'No' : 'Unknown',
@@ -489,7 +510,7 @@ const AllReports = () => {
       .map((audit) => ([
         audit.scheduleId || '',
         formatDateForInput(audit.startDate),
-        audit.intervieweeIds ? formatArray(audit.intervieweeIds, rosterList, 'myId', 'rosterName') : '',
+        formatRosterArray(audit.intervieweeIds),
         audit.overview || '',
         audit.evaluator || '',
         audit.programManager || '',
@@ -591,7 +612,7 @@ const AllReports = () => {
         carRows.push([
           audit.scheduleId,
           car.car || '',
-          car.reviewer ? formatSingle(car.reviewer, rosterList, 'myId', 'rosterName') : '',
+          formatRosterSingle(car.reviewer),
           getPreviousCarsEffectiveLabel(car.effective)
         ]);
       });

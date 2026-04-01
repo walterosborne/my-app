@@ -1,6 +1,7 @@
 import { React, useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
+import AsyncSelect from 'react-select/async'
 import { Box } from '@mui/material';
 import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
@@ -11,7 +12,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
-import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
+import { buildRosterOption, customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
   getPrograms,
   getDivisions,
@@ -27,13 +28,14 @@ import {
   getStandards,
   getStandardTexts,
   getProps,
-  getRoster,
   getCauses,
   getCurrentUser,
   getEveryTimeQuestions,
   getAuditorFiles,
   uploadAuditorFile,
-  getAuditorFileDownloadUrl
+  getAuditorFileDownloadUrl,
+  getRosterByIds,
+  searchRoster
 } from './assets/data/apiData';
 
 
@@ -149,7 +151,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [standardsList, setStandardsList] = useState([]);
   const [standardTextsList, setStandardTextsList] = useState([]);
   const [propsList, setPropsList] = useState([]);
-  const [rosterList, setRosterList] = useState([]);
+  const [rosterOptionsById, setRosterOptionsById] = useState({});
   const [causesList, setCausesList] = useState([]);
   const [everyTimeQuestionsList, setEveryTimeQuestionsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
@@ -218,6 +220,39 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   }, []);
 
+  const mergeRosterOptions = useCallback((people = []) => {
+    const options = people
+      .map((person) => buildRosterOption(person))
+      .filter(Boolean);
+
+    if (options.length > 0) {
+      setRosterOptionsById((current) => {
+        const next = { ...current };
+        options.forEach((option) => {
+          next[String(option.value)] = option;
+        });
+        return next;
+      });
+    }
+
+    return options;
+  }, []);
+
+  const getRosterOption = useCallback((myId) => {
+    if (!myId) return null;
+    return rosterOptionsById[String(myId)] || { value: myId, label: String(myId) };
+  }, [rosterOptionsById]);
+
+  const loadRosterOptions = useCallback(async (inputValue) => {
+    const trimmedInput = String(inputValue || '').trim();
+    if (trimmedInput.length < 3) {
+      return [];
+    }
+
+    const matches = await searchRoster(trimmedInput, 50);
+    return mergeRosterOptions(matches);
+  }, [mergeRosterOptions]);
+
   const handleFileUpload = async () => {
     if (isViewOnly) {
       toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
@@ -272,14 +307,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         if (userData?.name) {
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
         }
-        const [programs, divisions, auditors, standards, standardTexts, props, roster, causes, files] = await Promise.all([
+        const [programs, divisions, auditors, standards, standardTexts, props, causes, files] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getAuditors(),
           getStandards(),
           getStandardTexts(),
           getProps(),
-          getRoster(),
           getCauses(),
           getAuditorFiles()
         ]);
@@ -290,7 +324,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         setStandardsList(standards);
         setStandardTextsList(standardTexts);
         setPropsList(props);
-        setRosterList(roster);
         setCausesList(causes);
         setAuditorFiles(files);
         setLoading(false);
@@ -301,6 +334,17 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
     loadLookupData();
   }, []);
+
+  useEffect(() => {
+    const intervieweeIds = Array.isArray(selectedAudit?.intervieweeIds)
+      ? selectedAudit.intervieweeIds.filter(Boolean)
+      : [];
+    if (intervieweeIds.length === 0) return;
+
+    getRosterByIds(intervieweeIds)
+      .then((people) => mergeRosterOptions(people))
+      .catch((error) => console.error('Error loading selected interviewees:', error));
+  }, [selectedAudit?.intervieweeIds, mergeRosterOptions]);
 
   // Fetch nonconformances from database when schedule changes
   useEffect(() => {
@@ -676,15 +720,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         label: s.standardName
       }));
   }, [standardsList]);
-
-  const interviewees = useMemo(() => {
-    return [...rosterList]
-      .sort((a, b) => (a.rosterName || '').localeCompare(b.rosterName || ''))
-      .map(r => ({
-        value: r.myId,
-        label: r.rosterName
-      }));
-  }, [rosterList]);
 
   const delayCauses = useMemo(() => {
     return [...causesList]
@@ -1426,13 +1461,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           name="interviewees"
                           control={control}
                           render={({ field }) => (
-                            <Select
+                            <AsyncSelect
                               isClearable
                               isMulti
-                              options={interviewees}
+                              cacheOptions
+                              defaultOptions={false}
+                              loadOptions={loadRosterOptions}
                               styles={customStyles}
                               placeholder="Interviewees"
-                              value={field.value ? interviewees.filter(i => field.value.includes(i.value)) : []}
+                              noOptionsMessage={({ inputValue }) => inputValue.trim().length < 3 ? 'Type at least 3 characters' : 'No matches found'}
+                              value={Array.isArray(field.value) ? field.value.map((id) => getRosterOption(id)).filter(Boolean) : []}
                               onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                             />
                           )}
