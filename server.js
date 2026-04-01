@@ -17,11 +17,18 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const { host: SMTP_HOST, port: SMTP_PORT, from: SMTP_FROM } = smtpConfig;
+const {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    from: SMTP_FROM,
+    secure: SMTP_SECURE = false,
+    tls: SMTP_TLS
+} = smtpConfig;
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
-    secure: false
+    secure: SMTP_SECURE,
+    tls: SMTP_TLS
 });
 
 //const HARD_CODED_NETWORK_ID = 'Z12345'; // auditor test Jaime Lopez, no audits

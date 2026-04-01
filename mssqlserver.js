@@ -203,11 +203,18 @@ const upload = multer({
     limits: { fileSize: 50 * 1024 * 1024 }
 });
 
-const { host: SMTP_HOST, port: SMTP_PORT, from: SMTP_FROM } = smtpConfig;
+const {
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    from: SMTP_FROM,
+    secure: SMTP_SECURE = false,
+    tls: SMTP_TLS
+} = smtpConfig;
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
-    secure: false
+    secure: SMTP_SECURE,
+    tls: SMTP_TLS
 });
 
 const HARD_CODED_NETWORK_ID = 'N35589';
@@ -1082,7 +1089,7 @@ app.post('/api/request-auditor-access', async (req, res) => {
         res.json({
             success: true,
             emailWarning: emailResult?.success === false
-                ? 'Request submitted, but the notification email could not be sent. Check the server logs for the SMTP error.'
+                ? 'Request submitted, but the notification email failed. The request saved anyway. Contact the division lead directly.'
                 : null
         });
     } catch (error) {
@@ -2777,7 +2784,7 @@ app.post('/api/audits', async (req, res) => {
                 }
             }
             audit.emailWarning = emailFailures.length > 0
-                ? `Audit saved, but ${emailFailures.length} notification email${emailFailures.length === 1 ? '' : 's'} could not be sent. Check the server logs for the SMTP error.`
+                ? `Audit saved, but ${emailFailures.length} notification email${emailFailures.length === 1 ? '' : 's'} failed. The audit saved anyway. Contact the auditors directly.`
                 : null;
         }
 
@@ -3241,7 +3248,7 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 }
             }
             audit.emailWarning = emailFailures.length > 0
-                ? `Audit submitted, but ${emailFailures.length} approval request email${emailFailures.length === 1 ? '' : 's'} could not be sent. Check the server logs for the SMTP error.`
+                ? `Audit submitted, but ${emailFailures.length} approval request email${emailFailures.length === 1 ? '' : 's'} failed. The audit submitted anyway. Contact the approvers directly.`
                 : null;
 
         } else {
