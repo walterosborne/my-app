@@ -51,7 +51,85 @@ const normalizeMarkdownText = (value) => {
     .replace(/&nbsp;/g, ' ');
 };
 
-const renderStandardMarkdown = (value) => micromark(normalizeMarkdownText(value), {
+const escapeHtml = (value) => String(value || '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const renderInlineMarkdown = (value) => {
+  let html = escapeHtml(value);
+
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  html = html.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
+  html = html.replace(/(^|[^_])_([^_]+)_(?!_)/g, '$1<em>$2</em>');
+
+  return html;
+};
+
+const splitMarkdownTableRow = (line) =>
+  line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim());
+
+const isMarkdownTableSeparator = (line) => {
+  const cells = splitMarkdownTableRow(line);
+  return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+};
+
+const isMarkdownTableRow = (line) => line.includes('|');
+
+const convertMarkdownTablesToHtml = (markdown) => {
+  const lines = markdown.split('\n');
+  const output = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const currentLine = lines[index];
+    const nextLine = lines[index + 1];
+
+    if (
+      currentLine &&
+      nextLine &&
+      isMarkdownTableRow(currentLine) &&
+      isMarkdownTableSeparator(nextLine)
+    ) {
+      const headerCells = splitMarkdownTableRow(currentLine);
+      const bodyRows = [];
+      index += 2;
+
+      while (index < lines.length && lines[index] && isMarkdownTableRow(lines[index])) {
+        bodyRows.push(splitMarkdownTableRow(lines[index]));
+        index += 1;
+      }
+
+      index -= 1;
+
+      const headerHtml = headerCells
+        .map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`)
+        .join('');
+
+      const bodyHtml = bodyRows
+        .map((row) => `<tr>${row.map((cell) => `<td>${renderInlineMarkdown(cell)}</td>`).join('')}</tr>`)
+        .join('');
+
+      output.push(`<table><thead><tr>${headerHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`);
+      continue;
+    }
+
+    output.push(currentLine);
+  }
+
+  return output.join('\n');
+};
+
+const renderStandardMarkdown = (value) => micromark(convertMarkdownTablesToHtml(normalizeMarkdownText(value)), {
   allowDangerousHtml: true
 });
 
