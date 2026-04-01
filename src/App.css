@@ -142,3 +142,64 @@ h2 {
   background-color: gray;
   cursor: not-allowed;
 }
+
+.standard-markdown-rendered {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.standard-markdown-rendered > *:first-child {
+  margin-top: 0;
+}
+
+.standard-markdown-rendered > *:last-child {
+  margin-bottom: 0;
+}
+
+.standard-markdown-rendered p,
+.standard-markdown-rendered li,
+.standard-markdown-rendered blockquote,
+.standard-markdown-rendered pre,
+.standard-markdown-rendered code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.standard-markdown-rendered p,
+.standard-markdown-rendered ul,
+.standard-markdown-rendered ol,
+.standard-markdown-rendered pre,
+.standard-markdown-rendered blockquote {
+  margin: 0 0 0.5rem 0;
+}
+
+.standard-markdown-rendered ul,
+.standard-markdown-rendered ol {
+  padding-left: 1.25rem;
+}
+
+.standard-markdown-rendered h1,
+.standard-markdown-rendered h2,
+.standard-markdown-rendered h3,
+.standard-markdown-rendered h4,
+.standard-markdown-rendered h5,
+.standard-markdown-rendered h6 {
+  margin: 0 0 0.5rem 0;
+  line-height: 1.3;
+}
+
+.standard-markdown-rendered table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.standard-markdown-rendered th,
+.standard-markdown-rendered td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}

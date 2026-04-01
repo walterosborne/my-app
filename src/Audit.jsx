@@ -1120,7 +1120,7 @@ const Audit = () => {
         ]);
         addSheet(wb, 'CARs', carHeaders, carRows);
 
-        XLSX.writeFile(wb, `audit-${auditData.scheduleId}.xlsx`);
+        XLSX.writeFile(wb, `Audit ${auditData.scheduleId}.xlsx`);
     };
 
     const handleExportPdf = () => {
