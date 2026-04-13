@@ -18,7 +18,7 @@ const Navbar = () => {
     const foeDropdownItems = [
         { label: foeLinks.metrics.label, path: foeLinks.metrics.url, external: true },
         { label: foeLinks.audits.label, path: '/foe?type=audits' },
-        { label: 'Download Audit Info', path: '/foe?type=download' },
+        { label: foeLinks.download.label, path: '/foe?type=download' },
         { label: foeLinks.admin.label, path: '/foe?type=admin' }
     ];
 
