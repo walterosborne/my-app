@@ -8,6 +8,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import './AllReports.css';
 import { customStyles, formatDateForInput, formatRosterLabel, parseCalendarDate } from './Utilities.jsx';
 import {
+  buildApiUrl,
   getAudits,
   getCurrentUser,
   getPrograms,
@@ -404,10 +405,10 @@ const AllReports = () => {
     const auditIds = exportAudits.map((audit) => audit.scheduleId);
     const [nonconformanceSets, carSets] = await Promise.all([
       Promise.all(auditIds.map((scheduleId) =>
-        fetch(`http://localhost:3001/api/nonconformances/${scheduleId}`).then((res) => res.json())
+        fetch(buildApiUrl(`nonconformances/${scheduleId}`)).then((res) => res.json())
       )),
       Promise.all(auditIds.map((scheduleId) =>
-        fetch(`http://localhost:3001/api/cars/${scheduleId}`).then((res) => res.json())
+        fetch(buildApiUrl(`cars/${scheduleId}`)).then((res) => res.json())
       ))
     ]);
 

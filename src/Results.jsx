@@ -14,6 +14,7 @@ import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
 import { buildRosterOption, customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
+  buildApiUrl,
   getPrograms,
   getDivisions,
   getSectors,
@@ -453,7 +454,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
         const divisionFilter = divisionIds.length === 1 ? divisionIds[0] : null;
         const [ncResponse, everyTimeQuestions] = await Promise.all([
-          fetch(`http://localhost:3001/api/nonconformances/${selectedAudit.scheduleId}`),
+          fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`)),
           getEveryTimeQuestions(divisionFilter)
         ]);
         const data = await ncResponse.json();
@@ -1115,7 +1116,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const allNCs = [...updatedNCs].sort((a, b) => a.ncId - b.ncId);
 
       // Save audit record with updated fields
-      const auditResponse = await fetch('http://localhost:3001/api/audits', {
+      const auditResponse = await fetch(buildApiUrl('audits'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1145,7 +1146,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
 
       // Save nonconformances to backend
-      const response = await fetch('http://localhost:3001/api/save-nonconformances', {
+      const response = await fetch(buildApiUrl('save-nonconformances'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1162,7 +1163,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         toast.success('Results submitted!');
 
         // Reload nonconformances from database to get fresh data
-        const ncResponse = await fetch(`http://localhost:3001/api/nonconformances/${selectedAudit.scheduleId}`);
+        const ncResponse = await fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`));
         const freshNCs = await ncResponse.json();
         setNonconformances(freshNCs);
 
@@ -1218,7 +1219,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error('No audit selected');
       }
 
-      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+      const response = await fetch(buildApiUrl('unlock-audit'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

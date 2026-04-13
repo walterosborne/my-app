@@ -9,6 +9,7 @@ import './App.css'
 import { grey } from '@mui/material/colors'
 import { customStyles } from './Utilities.jsx'
 import {
+  buildApiUrl,
   getPrograms,
   getDivisions,
   getAuditors,
@@ -233,8 +234,8 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       try {
         const [carsData, auditData] = await Promise.all([
-          fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`).then((res) => res.json()),
-          fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`).then((res) => res.json())
+          fetch(buildApiUrl(`cars/${selectedAudit.scheduleId}`)).then((res) => res.json()),
+          fetch(buildApiUrl(`audits/${selectedAudit.scheduleId}`)).then((res) => res.json())
         ])
 
         if (isCancelled) return
@@ -355,7 +356,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error('No audit selected')
       }
 
-      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+      const response = await fetch(buildApiUrl('unlock-audit'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -407,7 +408,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         targetStage: 2
       }
 
-      const response = await fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`, {
+      const response = await fetch(buildApiUrl(`audits/${selectedAudit.scheduleId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -430,7 +431,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         }))
         .filter((car) => car.car)
 
-      const carsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`, {
+      const carsResponse = await fetch(buildApiUrl(`cars/${selectedAudit.scheduleId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -445,7 +446,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       toast.success('Submitted!')
 
-      const refreshedCarsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`)
+      const refreshedCarsResponse = await fetch(buildApiUrl(`cars/${selectedAudit.scheduleId}`))
       const refreshedCarsData = await refreshedCarsResponse.json()
       const normalizedCars = Array.isArray(refreshedCarsData)
         ? refreshedCarsData.map((car, index) => ({

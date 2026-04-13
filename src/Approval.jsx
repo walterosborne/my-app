@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import './Audit.css';
+import { buildApiUrl } from './assets/data/apiData';
 
 const Approval = () => {
     const { scheduleId } = useParams();
@@ -14,7 +15,7 @@ const Approval = () => {
     React.useEffect(() => {
         async function loadApprovalInfo() {
             try {
-                const response = await fetch(`http://localhost:3001/api/approvals/${scheduleId}`);
+                const response = await fetch(buildApiUrl(`approvals/${scheduleId}`));
                 if (!response.ok) {
                     throw new Error('Approval not found');
                 }
@@ -33,7 +34,7 @@ const Approval = () => {
         if (submittingApproval) return;
         setSubmittingApproval(true);
         try {
-            const response = await fetch(`http://localhost:3001/api/approvals/${scheduleId}/approve`, {
+            const response = await fetch(buildApiUrl(`approvals/${scheduleId}/approve`), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -42,7 +43,7 @@ const Approval = () => {
             }
             const data = await response.json();
             toast.success(data.approved ? 'Approval complete. Audit is now approved.' : 'Approval recorded.');
-            const refresh = await fetch(`http://localhost:3001/api/approvals/${scheduleId}`);
+            const refresh = await fetch(buildApiUrl(`approvals/${scheduleId}`));
             if (refresh.ok) {
                 const updated = await refresh.json();
                 setApprovalInfo(updated);

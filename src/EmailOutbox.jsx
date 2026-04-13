@@ -1,5 +1,6 @@
 import React from 'react';
 import './Audit.css';
+import { buildApiUrl } from './assets/data/apiData';
 
 const EmailOutbox = () => {
     const [emails, setEmails] = React.useState([]);
@@ -9,7 +10,7 @@ const EmailOutbox = () => {
     React.useEffect(() => {
         async function loadOutbox() {
             try {
-                const response = await fetch('http://localhost:3001/api/email-outbox');
+                const response = await fetch(buildApiUrl('email-outbox'));
                 if (!response.ok) {
                     throw new Error('Failed to load outbox');
                 }

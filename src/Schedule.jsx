@@ -11,6 +11,7 @@ import './App.css'
 import { grey } from '@mui/material/colors';
 import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
+  buildApiUrl,
   getPrograms,
   getDivisions,
   getSectors,
@@ -721,7 +722,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       console.log("Audit data being sent:", auditData);
 
       // Save to database
-      const response = await fetch('http://localhost:3001/api/audits', {
+      const response = await fetch(buildApiUrl('audits'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -736,7 +737,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
         // If this was a new record, retrieve the assigned scheduleId using the hash
         if (!selectedAudit?.scheduleId) {
-          const idResponse = await fetch(`http://localhost:3001/api/audits?hash=${hash}`);
+          const idResponse = await fetch(`${buildApiUrl('audits')}?hash=${hash}`);
           const audits = await idResponse.json();
           if (audits && audits.length > 0) {
             finalScheduleId = audits[0].scheduleId;
@@ -778,7 +779,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error('No audit selected');
       }
 
-      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+      const response = await fetch(buildApiUrl('unlock-audit'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

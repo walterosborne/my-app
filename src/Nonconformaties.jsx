@@ -12,6 +12,7 @@ import './App.css'
 import { grey } from '@mui/material/colors';
 import { buildRosterOption, customStyles } from './Utilities.jsx';
 import {
+  buildApiUrl,
   getPrograms,
   getDivisions,
   getSectors,
@@ -437,17 +438,17 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           reset();
 
           // Fetch audit data
-          const auditResponse = await fetch(`http://localhost:3001/api/audits/${schedule.scheduleId}`);
+          const auditResponse = await fetch(buildApiUrl(`audits/${schedule.scheduleId}`));
           const auditData = await auditResponse.json();
           setLoadedAuditData(auditData);
 
           // Fetch CARs for this audit
-          const carsResponse = await fetch(`http://localhost:3001/api/cars/${schedule.scheduleId}`);
+          const carsResponse = await fetch(buildApiUrl(`cars/${schedule.scheduleId}`));
           const carsData = await carsResponse.json();
           setLoadedCARs(carsData);
 
           // Fetch nonconformances for this audit
-          const ncResponse = await fetch(`http://localhost:3001/api/nonconformances/${schedule.scheduleId}`);
+          const ncResponse = await fetch(buildApiUrl(`nonconformances/${schedule.scheduleId}`));
           const ncData = await ncResponse.json();
           setNonconformances(ncData);
 
@@ -560,7 +561,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       console.log('Submitting nonconformance updates:', ncUpdates);
 
       // Save to database
-      const response = await fetch('http://localhost:3001/api/save-nonconformities-data', {
+      const response = await fetch(buildApiUrl('save-nonconformities-data'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -577,7 +578,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       if (result.success) {
         // Update nonconformance details
         for (const ncUpdate of ncUpdates) {
-          const ncResponse = await fetch('http://localhost:3001/api/update-nonconformance-details', {
+          const ncResponse = await fetch(buildApiUrl('update-nonconformance-details'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -596,11 +597,11 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         }
 
         // Reload the audit data to refresh the form
-        const auditResponse = await fetch(`http://localhost:3001/api/audits/${selectedAudit.scheduleId}`);
+        const auditResponse = await fetch(buildApiUrl(`audits/${selectedAudit.scheduleId}`));
         const auditData = await auditResponse.json();
         setLoadedAuditData(auditData);
 
-        const carsResponse = await fetch(`http://localhost:3001/api/cars/${selectedAudit.scheduleId}`);
+        const carsResponse = await fetch(buildApiUrl(`cars/${selectedAudit.scheduleId}`));
         const carsDataReloaded = await carsResponse.json();
         setLoadedCARs(carsDataReloaded);
         carsDataReloaded.forEach((car, idx) => {
@@ -634,7 +635,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         throw new Error('No audit selected');
       }
 
-      const response = await fetch('http://localhost:3001/api/unlock-audit', {
+      const response = await fetch(buildApiUrl('unlock-audit'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -649,7 +650,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       if (result.success) {
         toast.success('Audit unlocked successfully!');
         // Reload the audit data to reflect the change
-        const auditResponse = await fetch(`http://localhost:3001/api/audits/${schedule.scheduleId}`);
+        const auditResponse = await fetch(buildApiUrl(`audits/${schedule.scheduleId}`));
         const auditData = await auditResponse.json();
         setLoadedAuditData(auditData);
       } else {

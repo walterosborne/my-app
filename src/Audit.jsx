@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {
+    buildApiUrl,
     getAuditsReport,
     getPrograms,
     getDivisions,
@@ -720,7 +721,7 @@ const Audit = () => {
         async function loadNonconformances() {
             if (auditData?.scheduleId) {
                 try {
-                    const response = await fetch(`http://localhost:3001/api/nonconformances/${auditData.scheduleId}`);
+                    const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}`));
                     const data = await response.json();
                     setNonconformances(data);
                 } catch (error) {
@@ -751,7 +752,7 @@ const Audit = () => {
                 return;
             }
             try {
-                const response = await fetch(`http://localhost:3001/api/approvals/${auditData.scheduleId}`);
+                const response = await fetch(buildApiUrl(`approvals/${auditData.scheduleId}`));
                 if (!response.ok) {
                     setApprovals([]);
                     return;
@@ -771,7 +772,7 @@ const Audit = () => {
         async function loadCars() {
             if (auditData?.scheduleId) {
                 try {
-                    const response = await fetch(`http://localhost:3001/api/cars/${auditData.scheduleId}`);
+                    const response = await fetch(buildApiUrl(`cars/${auditData.scheduleId}`));
                     const data = await response.json();
                     setCars(data);
                 } catch (error) {
@@ -1552,7 +1553,7 @@ const Audit = () => {
             toast.error('No audit selected.');
             return;
         }
-        const downloadUrl = `http://localhost:3001/api/audits/${auditData.scheduleId}/objective-evidence.zip`;
+        const downloadUrl = buildApiUrl(`audits/${auditData.scheduleId}/objective-evidence.zip`);
         window.location.href = downloadUrl;
     };
 

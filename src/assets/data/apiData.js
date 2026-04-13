@@ -1,5 +1,11 @@
-// API data loader - fetches all data from PostgreSQL backend
-export const API_BASE = 'http://localhost:3001/api';
+// API data loader - fetches all data from backend
+const configuredApiBase = import.meta.env.VITE_API_BASE?.replace(/\/$/, '');
+const defaultApiOrigin = typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:3001`
+    : 'http://localhost:3001';
+
+export const API_BASE = configuredApiBase || `${defaultApiOrigin}/api`;
+export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
 
 // Cache for data to avoid repeated fetches
 const cache = {};
@@ -10,7 +16,7 @@ async function fetchData(endpoint, skipCache = false) {
     }
 
     try {
-        const response = await fetch(`${API_BASE}/${endpoint}`);
+        const response = await fetch(buildApiUrl(endpoint));
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
