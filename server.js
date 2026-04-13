@@ -6,6 +6,7 @@ import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
+import os from 'os';
 import smtpConfig from './smtpConfig.js';
 
 const app = express();
@@ -1052,9 +1053,26 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = 3001;
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+const PREFERRED_HOST = os.hostname();
+const FALLBACK_HOST = '0.0.0.0';
+
+function startServer(host, canFallback = true) {
+    const server = app.listen(PORT, host, () => {
+        console.log(`Server running on http://${host}:${PORT}`);
+    });
+
+    server.once('error', (error) => {
+        console.error(`Failed to bind ${host}:${PORT}`, error);
+        if (canFallback && host !== FALLBACK_HOST) {
+            console.warn(`Falling back to ${FALLBACK_HOST}:${PORT}`);
+            startServer(FALLBACK_HOST, false);
+            return;
+        }
+        process.exit(1);
+    });
+}
+
+startServer(PREFERRED_HOST);
 
 // ==================== LOOKUP TABLE ENDPOINTS ====================
 

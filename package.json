@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
+    "clean": "node -e \"import('node:fs').then(fs => fs.rmSync('dist', { recursive: true, force: true }))\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prod": "npm run build && concurrently \"node mssqlserver.js\" \"npm run preview -- --host 0.0.0.0\""
+    "prod": "npm run clean && npm run build && concurrently \"node mssqlserver.js\" \"npm run preview -- --host 0.0.0.0\""
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

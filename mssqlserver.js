@@ -5,6 +5,7 @@ import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
+import os from 'os';
 import smtpConfig from './smtpConfig.js';
 
 const app = express();
@@ -1268,13 +1269,31 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = 3001;
-const HOST = '0.0.0.0';
+const PREFERRED_HOST = os.hostname();
+const FALLBACK_HOST = '0.0.0.0';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
 console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());
-console.log('[NGAT MSSQL DEBUG 2026-04-13] Binding host/port =', HOST, PORT);
-app.listen(PORT, HOST, () => {
-    console.log(`Server running on http://${HOST}:${PORT}`);
-});
+console.log('[NGAT MSSQL DEBUG 2026-04-13] Preferred host =', PREFERRED_HOST);
+console.log('[NGAT MSSQL DEBUG 2026-04-13] Fallback host =', FALLBACK_HOST);
+
+function startServer(host, canFallback = true) {
+    const server = app.listen(PORT, host, () => {
+        console.log(`[NGAT MSSQL DEBUG 2026-04-13] Binding host/port = ${host} ${PORT}`);
+        console.log(`Server running on http://${host}:${PORT}`);
+    });
+
+    server.once('error', (error) => {
+        console.error(`[NGAT MSSQL DEBUG 2026-04-13] Failed to bind ${host}:${PORT}`, error);
+        if (canFallback && host !== FALLBACK_HOST) {
+            console.warn(`[NGAT MSSQL DEBUG 2026-04-13] Falling back to ${FALLBACK_HOST}:${PORT}`);
+            startServer(FALLBACK_HOST, false);
+            return;
+        }
+        process.exit(1);
+    });
+}
+
+startServer(PREFERRED_HOST);
 
 // ==================== LOOKUP TABLE ENDPOINTS ====================
 
