@@ -1268,7 +1268,10 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = 3001;
-const HOST = process.env.HOST || 'localhost';
+const HOST = '0.0.0.0';
+console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
+console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());
+console.log('[NGAT MSSQL DEBUG 2026-04-13] Binding host/port =', HOST, PORT);
 app.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
 });

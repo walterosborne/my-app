@@ -4,7 +4,22 @@ const defaultApiOrigin = typeof window !== 'undefined'
     : 'http://localhost:3001';
 
 export const API_BASE = `${defaultApiOrigin}/api`;
-export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
+const API_DEBUG_TAG = '[NGAT API DEBUG 2026-04-13]';
+
+if (typeof window !== 'undefined') {
+    console.warn(`${API_DEBUG_TAG} window.location.href =`, window.location.href);
+    console.warn(`${API_DEBUG_TAG} window.location.hostname =`, window.location.hostname);
+    console.warn(`${API_DEBUG_TAG} defaultApiOrigin =`, defaultApiOrigin);
+    console.warn(`${API_DEBUG_TAG} API_BASE =`, API_BASE);
+}
+
+export const buildApiUrl = (path = '') => {
+    const url = `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
+    if (typeof window !== 'undefined') {
+        console.warn(`${API_DEBUG_TAG} buildApiUrl(${path}) ->`, url);
+    }
+    return url;
+};
 
 // Cache for data to avoid repeated fetches
 const cache = {};
@@ -15,7 +30,9 @@ async function fetchData(endpoint, skipCache = false) {
     }
 
     try {
-        const response = await fetch(buildApiUrl(endpoint));
+        const url = buildApiUrl(endpoint);
+        console.warn(`${API_DEBUG_TAG} fetchData(${endpoint}) requesting`, url);
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
