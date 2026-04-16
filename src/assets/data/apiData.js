@@ -1,25 +1,14 @@
-// API data loader - fetches all data from backend on the same host as the frontend
-const defaultApiOrigin = typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:3001`
-    : 'http://localhost:3001';
+// API data loader:
+// - when running through Vite dev/preview, call the backend on port 3001
+// - when running behind IIS/reverse proxy, use relative /api so the proxy handles it
+const isViteFrontendPort = typeof window !== 'undefined'
+    && ['4173', '5173'].includes(window.location.port);
 
-export const API_BASE = `${defaultApiOrigin}/api`;
-const API_DEBUG_TAG = '[NGAT API DEBUG 2026-04-13]';
+export const API_BASE = isViteFrontendPort
+    ? `${window.location.protocol}//${window.location.hostname}:3001/api`
+    : '/api';
 
-if (typeof window !== 'undefined') {
-    console.warn(`${API_DEBUG_TAG} window.location.href =`, window.location.href);
-    console.warn(`${API_DEBUG_TAG} window.location.hostname =`, window.location.hostname);
-    console.warn(`${API_DEBUG_TAG} defaultApiOrigin =`, defaultApiOrigin);
-    console.warn(`${API_DEBUG_TAG} API_BASE =`, API_BASE);
-}
-
-export const buildApiUrl = (path = '') => {
-    const url = `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
-    if (typeof window !== 'undefined') {
-        console.warn(`${API_DEBUG_TAG} buildApiUrl(${path}) ->`, url);
-    }
-    return url;
-};
+export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
 
 // Cache for data to avoid repeated fetches
 const cache = {};
@@ -30,9 +19,7 @@ async function fetchData(endpoint, skipCache = false) {
     }
 
     try {
-        const url = buildApiUrl(endpoint);
-        console.warn(`${API_DEBUG_TAG} fetchData(${endpoint}) requesting`, url);
-        const response = await fetch(url);
+        const response = await fetch(buildApiUrl(endpoint));
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
