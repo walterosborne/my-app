@@ -10,7 +10,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prod": "npm run clean && npm run build && concurrently \"node mssqlserver.js\" \"npm run preview -- --host 0.0.0.0\""
+    "prod": "npm run clean && npm run build && node mssqlserver.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
