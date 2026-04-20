@@ -10,7 +10,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prod": "npm run clean && npm run build && node mssqlserver.js"
+    "stop:mssqlserver": "node scripts/stop-mssqlserver-bg.js",
+    "start:mssqlserver:bg": "node scripts/start-mssqlserver-bg.js",
+    "prod": "npm run clean && npm run build && npm run start:mssqlserver:bg"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
