@@ -14,6 +14,7 @@ const stopScriptPath = path.join(__dirname, 'stop-mssqlserver-bg.js');
 const windowsTaskScript = path.join(appRoot, '.mssqlserver-task.ps1');
 const windowsTaskName = 'NGAT_MSSQL_Backend';
 const azureProcessLookupEnv = 'VSTS_PROCESS_LOOKUP_ID';
+const backendPort = 3001;
 const backendEnvNames = [
   'auditserver',
   'auditdb',
@@ -196,6 +197,34 @@ const logWindowsScheduledTaskState = () => {
   }
 };
 
+const getWindowsListeningPidForPort = () => {
+  debug(`Checking for Windows listening PID on port ${backendPort}.`);
+
+  try {
+    const output = runWindowsCommand('cmd.exe', [
+      '/d',
+      '/s',
+      '/c',
+      `netstat -ano | findstr :${backendPort}`
+    ]);
+
+    const pids = [...new Set(
+      output
+        .split(/\r?\n/)
+        .filter((line) => /\bLISTENING\b/i.test(line))
+        .map((line) => line.trim().split(/\s+/).pop())
+        .map((value) => Number(value))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )];
+
+    debug(`Windows netstat port ${backendPort} listening PIDs=${pids.length ? pids.join(', ') : 'none'}`);
+    return pids[0] || null;
+  } catch (error) {
+    debug(`Windows netstat PID lookup failed or found no listeners: ${error.message}`);
+    return null;
+  }
+};
+
 const getWindowsBackendPid = () => {
   debug('Checking for Windows node.exe process whose command line contains mssqlserver.js.');
   const command = [
@@ -229,7 +258,7 @@ const waitForWindowsBackendPid = async () => {
   while (Date.now() < deadline) {
     attempt += 1;
     debug(`Waiting for Windows backend PID attempt=${attempt}`);
-    const pid = getWindowsBackendPid();
+    const pid = getWindowsListeningPidForPort() || getWindowsBackendPid();
     if (pid) {
       debug(`Windows backend PID found pid=${pid}`);
       return pid;
