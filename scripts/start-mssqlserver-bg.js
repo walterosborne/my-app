@@ -9,6 +9,7 @@ const appRoot = path.resolve(__dirname, '..');
 const pidFile = path.join(appRoot, '.mssqlserver.pid');
 const logFile = path.join(appRoot, 'mssqlserver.log');
 const errorLogFile = path.join(appRoot, 'mssqlserver.error.log');
+const debugLogFile = path.join(appRoot, 'ngat-prod-debug.log');
 const stopScriptPath = path.join(__dirname, 'stop-mssqlserver-bg.js');
 const windowsTaskScript = path.join(appRoot, '.mssqlserver-task.ps1');
 const windowsTaskName = 'NGAT_MSSQL_Backend';
@@ -26,7 +27,9 @@ const backendEnvNames = [
 const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const debug = (message) => {
-  console.log(`[NGAT START DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`);
+  const line = `[NGAT START DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`;
+  console.log(line);
+  fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 
 process.on('beforeExit', (code) => {

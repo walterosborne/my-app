@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "stop:mssqlserver": "node scripts/stop-mssqlserver-bg.js",
     "start:mssqlserver:bg": "node scripts/start-mssqlserver-bg.js",
-    "prod": "node -e \"console.log('[NGAT NPM PROD ENTRY ' + new Date().toISOString() + '] cwd=' + process.cwd() + ' pid=' + process.pid)\" && node scripts/prod-debug.js"
+    "preprod": "echo NGAT_PREPROD_LIFECYCLE_REACHED",
+    "prod": "echo NGAT_NPM_PROD_SCRIPT_REACHED && node scripts/prod-debug.js",
+    "postprod": "echo NGAT_POSTPROD_LIFECYCLE_REACHED"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

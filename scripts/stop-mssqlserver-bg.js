@@ -7,13 +7,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRoot = path.resolve(__dirname, '..');
 const pidFile = path.join(appRoot, '.mssqlserver.pid');
+const debugLogFile = path.join(appRoot, 'ngat-prod-debug.log');
 const BACKEND_PORT = 3001;
 const WINDOWS_TASK_NAME = 'NGAT_MSSQL_Backend';
 
 const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const debug = (message) => {
-  console.log(`[NGAT STOP DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`);
+  const line = `[NGAT STOP DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`;
+  console.log(line);
+  fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 
 process.on('beforeExit', (code) => {

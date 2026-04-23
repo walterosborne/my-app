@@ -1,11 +1,16 @@
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const startedAt = Date.now();
+const debugLogFile = path.join(process.cwd(), 'ngat-prod-debug.log');
 
 const timestamp = () => new Date().toISOString();
 
 const log = (message) => {
-  console.log(`[NGAT PROD DEBUG ${timestamp()} pid=${process.pid} ppid=${process.ppid}] ${message}`);
+  const line = `[NGAT PROD DEBUG ${timestamp()} pid=${process.pid} ppid=${process.ppid}] ${message}`;
+  console.log(line);
+  fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 
 const runStep = (name, command, args) => {
@@ -42,6 +47,7 @@ process.on('exit', (code) => {
 });
 
 try {
+  fs.appendFileSync(debugLogFile, `\n===== npm run prod started ${timestamp()} =====\n`, 'utf8');
   log('npm run prod debug wrapper entered.');
   log(`platform=${process.platform} node=${process.version} cwd=${process.cwd()}`);
   log(`VSTS_PROCESS_LOOKUP_ID present=${process.env.VSTS_PROCESS_LOOKUP_ID ? 'yes' : 'no'}`);
