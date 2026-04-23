@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 const appRoot = path.resolve(__dirname, '..');
 const pidFile = path.join(appRoot, '.mssqlserver.pid');
 const BACKEND_PORT = 3001;
+const WINDOWS_TASK_NAME = 'NGAT_MSSQL_Backend';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -63,7 +64,30 @@ const getListeningPidsForPort = (port) => {
   }
 };
 
+const endWindowsScheduledTask = () => {
+  if (process.platform !== 'win32') {
+    return false;
+  }
+
+  try {
+    execFileSync('schtasks.exe', ['/End', '/TN', WINDOWS_TASK_NAME], {
+      cwd: appRoot,
+      stdio: ['ignore', 'ignore', 'ignore'],
+      timeout: 15000,
+      windowsHide: true
+    });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const stopServer = async () => {
+  const endedScheduledTask = endWindowsScheduledTask();
+  if (endedScheduledTask) {
+    await sleep(500);
+  }
+
   const pids = new Set();
 
   if (fs.existsSync(pidFile)) {
@@ -79,11 +103,11 @@ const stopServer = async () => {
     if (fs.existsSync(pidFile)) {
       fs.rmSync(pidFile, { force: true });
     }
-    console.log('No running MSSQL backend found.');
+    console.log(endedScheduledTask ? 'Stopped existing MSSQL backend.' : 'No running MSSQL backend found.');
     return;
   }
 
-  let stoppedAny = false;
+  let stoppedAny = endedScheduledTask;
   for (const pid of pids) {
     if (pid === process.pid) continue;
     stoppedAny = killPid(pid) || stoppedAny;
