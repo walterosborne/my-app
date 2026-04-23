@@ -32,6 +32,27 @@ const debug = (message) => {
   fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 
+const encodePowerShellString = (value) => Buffer.from(String(value), 'utf8').toString('base64');
+
+const decodePowerShellString = (value) => (
+  `[System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encodePowerShellString(value)}'))`
+);
+
+const logFileTail = (filePath, label) => {
+  try {
+    if (!fs.existsSync(filePath)) {
+      debug(`${label} does not exist: ${filePath}`);
+      return;
+    }
+
+    const contents = fs.readFileSync(filePath, 'utf8');
+    const tail = contents.slice(-4000).trim();
+    debug(`${label} tail from ${filePath}:${tail ? `\n${tail}` : ' <empty>'}`);
+  } catch (error) {
+    debug(`Failed to read ${label} from ${filePath}: ${error.message}`);
+  }
+};
+
 process.on('beforeExit', (code) => {
   debug(`PROCESS beforeExit code=${code} elapsedMs=${Date.now() - startedAt}`);
 });
@@ -130,9 +151,18 @@ const runWindowsCommand = (file, args) => {
 
 const writeWindowsTaskScript = () => {
   debug(`Writing scheduled task launcher script: ${windowsTaskScript}`);
-  const envLines = backendEnvNames
-    .filter((name) => process.env[name] !== undefined)
-    .map((name) => `$env:${name} = ${quotePowerShellLiteral(process.env[name])}`);
+  const taskEnv = {
+    ...detachedEnv,
+    NODE_ENV: detachedEnv.NODE_ENV || 'production'
+  };
+  delete taskEnv[azureProcessLookupEnv];
+
+  const envLines = Object.entries(taskEnv)
+    .filter(([name, value]) => name && value !== undefined && value !== null)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, value]) => (
+      `[Environment]::SetEnvironmentVariable(${decodePowerShellString(name)}, ${decodePowerShellString(value)}, 'Process')`
+    ));
 
   const contents = [
     '$ErrorActionPreference = \'Stop\'',
@@ -149,6 +179,21 @@ const writeWindowsTaskScript = () => {
 
   fs.writeFileSync(windowsTaskScript, `${contents}\r\n`, 'utf8');
   debug(`Scheduled task launcher written. envLines=${envLines.length}`);
+  debug(`Scheduled task launcher copied backend env present=${backendEnvNames.map((name) => `${name}:${taskEnv[name] === undefined ? 'no' : 'yes'}`).join(', ')}`);
+};
+
+const logWindowsScheduledTaskState = () => {
+  try {
+    const output = runWindowsCommand('schtasks.exe', [
+      '/Query',
+      '/TN', windowsTaskName,
+      '/V',
+      '/FO', 'LIST'
+    ]);
+    debug(`Scheduled task query output:\n${output.trim()}`);
+  } catch (error) {
+    debug(`Scheduled task query failed: ${error.message}`);
+  }
 };
 
 const getWindowsBackendPid = () => {
@@ -178,7 +223,7 @@ const getWindowsBackendPid = () => {
 };
 
 const waitForWindowsBackendPid = async () => {
-  const deadline = Date.now() + 10000;
+  const deadline = Date.now() + 30000;
   let attempt = 0;
 
   while (Date.now() < deadline) {
@@ -192,7 +237,7 @@ const waitForWindowsBackendPid = async () => {
     await sleep(500);
   }
 
-  debug('Windows backend PID was not found before the 10s deadline.');
+  debug('Windows backend PID was not found before the 30s deadline.');
   return null;
 };
 
@@ -216,7 +261,14 @@ const startWindowsScheduledTaskBackend = async () => {
   runWindowsCommand('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
   debug('Scheduled task run command returned. Now waiting for backend PID.');
 
-  return waitForWindowsBackendPid();
+  const pid = await waitForWindowsBackendPid();
+  if (!pid) {
+    logWindowsScheduledTaskState();
+    logFileTail(logFile, 'mssqlserver stdout log');
+    logFileTail(errorLogFile, 'mssqlserver stderr log');
+  }
+
+  return pid;
 };
 
 const pid = process.platform === 'win32'
