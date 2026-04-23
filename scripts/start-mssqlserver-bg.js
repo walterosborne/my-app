@@ -23,13 +23,32 @@ const backendEnvNames = [
   'NODE_ENV'
 ];
 
+const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const debug = (message) => {
+  console.log(`[NGAT START DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`);
+};
 
+process.on('beforeExit', (code) => {
+  debug(`PROCESS beforeExit code=${code} elapsedMs=${Date.now() - startedAt}`);
+});
+
+process.on('exit', (code) => {
+  debug(`PROCESS exit code=${code} elapsedMs=${Date.now() - startedAt}`);
+});
+
+debug('start-mssqlserver-bg.js entered.');
+debug(`platform=${process.platform} node=${process.version} cwd=${process.cwd()} appRoot=${appRoot}`);
+debug(`VSTS_PROCESS_LOOKUP_ID present=${process.env[azureProcessLookupEnv] ? 'yes' : 'no'}`);
+debug(`backend env present=${backendEnvNames.map((name) => `${name}:${process.env[name] === undefined ? 'no' : 'yes'}`).join(', ')}`);
+
+debug(`Running stop helper: ${stopScriptPath}`);
 const stopResult = spawnSync(process.execPath, [stopScriptPath], {
   cwd: appRoot,
   stdio: 'inherit',
   timeout: 15000
 });
+debug(`Stop helper returned status=${stopResult.status} signal=${stopResult.signal ?? 'none'} error=${stopResult.error?.message ?? 'none'}`);
 
 if (stopResult.error) {
   throw new Error(`Failed to stop the existing MSSQL backend: ${stopResult.error.message}`);
@@ -44,6 +63,7 @@ const detachedEnv = { ...process.env };
 // Azure Pipelines tracks and cleans up children with this env var; do not let
 // the long-running backend inherit it.
 delete detachedEnv[azureProcessLookupEnv];
+debug(`Detached env VSTS_PROCESS_LOOKUP_ID present=${detachedEnv[azureProcessLookupEnv] ? 'yes' : 'no'}`);
 
 const quotePowerShellLiteral = (value) => {
   const normalized = String(value).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -51,10 +71,13 @@ const quotePowerShellLiteral = (value) => {
 };
 
 const startDetachedBackend = () => {
+  debug('POSIX/non-Windows detached spawn path selected.');
+  debug(`Opening log files stdout=${logFile} stderr=${errorLogFile}`);
   const outFd = fs.openSync(logFile, 'a');
   const errFd = fs.openSync(errorLogFile, 'a');
 
   try {
+    debug(`Spawning ${process.execPath} mssqlserver.js with detached=true and file-only stdio.`);
     const child = spawn(process.execPath, ['mssqlserver.js'], {
       cwd: appRoot,
       detached: true,
@@ -64,10 +87,12 @@ const startDetachedBackend = () => {
     });
 
     child.unref();
+    debug(`Detached child spawned pid=${child.pid}; child.unref() called.`);
     return child.pid;
   } finally {
     fs.closeSync(outFd);
     fs.closeSync(errFd);
+    debug('Closed parent log file descriptors after spawn.');
   }
 };
 
@@ -79,8 +104,9 @@ const getPastStartTime = () => {
 };
 
 const runWindowsCommand = (file, args) => {
+  debug(`Windows command START: ${file} ${args.join(' ')}`);
   try {
-    return execFileSync(file, args, {
+    const output = execFileSync(file, args, {
       cwd: appRoot,
       env: detachedEnv,
       encoding: 'utf8',
@@ -88,15 +114,19 @@ const runWindowsCommand = (file, args) => {
       timeout: 15000,
       windowsHide: true
     });
+    debug(`Windows command END: ${file}; stdout=${JSON.stringify(output.trim())}`);
+    return output;
   } catch (error) {
     const stderr = error.stderr?.toString().trim();
     const stdout = error.stdout?.toString().trim();
     const details = [stderr, stdout].filter(Boolean).join('\n');
+    debug(`Windows command FAILED: ${file}; stderr=${JSON.stringify(stderr || '')}; stdout=${JSON.stringify(stdout || '')}; error=${error.message}`);
     throw new Error(`${file} failed${details ? `:\n${details}` : ''}`);
   }
 };
 
 const writeWindowsTaskScript = () => {
+  debug(`Writing scheduled task launcher script: ${windowsTaskScript}`);
   const envLines = backendEnvNames
     .filter((name) => process.env[name] !== undefined)
     .map((name) => `$env:${name} = ${quotePowerShellLiteral(process.env[name])}`);
@@ -115,9 +145,11 @@ const writeWindowsTaskScript = () => {
   ].join('\r\n');
 
   fs.writeFileSync(windowsTaskScript, `${contents}\r\n`, 'utf8');
+  debug(`Scheduled task launcher written. envLines=${envLines.length}`);
 };
 
 const getWindowsBackendPid = () => {
+  debug('Checking for Windows node.exe process whose command line contains mssqlserver.js.');
   const command = [
     '$process = Get-CimInstance Win32_Process -Filter "Name = \'node.exe\'"',
     '| Where-Object { $_.CommandLine -like \'*mssqlserver.js*\' }',
@@ -134,28 +166,40 @@ const getWindowsBackendPid = () => {
       command
     ]).trim();
     const pid = Number(output);
+    debug(`Windows backend PID query output=${JSON.stringify(output)} parsed=${pid || 'none'}`);
     return Number.isInteger(pid) && pid > 0 ? pid : null;
-  } catch {
+  } catch (error) {
+    debug(`Windows backend PID query failed but will retry/continue: ${error.message}`);
     return null;
   }
 };
 
 const waitForWindowsBackendPid = async () => {
   const deadline = Date.now() + 10000;
+  let attempt = 0;
 
   while (Date.now() < deadline) {
+    attempt += 1;
+    debug(`Waiting for Windows backend PID attempt=${attempt}`);
     const pid = getWindowsBackendPid();
-    if (pid) return pid;
+    if (pid) {
+      debug(`Windows backend PID found pid=${pid}`);
+      return pid;
+    }
     await sleep(500);
   }
 
+  debug('Windows backend PID was not found before the 10s deadline.');
   return null;
 };
 
 const startWindowsScheduledTaskBackend = async () => {
+  debug('Windows scheduled task path selected.');
   writeWindowsTaskScript();
 
   const taskCommand = `"${process.env.SystemRoot || 'C:\\Windows'}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "${windowsTaskScript}"`;
+  debug(`Task name=${windowsTaskName}`);
+  debug(`Task command=${taskCommand}`);
 
   runWindowsCommand('schtasks.exe', [
     '/Create',
@@ -167,6 +211,7 @@ const startWindowsScheduledTaskBackend = async () => {
   ]);
 
   runWindowsCommand('schtasks.exe', ['/Run', '/TN', windowsTaskName]);
+  debug('Scheduled task run command returned. Now waiting for backend PID.');
 
   return waitForWindowsBackendPid();
 };
@@ -180,7 +225,10 @@ if (!Number.isInteger(pid) || pid <= 0) {
 }
 
 fs.writeFileSync(pidFile, `${pid}\n`, 'utf8');
+debug(`PID file written: ${pidFile}`);
 
 console.log(`Started mssqlserver.js in background (PID ${pid}).`);
 console.log(`Stdout log: ${logFile}`);
 console.log(`Stderr log: ${errorLogFile}`);
+debug('start-mssqlserver-bg.js reached final line before explicit process.exit(0).');
+process.exit(0);

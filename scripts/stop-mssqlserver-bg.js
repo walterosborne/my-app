@@ -10,7 +10,22 @@ const pidFile = path.join(appRoot, '.mssqlserver.pid');
 const BACKEND_PORT = 3001;
 const WINDOWS_TASK_NAME = 'NGAT_MSSQL_Backend';
 
+const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const debug = (message) => {
+  console.log(`[NGAT STOP DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`);
+};
+
+process.on('beforeExit', (code) => {
+  debug(`PROCESS beforeExit code=${code} elapsedMs=${Date.now() - startedAt}`);
+});
+
+process.on('exit', (code) => {
+  debug(`PROCESS exit code=${code} elapsedMs=${Date.now() - startedAt}`);
+});
+
+debug('stop-mssqlserver-bg.js entered.');
+debug(`platform=${process.platform} node=${process.version} cwd=${process.cwd()} appRoot=${appRoot}`);
 
 const killPid = (pid) => {
   if (!pid || Number.isNaN(Number(pid))) {
@@ -18,9 +33,11 @@ const killPid = (pid) => {
   }
 
   const normalizedPid = Number(pid);
+  debug(`Attempting SIGTERM for PID ${normalizedPid}`);
 
   try {
     process.kill(normalizedPid, 'SIGTERM');
+    debug(`SIGTERM sent to PID ${normalizedPid}`);
     return true;
   } catch (error) {
     if (error.code !== 'ESRCH') {
@@ -31,6 +48,7 @@ const killPid = (pid) => {
 };
 
 const getListeningPidsForPort = (port) => {
+  debug(`Looking for listening PIDs on port ${port}.`);
   try {
     if (process.platform === 'win32') {
       const output = execSync(`cmd /c netstat -ano | findstr :${port}`, {
@@ -38,7 +56,7 @@ const getListeningPidsForPort = (port) => {
         stdio: ['ignore', 'pipe', 'ignore']
       }).toString();
 
-      return [...new Set(
+      const pids = [...new Set(
         output
           .split(/\r?\n/)
           .filter((line) => /\bLISTENING\b/i.test(line))
@@ -46,6 +64,8 @@ const getListeningPidsForPort = (port) => {
           .map((value) => Number(value))
           .filter((value) => Number.isInteger(value) && value > 0)
       )];
+      debug(`Windows netstat found PIDs: ${pids.length ? pids.join(', ') : 'none'}`);
+      return pids;
     }
 
     const output = execSync(`lsof -ti tcp:${port} -sTCP:LISTEN`, {
@@ -53,36 +73,44 @@ const getListeningPidsForPort = (port) => {
       stdio: ['ignore', 'pipe', 'ignore']
     }).toString();
 
-    return [...new Set(
+    const pids = [...new Set(
       output
         .split(/\r?\n/)
         .map((value) => Number(value.trim()))
         .filter((value) => Number.isInteger(value) && value > 0)
     )];
-  } catch {
+    debug(`lsof found PIDs: ${pids.length ? pids.join(', ') : 'none'}`);
+    return pids;
+  } catch (error) {
+    debug(`Port lookup found no PIDs or failed: ${error.message}`);
     return [];
   }
 };
 
 const endWindowsScheduledTask = () => {
   if (process.platform !== 'win32') {
+    debug('Not Windows; skipping scheduled task end.');
     return false;
   }
 
   try {
+    debug(`Ending Windows scheduled task ${WINDOWS_TASK_NAME}.`);
     execFileSync('schtasks.exe', ['/End', '/TN', WINDOWS_TASK_NAME], {
       cwd: appRoot,
       stdio: ['ignore', 'ignore', 'ignore'],
       timeout: 15000,
       windowsHide: true
     });
+    debug(`schtasks /End returned success for ${WINDOWS_TASK_NAME}.`);
     return true;
-  } catch {
+  } catch (error) {
+    debug(`schtasks /End did not end task: ${error.message}`);
     return false;
   }
 };
 
 const stopServer = async () => {
+  debug('stopServer starting.');
   const endedScheduledTask = endWindowsScheduledTask();
   if (endedScheduledTask) {
     await sleep(500);
@@ -91,17 +119,23 @@ const stopServer = async () => {
   const pids = new Set();
 
   if (fs.existsSync(pidFile)) {
+    debug(`PID file exists: ${pidFile}`);
     const storedPid = Number(fs.readFileSync(pidFile, 'utf8').trim());
     if (Number.isInteger(storedPid) && storedPid > 0) {
       pids.add(storedPid);
+      debug(`PID file added stored PID ${storedPid}.`);
     }
+  } else {
+    debug(`PID file does not exist: ${pidFile}`);
   }
 
   getListeningPidsForPort(BACKEND_PORT).forEach((pid) => pids.add(pid));
+  debug(`Total candidate PIDs to stop: ${pids.size ? [...pids].join(', ') : 'none'}`);
 
   if (pids.size === 0) {
     if (fs.existsSync(pidFile)) {
       fs.rmSync(pidFile, { force: true });
+      debug(`Removed stale PID file: ${pidFile}`);
     }
     console.log(endedScheduledTask ? 'Stopped existing MSSQL backend.' : 'No running MSSQL backend found.');
     return;
@@ -119,22 +153,27 @@ const stopServer = async () => {
   if (remainingPids.length > 0 && process.platform === 'win32') {
     for (const pid of remainingPids) {
       try {
+        debug(`Force killing remaining Windows PID ${pid}.`);
         execSync(`taskkill /PID ${pid} /T /F`, {
           cwd: appRoot,
           stdio: ['ignore', 'ignore', 'ignore']
         });
         stoppedAny = true;
-      } catch {
-        // Ignore if already stopped.
+      } catch (error) {
+        debug(`taskkill failed or PID already stopped: ${error.message}`);
       }
     }
   }
 
   if (fs.existsSync(pidFile)) {
     fs.rmSync(pidFile, { force: true });
+    debug(`Removed PID file: ${pidFile}`);
   }
 
   console.log(stoppedAny ? 'Stopped existing MSSQL backend.' : 'No running MSSQL backend found.');
+  debug('stopServer finished.');
 };
 
 await stopServer();
+debug('stop-mssqlserver-bg.js reached final line before explicit process.exit(0).');
+process.exit(0);
