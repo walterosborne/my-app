@@ -1,0 +1,19 @@
+$ErrorActionPreference = 'Stop'
+
+$appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
+$deployScript = Join-Path $appRoot "scripts\deploy-prod.ps1"
+
+Write-Host "NGAT YAML: appRoot=$appRoot"
+Write-Host "NGAT YAML: deployScript=$deployScript"
+
+if (!(Test-Path -LiteralPath $deployScript)) {
+  throw "Could not find deploy script at $deployScript"
+}
+
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployScript -AppRoot $appRoot
+$exitCode = $LASTEXITCODE
+
+Write-Host "NGAT YAML: deploy-prod.ps1 exited with code $exitCode"
+if ($exitCode -ne 0) {
+  throw "deploy-prod.ps1 failed with exit code $exitCode"
+}

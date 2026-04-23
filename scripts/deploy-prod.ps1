@@ -1,7 +1,38 @@
+param(
+    [string] $AppRoot
+)
+
 $ErrorActionPreference = 'Stop'
 
 $StartedAt = Get-Date
-$AppRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+function Resolve-NgatAppRoot {
+    param(
+        [string] $RequestedRoot
+    )
+
+    $candidates = @(
+        $RequestedRoot,
+        (Get-Location).Path,
+        $(if ($PSScriptRoot) { Join-Path $PSScriptRoot '..' } else { $null })
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $candidates) {
+        try {
+            $resolved = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).Path
+            if (Test-Path -LiteralPath (Join-Path $resolved 'package.json')) {
+                return $resolved
+            }
+        }
+        catch {
+            # Try the next candidate.
+        }
+    }
+
+    throw "Could not find app root. Checked: $($candidates -join ', ')"
+}
+
+$AppRoot = Resolve-NgatAppRoot -RequestedRoot $AppRoot
 $DebugLog = Join-Path $AppRoot 'ngat-prod-debug.log'
 
 function Write-NgatDeployLog {
