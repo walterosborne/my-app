@@ -54,6 +54,23 @@ const logFileTail = (filePath, label) => {
   }
 };
 
+const backendLogIndicatesServerStarted = () => {
+  try {
+    if (!fs.existsSync(logFile)) {
+      return false;
+    }
+
+    const contents = fs.readFileSync(logFile, 'utf8');
+    return contents.includes(`Server running on http://localhost:${backendPort}`)
+      || contents.includes(`Server running on http://0.0.0.0:${backendPort}`)
+      || contents.includes(`Binding host/port = localhost ${backendPort}`)
+      || contents.includes(`Binding host/port = 0.0.0.0 ${backendPort}`);
+  } catch (error) {
+    debug(`Could not inspect backend stdout log for startup marker: ${error.message}`);
+    return false;
+  }
+};
+
 process.on('beforeExit', (code) => {
   debug(`PROCESS beforeExit code=${code} elapsedMs=${Date.now() - startedAt}`);
 });
@@ -305,6 +322,15 @@ const pid = process.platform === 'win32'
   : startDetachedBackend();
 
 if (!Number.isInteger(pid) || pid <= 0) {
+  if (process.platform === 'win32' && backendLogIndicatesServerStarted()) {
+    debug('Backend PID was not detected, but stdout log confirms the server started. Treating startup as successful.');
+    console.log('Started mssqlserver.js in background (PID unavailable; verified by stdout log).');
+    console.log(`Stdout log: ${logFile}`);
+    console.log(`Stderr log: ${errorLogFile}`);
+    debug('start-mssqlserver-bg.js reached final line before explicit process.exit(0).');
+    process.exit(0);
+  }
+
   throw new Error(`Failed to start mssqlserver.js in the background. Check ${logFile} and ${errorLogFile}.`);
 }
 
