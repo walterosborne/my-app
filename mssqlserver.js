@@ -12,34 +12,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-
-// npm run clean
-// npm run build
-
-// $appPath = "$(deploymentPath)\$(iisSiteName)"
-// $stdoutLog = Join-Path $appPath "mssqlserver.log"
-// $stderrLog = Join-Path $appPath "mssqlserver.error.log"
-
-// $existing = Get-CimInstance Win32_Process | Where-Object {
-//     $_.Name -match '^node(\.exe)?$' -and $_.CommandLine -match 'mssqlserver\.js'
-// }
-
-// if ($existing) {
-//     $existing | ForEach-Object {
-//         Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
-//     }
-// }
-
-// Start-Process -FilePath "node" `
-//   -ArgumentList "mssqlserver.js" `
-//   -WorkingDirectory $appPath `
-//   -RedirectStandardOutput $stdoutLog `
-//   -RedirectStandardError $stderrLog `
-//   -WindowStyle Hidden
-
-// Write-Host "Started mssqlserver.js"
-
-
 const sqlConfig = {
     server: process.env.auditserver || '',
     database: process.env.auditdb || '',

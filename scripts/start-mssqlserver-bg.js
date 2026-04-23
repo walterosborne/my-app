@@ -10,17 +10,35 @@ const pidFile = path.join(appRoot, '.mssqlserver.pid');
 const logFile = path.join(appRoot, 'mssqlserver.log');
 const errorLogFile = path.join(appRoot, 'mssqlserver.error.log');
 const stopScriptPath = path.join(__dirname, 'stop-mssqlserver-bg.js');
+const azureProcessLookupEnv = 'VSTS_PROCESS_LOOKUP_ID';
 
-spawnSync(process.execPath, [stopScriptPath], {
+const stopResult = spawnSync(process.execPath, [stopScriptPath], {
   cwd: appRoot,
-  stdio: 'inherit'
+  stdio: 'inherit',
+  timeout: 15000
 });
+
+if (stopResult.error) {
+  throw new Error(`Failed to stop the existing MSSQL backend: ${stopResult.error.message}`);
+}
+
+if (stopResult.status !== 0) {
+  throw new Error(`Failed to stop the existing MSSQL backend. Exit code: ${stopResult.status}`);
+}
+
+const detachedEnv = { ...process.env };
+
+// Azure Pipelines tracks and cleans up children with this env var; do not let
+// the long-running backend inherit it.
+delete detachedEnv[azureProcessLookupEnv];
 
 const quotePowerShell = (value) => String(value).replace(/'/g, "''");
 const quotePosix = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
 const startOnWindows = () => {
   const command = [
+    `$ErrorActionPreference = 'Stop';`,
+    `Remove-Item Env:${azureProcessLookupEnv} -ErrorAction SilentlyContinue;`,
     `$proc = Start-Process -FilePath '${quotePowerShell(process.execPath)}'`,
     `-ArgumentList 'mssqlserver.js'`,
     `-WorkingDirectory '${quotePowerShell(appRoot)}'`,
@@ -38,6 +56,7 @@ const startOnWindows = () => {
     command
   ], {
     cwd: appRoot,
+    env: detachedEnv,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit']
   }).trim();
@@ -47,6 +66,9 @@ const startOnWindows = () => {
 
 const startOnPosix = () => {
   const command = [
+    'env',
+    '-u',
+    azureProcessLookupEnv,
     'nohup',
     quotePosix(process.execPath),
     quotePosix(path.join(appRoot, 'mssqlserver.js')),
@@ -59,6 +81,7 @@ const startOnPosix = () => {
 
   const pid = execFileSync('sh', ['-c', command], {
     cwd: appRoot,
+    env: detachedEnv,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'inherit']
   }).trim();
