@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,66 +32,28 @@ const detachedEnv = { ...process.env };
 // the long-running backend inherit it.
 delete detachedEnv[azureProcessLookupEnv];
 
-const quotePowerShell = (value) => String(value).replace(/'/g, "''");
-const quotePosix = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
+const startDetachedBackend = () => {
+  const outFd = fs.openSync(logFile, 'a');
+  const errFd = fs.openSync(errorLogFile, 'a');
 
-const startOnWindows = () => {
-  const command = [
-    `$ErrorActionPreference = 'Stop';`,
-    `Remove-Item Env:${azureProcessLookupEnv} -ErrorAction SilentlyContinue;`,
-    `$proc = Start-Process -FilePath '${quotePowerShell(process.execPath)}'`,
-    `-ArgumentList 'mssqlserver.js'`,
-    `-WorkingDirectory '${quotePowerShell(appRoot)}'`,
-    `-RedirectStandardOutput '${quotePowerShell(logFile)}'`,
-    `-RedirectStandardError '${quotePowerShell(errorLogFile)}'`,
-    `-WindowStyle Hidden`,
-    `-PassThru;`,
-    `[Console]::Out.Write($proc.Id)`
-  ].join(' ');
+  try {
+    const child = spawn(process.execPath, ['mssqlserver.js'], {
+      cwd: appRoot,
+      detached: true,
+      env: detachedEnv,
+      stdio: ['ignore', outFd, errFd],
+      windowsHide: true
+    });
 
-  const pid = execFileSync('powershell.exe', [
-    '-NoProfile',
-    '-ExecutionPolicy', 'Bypass',
-    '-Command',
-    command
-  ], {
-    cwd: appRoot,
-    env: detachedEnv,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit']
-  }).trim();
-
-  return Number(pid);
+    child.unref();
+    return child.pid;
+  } finally {
+    fs.closeSync(outFd);
+    fs.closeSync(errFd);
+  }
 };
 
-const startOnPosix = () => {
-  const command = [
-    'env',
-    '-u',
-    azureProcessLookupEnv,
-    'nohup',
-    quotePosix(process.execPath),
-    quotePosix(path.join(appRoot, 'mssqlserver.js')),
-    '>>',
-    quotePosix(logFile),
-    '2>>',
-    quotePosix(errorLogFile),
-    '< /dev/null & echo $!'
-  ].join(' ');
-
-  const pid = execFileSync('sh', ['-c', command], {
-    cwd: appRoot,
-    env: detachedEnv,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'inherit']
-  }).trim();
-
-  return Number(pid);
-};
-
-const pid = process.platform === 'win32'
-  ? startOnWindows()
-  : startOnPosix();
+const pid = startDetachedBackend();
 
 if (!Number.isInteger(pid) || pid <= 0) {
   throw new Error('Failed to start mssqlserver.js in the background.');
