@@ -69,6 +69,28 @@ function Invoke-NpmStep {
     }
 }
 
+function Prepare-IisDistRoot {
+    $sourceWebConfig = Join-Path $AppRoot 'web.config'
+    $distRoot = Join-Path $AppRoot 'dist'
+    $targetWebConfig = Join-Path $distRoot 'web.config'
+
+    Write-NgatDeployLog "STEP START: prepare IIS dist root"
+    Write-NgatDeployLog "sourceWebConfig=$sourceWebConfig"
+    Write-NgatDeployLog "distRoot=$distRoot"
+
+    if (!(Test-Path -LiteralPath $sourceWebConfig)) {
+        throw "Could not find web.config at $sourceWebConfig"
+    }
+
+    if (!(Test-Path -LiteralPath $distRoot)) {
+        throw "Could not find built dist folder at $distRoot"
+    }
+
+    Copy-Item -LiteralPath $sourceWebConfig -Destination $targetWebConfig -Force
+
+    Write-NgatDeployLog "STEP END: prepare IIS dist root targetWebConfig=$targetWebConfig"
+}
+
 try {
     Set-Location -LiteralPath $AppRoot
 
@@ -82,6 +104,7 @@ try {
 
     Invoke-NpmStep -Name 'clean dist' -Arguments @('run', 'clean')
     Invoke-NpmStep -Name 'vite production build' -Arguments @('run', 'build')
+    Prepare-IisDistRoot
     Invoke-NpmStep -Name 'start MSSQL backend' -Arguments @('run', 'start:mssqlserver:bg')
 
     Write-NgatDeployLog 'deploy-prod.ps1 completed successfully.'

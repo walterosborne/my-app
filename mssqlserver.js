@@ -220,11 +220,28 @@ const smtpTransport = nodemailer.createTransport({
 
 const HARD_CODED_NETWORK_ID = 'N35589';
 
+const buildHeaderDebugPayload = (req) => ({
+    headers: req.headers,
+    rawHeaders: req.rawHeaders,
+    authCandidates: {
+        auth_user: req.get('AUTH_USER') ?? null,
+        x_auth_header: req.get('X-Auth-Header') ?? null,
+        remote_user: req.get('REMOTE_USER') ?? null,
+        x_iis_windowsauthuserid: req.get('X-IIS-WindowsAuthUserId') ?? null,
+        x_iisnode_auth_user: req.get('X-IISNODE-AUTH_USER') ?? null,
+        x_forwarded_user: req.get('X-Forwarded-User') ?? null
+    }
+});
+
 const getNetworkIdFromRequest = (req) => {
     // const networkId = req.get('X-Auth-Header');
     // return networkId;
     return HARD_CODED_NETWORK_ID;
 };
+
+app.get(['/testheaders', '/api/testheaders'], (req, res) => {
+    res.type('application/json').send(`${JSON.stringify(buildHeaderDebugPayload(req), null, 2)}\n`);
+});
 
 const getRosterRowsByMyIds = async (myIds = []) => {
     const normalizedMyIds = [...new Set(

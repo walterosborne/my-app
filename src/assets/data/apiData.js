@@ -1,12 +1,7 @@
 // API data loader:
-// - when running through Vite dev/preview, call the backend on port 3001
-// - when running behind IIS/reverse proxy, use relative /api so the proxy handles it
-const isViteFrontendPort = typeof window !== 'undefined'
-    && ['4173', '5173'].includes(window.location.port);
-
-export const API_BASE = isViteFrontendPort
-    ? `${window.location.protocol}//${window.location.hostname}:3001/api`
-    : '/api';
+// - during local Vite dev, /api is proxied to the backend on port 3001
+// - behind IIS/reverse proxy, /api is handled by the web.config rewrite
+export const API_BASE = '/api';
 
 export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
 

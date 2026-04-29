@@ -1,0 +1,181 @@
+trigger: none
+resources:
+  pipelines:
+  - pipeline: Build_NGATReact
+    source: NGATReact-Build
+    trigger:
+      branches:
+        include:
+          - dev
+          - staging
+          - main
+
+stages:
+- stage: Deploy_NGATReact
+
+  variables:
+  - name: buildPlatform
+    value: 'Any CPU'
+  - name: buildConfiguration
+    value: 'Release'
+  - name: productionBranchName
+    value: 'main'
+  - name: stagingBranchName
+    value: 'staging'
+  - name: developmentBranchName
+    value: 'dev'
+  - name: applicationName
+    value: NGAT-React
+  - name: artifactName
+    ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
+      value: "${{ variables.applicationName }}_Dev_Drop"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['stagingBranchName'])}}:
+      value: "${{ variables.applicationName }}_Stg_Drop"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
+      value: "${{ variables.applicationName }}_Prod_Drop"
+  - name: iisSiteName
+    value: "NGAT-React_ds_H200003021"
+  - name: devTarget
+    value: "YW4-YWVAP190146.northgrum.com"
+  - name: stageTarget
+    value: "YW4-YWVAP190149.northgrum.com"
+  - name: prodTarget
+    value: "YW4-YWVAP190187.northgrum.com"
+  - name: environmentName
+    ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
+      value: "${{ variables.applicationName }} - Development"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['stagingBranchName'])}}:
+      value: "${{ variables.applicationName }} - Stage"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
+      value: "${{ variables.applicationName }} - Production"
+    ${{ if notIn(variables['Build.SourceBranchName'],variables['developmentBranchName'],variables['stagingBranchName'],variables['productionBranchName'])}}:
+      value: "${{ variables.applicationName }} - Development"
+  - name: targetMachine
+    ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
+      value: "${{ variables.devTarget }}"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['stagingBranchName'])}}:
+      value: "${{ variables.stageTarget }}"
+    ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
+      value: "${{ variables.prodTarget }}"
+  - name: iisTempPath
+    value: "D:\\Temp\\$(iisSiteName)"
+  - name: deploymentPath
+    value: "D:/inetpub/wwwroot"
+  - group: "BuildAccount"
+
+  jobs:
+  - deployment: Deploy_NGATReact
+    pool: 'Enterprise-Release'
+    displayName: 'Deploy ${{ variables.environmentName }}'
+    environment: '${{ variables.environmentName }}'
+
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: WindowsMachineFileCopy@2
+            displayName: "Copy React site"
+            inputs:
+              SourcePath: '$(Agent.BuildDirectory)/Build_NGATReact/$(artifactName)/$(applicationName).zip'
+              MachineNames: '$(targetMachine)'
+              AdminUserName: '$(BuildUser)'
+              AdminPassword: '$(Password)'
+              TargetPath: '$(iisTempPath)'
+              CleanTargetBeforeCopy: false
+          - task: IISWebAppMgmt@3
+            displayName: "IIS - Stop App Pool"
+            inputs:
+              machinesList: '$(targetMachine)'
+              AdminUserName: '$(BuildUser)'
+              AdminPassword: '$(Password)'
+              WinRMProtocol: "Https"
+              IISDeploymentType: "IISApplicationPool"
+              ActionIISApplicationPool: "StopAppPool"
+              StartStopRecycleAppPoolName: "NGAT-React_ds_H200003021"
+
+          - task: PowerShellOnTargetMachines@3
+            displayName: "Extract Zip - Server"
+            inputs:
+              Machines: $(targetMachine)
+              ScriptType: Inline
+              InlineScript: "Expand-Archive -LiteralPath '$(iisTempPath)/$(applicationName).zip' -DestinationPath '$(deploymentPath)/$(iisSiteName)' -Force"
+          - task: PowerShellOnTargetMachines@3
+            displayName: "Run Npm install"
+            inputs:
+              Machines: $(targetMachine)
+              ScriptType: Inline
+              InlineScript: "npm install"
+            WorkingDirectory: $(deploymentPath)/$(iisSiteName)
+
+          - task: PowerShellOnTargetMachines@3
+            displayName: "Run Npm prod"
+            inputs:
+              Machines: $(targetMachine)
+              ScriptType: Inline
+              InlineScript: |
+                $ErrorActionPreference = 'Stop'
+
+                $appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
+                $deployScript = Join-Path $appRoot "scripts\deploy-prod.ps1"
+
+                Write-Host "NGAT YAML: appRoot=$appRoot"
+                Write-Host "NGAT YAML: deployScript=$deployScript"
+
+                if (!(Test-Path -LiteralPath $deployScript)) {
+                  throw "Could not find deploy script at $deployScript"
+                }
+
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployScript -AppRoot $appRoot
+                $exitCode = $LASTEXITCODE
+
+                Write-Host "NGAT YAML: deploy-prod.ps1 exited with code $exitCode"
+                if ($exitCode -ne 0) {
+                  throw "deploy-prod.ps1 failed with exit code $exitCode"
+                }
+            WorkingDirectory: $(deploymentPath)/$(iisSiteName)
+
+          - task: PowerShellOnTargetMachines@3
+            displayName: "Prepare IIS dist root"
+            inputs:
+              Machines: $(targetMachine)
+              ScriptType: Inline
+              InlineScript: |
+                $ErrorActionPreference = 'Stop'
+
+                $appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
+                $distRoot = Join-Path $appRoot "dist"
+                $sourceWebConfig = Join-Path $appRoot "web.config"
+                $targetWebConfig = Join-Path $distRoot "web.config"
+
+                if (!(Test-Path -LiteralPath $sourceWebConfig)) {
+                  throw "Could not find web.config at $sourceWebConfig"
+                }
+
+                if (!(Test-Path -LiteralPath $distRoot)) {
+                  throw "Could not find built dist folder at $distRoot"
+                }
+
+                Copy-Item -LiteralPath $sourceWebConfig -Destination $targetWebConfig -Force
+                Write-Host "Prepared IIS dist root at $distRoot"
+                Write-Host "Backend remains at $appRoot and API requests will be proxied by $targetWebConfig"
+            WorkingDirectory: $(deploymentPath)/$(iisSiteName)
+
+          - task: IISWebAppMgmt@3
+            displayName: "IIS - Start App Pool"
+            inputs:
+              machinesList: '$(targetMachine)'
+              AdminUserName: '$(BuildUser)'
+              AdminPassword: '$(Password)'
+              WinRMProtocol: "Https"
+              IISDeploymentType: "IISApplicationPool"
+              ActionIISApplicationPool: "StartAppPool"
+              StartStopRecycleAppPoolName: "NGAT-React_ds_H200003021"
+
+          # - task: WindowsMachineFileCopy@2
+          #   inputs:
+          #     SourcePath: '$(Agent.BuildDirectory)/Build_NGATReact/$(artifactName)/'
+          #     MachineNames: '$(targetMachine)'
+          #     AdminUserName: '$(BuildUser)'
+          #     AdminPassword: '$(Password)'
+          #     TargetPath: '$(deploymentPath)/$(iisSiteName)'
+          #     CleanTargetBeforeCopy: false

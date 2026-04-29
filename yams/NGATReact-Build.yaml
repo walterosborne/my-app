@@ -1,0 +1,74 @@
+trigger:
+  branches:
+    include:
+      - dev
+      - staging
+      - main
+
+variables:
+- name: buildPlatform
+  value: 'Any CPU'
+- name: buildConfiguration
+  value: 'Release'
+- name: productionBranchName
+  value: 'main'
+- name: stagingBranchName
+  value: 'staging'
+- name: developmentBranchName
+  value: 'dev'
+- name: applicationName
+  value: NGAT-React
+- name: artifactName
+  ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
+    value: "${{ variables.applicationName }}_Dev_Drop"
+  ${{ if eq(variables['Build.SourceBranchName'],variables['stagingBranchName'])}}:
+    value: "${{ variables.applicationName }}_Stg_Drop"
+  ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
+    value: "${{ variables.applicationName }}_Prod_Drop"
+- name: envName
+  ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
+    value: "development"
+  ${{ if eq(variables['Build.SourceBranchName'],variables['stagingBranchName'])}}:
+    value: "staging"
+  ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
+    value: "production"
+
+pool: 'Enterprise-Release'
+
+steps:
+# - script: |
+#     npm install
+#   workingDirectory: $(Build.SourcesDirectory)
+#   displayName: NPM Install
+
+# - script: |
+#     npm run build
+#   workingDirectory: $(Build.SourcesDirectory)
+#   displayName: Build React App
+
+# - script: |
+#     npm run test -- --testTimeout=10000
+#   workingDirectory: $(Build.SourcesDirectory)
+#   displayName: 'unit tests'
+
+# - task: CopyFiles@2
+#   displayName: 'Copy Built Node Application to: $(Build.ArtifactStagingDirectory)'
+#   inputs:
+#     SourceFolder: '$(Build.SourcesDirectory)/dist'
+#     Contents: '**'
+#     TargetFolder: '$(Build.ArtifactStagingDirectory)'
+- task: ArchiveFiles@2
+  displayName: "Zip Up Artifact"
+  inputs:
+    rootFolderOrFile: '$(Build.SourcesDirectory)'
+    includeRootFolder: false
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(applicationName).zip'
+    replaceExistingArchive: true
+
+- task: PublishBuildArtifacts@1
+  displayName: "Publish Artifact"
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    artifactName: '$(artifactName)'
+    publishLocation: 'Container'
