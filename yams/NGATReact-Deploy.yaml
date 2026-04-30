@@ -98,7 +98,7 @@ stages:
             inputs:
               Machines: $(targetMachine)
               ScriptType: Inline
-              InlineScript: "Expand-Archive -LiteralPath '$(iisTempPath)/$(applicationName).zip' -DestinationPath '$(deploymentPath)/$(iisSiteName)' -Force"
+              InlineScript: "Expand-Archive -LiteralPath '$(iisTempPath)/$(applicationName).zip' -DestinationPath $(deploymentPath)/$(iisSiteName) -Force"
           - task: PowerShellOnTargetMachines@3
             displayName: "Run Npm install"
             inputs:
@@ -114,12 +114,11 @@ stages:
               ScriptType: Inline
               InlineScript: |
                 $ErrorActionPreference = 'Stop'
-
                 $appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
                 $deployScript = Join-Path $appRoot "scripts\deploy-prod.ps1"
 
-                Write-Host "NGAT YAML: appRoot-$appRoot"
-                Write-Host "NGAT YAML: deployScript-$deployScript"
+                Write-Host "NGAT YAML: appRoot=$appRoot"
+                Write-Host "NGAT YAML: deployScript=$deployScript"
 
                 if (!(Test-Path -LiteralPath $deployScript)) {
                   throw "Could not find deploy script at $deployScript"
@@ -136,9 +135,9 @@ stages:
           - task: IISWebAppMgmt@3
             displayName: "IIS - Start App Pool"
             inputs:
-              machinesList: '$(targetMachine)'
-              AdminUserName: '$(BuildUser)'
-              AdminPassword: '$(Password)'
+              machinesList: "$(targetMachine)"
+              AdminUserName: "$(BuildUser)"
+              AdminPassword: "$(Password)"
               WinRMProtocol: "Https"
               IISDeploymentType: "IISApplicationPool"
               ActionIISApplicationPool: "StartAppPool"
