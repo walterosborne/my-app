@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import teamImage from './assets/placeholder.jpg';
-import { getAuditsAll, getAuditors, getCurrentUser } from './assets/data/apiData';
+import { getAuditsAll, getAuditors, getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData';
 import { formatDateForDisplay, parseCalendarDate } from './Utilities.jsx';
 
 const Home = () => {
@@ -12,6 +12,35 @@ const Home = () => {
     const [currentUser, setCurrentUser] = React.useState(null);
     const leftBubbleRef = React.useRef(null);
     const rightBubbleRef = React.useRef(null);
+
+    React.useEffect(() => {
+        async function logAuthDiagnostics() {
+            try {
+                const diagnosticsPayload = await getHeaderDiagnostics();
+                const authCandidates = diagnosticsPayload?.diagnostics?.authCandidates ?? {};
+                const authUser = authCandidates.auth_user ?? null;
+                const likelyAuthUser =
+                    authCandidates.auth_user
+                    || authCandidates.remote_user
+                    || authCandidates.x_auth_user
+                    || authCandidates.x_logon_user
+                    || authCandidates.x_remote_user
+                    || authCandidates.x_iis_windowsauthuserid
+                    || authCandidates.x_iisnode_auth_user
+                    || authCandidates.x_forwarded_user
+                    || authCandidates.x_auth_header
+                    || null;
+
+                console.log('NGAT AUTH_USER:', authUser);
+                console.log('NGAT likely auth user:', likelyAuthUser);
+                console.log('NGAT auth candidates:', authCandidates);
+            } catch (error) {
+                console.error('NGAT failed to load auth diagnostics on Home:', error);
+            }
+        }
+
+        logAuthDiagnostics();
+    }, []);
 
     // Load audits from API and format for display
     React.useEffect(() => {
