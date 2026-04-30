@@ -131,7 +131,7 @@ stages:
                   if ($exitCode -ne 0) {
                     throw "deploy-prod.ps1 failed with exit code $exitCode"
                   }
-            WorkingDirectory: $(deploymentPath)/$(iisSiteName)
+                WorkingDirectory: $(deploymentPath)/$(iisSiteName)
           - task: IISWebAppMgmt@3
             displayName: "IIS - Start App Pool"
             inputs:
