@@ -15,6 +15,8 @@ const windowsTaskScript = path.join(appRoot, '.mssqlserver-task.ps1');
 const windowsTaskName = 'NGAT_MSSQL_Backend';
 const azureProcessLookupEnv = 'VSTS_PROCESS_LOOKUP_ID';
 const backendPort = 3001;
+const currentRunId = `${Date.now()}-${process.pid}`;
+const verboseConsoleLogging = String(process.env.NGAT_VERBOSE_STARTUP_LOGS || '').toLowerCase() === 'true';
 const backendEnvNames = [
   'auditserver',
   'auditdb',
@@ -29,7 +31,9 @@ const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const debug = (message) => {
   const line = `[NGAT START DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`;
-  console.log(line);
+  if (verboseConsoleLogging) {
+    console.log(line);
+  }
   fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 
@@ -54,6 +58,13 @@ const logFileTail = (filePath, label) => {
   }
 };
 
+const resetBackendLogs = () => {
+  const resetLine = `[NGAT START RUN ${currentRunId}] log reset ${new Date().toISOString()}\n`;
+  debug(`Resetting backend logs for runId=${currentRunId}.`);
+  fs.writeFileSync(logFile, resetLine, 'utf8');
+  fs.writeFileSync(errorLogFile, resetLine, 'utf8');
+};
+
 const backendLogIndicatesServerStarted = () => {
   try {
     if (!fs.existsSync(logFile)) {
@@ -61,6 +72,11 @@ const backendLogIndicatesServerStarted = () => {
     }
 
     const contents = fs.readFileSync(logFile, 'utf8');
+    if (!contents.includes(`[NGAT START RUN ${currentRunId}]`)) {
+      debug(`Stdout log does not contain current run marker ${currentRunId}.`);
+      return false;
+    }
+
     const startupPatterns = [
       new RegExp(`\\[NGAT MSSQL READY\\]\\s+host=\\S+\\s+port=${backendPort}\\b`),
       new RegExp(`Server running on http://[^\\s]+:${backendPort}\\b`),
@@ -102,6 +118,8 @@ if (stopResult.error) {
 if (stopResult.status !== 0) {
   throw new Error(`Failed to stop the existing MSSQL backend. Exit code: ${stopResult.status}`);
 }
+
+resetBackendLogs();
 
 const detachedEnv = { ...process.env };
 
@@ -194,7 +212,7 @@ const writeWindowsTaskScript = () => {
     `$serverPath = ${quotePowerShellLiteral(path.join(appRoot, 'mssqlserver.js'))}`,
     `$stdoutLog = ${quotePowerShellLiteral(logFile)}`,
     `$stderrLog = ${quotePowerShellLiteral(errorLogFile)}`,
-    '"{0} Starting NGAT MSSQL backend from scheduled task." -f (Get-Date -Format o) | Out-File -FilePath $stdoutLog -Append',
+    `'"{0} Starting NGAT MSSQL backend from scheduled task. runId=${currentRunId}" -f (Get-Date -Format o) | Out-File -FilePath $stdoutLog -Append`,
     '& $nodePath $serverPath >> $stdoutLog 2>> $stderrLog'
   ].join('\r\n');
 

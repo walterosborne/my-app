@@ -10,12 +10,15 @@ const pidFile = path.join(appRoot, '.mssqlserver.pid');
 const debugLogFile = path.join(appRoot, 'ngat-prod-debug.log');
 const BACKEND_PORT = 3001;
 const WINDOWS_TASK_NAME = 'NGAT_MSSQL_Backend';
+const verboseConsoleLogging = String(process.env.NGAT_VERBOSE_STARTUP_LOGS || '').toLowerCase() === 'true';
 
 const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const debug = (message) => {
   const line = `[NGAT STOP DEBUG ${new Date().toISOString()} pid=${process.pid} ppid=${process.ppid}] ${message}`;
-  console.log(line);
+  if (verboseConsoleLogging) {
+    console.log(line);
+  }
   fs.appendFileSync(debugLogFile, `${line}\n`, 'utf8');
 };
 

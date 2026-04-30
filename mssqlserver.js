@@ -454,7 +454,7 @@ app.get(['/testheaders', '/api/testheaders'], (req, res) => {
         authCandidates: payload.diagnostics.authCandidates,
         request: payload.diagnostics.request,
         socket: payload.diagnostics.socket
-      }, null, 2))}</pre>
+    }, null, 2))}</pre>
     </div>
     <div class="section">
       <h2>Full Payload</h2>
@@ -1563,7 +1563,7 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = 3001;
-const PREFERRED_HOST = process.env.NGAT_BIND_HOST || '0.0.0.0';
+const PREFERRED_HOST = '0.0.0.0';
 const FALLBACK_HOST = '127.0.0.1';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
 console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());
