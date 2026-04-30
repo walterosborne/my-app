@@ -58,18 +58,7 @@ DATABASE-ARCHITECHTURE.md
 DATABASE-README.md
 
 # SQL setup/migration helpers (not required at runtime)
-add-roster-non-auditor.sql
-add-auditor-without-audits.sql
-update-network-ids.sql
-db-setup.sql
-update-type-constraint.sql
-create_risk_tables.sql
-revert-approver-int.sql
-mssql-recreate-react-tables.sql
-add-org-hierarchy.sql
-add-approvals-and-emails.sql
-update-audit-division-function-multiselect.sql
-migrate-all-data.sql
+/sqlarchive/
 
 # Local assets
 src/assets/NG.png
@@ -81,3 +70,6 @@ src/config/foeLinks.js
 # Local SMTP config
 smtpConfig.js
 
+# Local pipeline YAML references
+/yams/
+/yams/**

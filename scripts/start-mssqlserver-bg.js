@@ -61,10 +61,13 @@ const backendLogIndicatesServerStarted = () => {
     }
 
     const contents = fs.readFileSync(logFile, 'utf8');
-    return contents.includes(`Server running on http://localhost:${backendPort}`)
-      || contents.includes(`Server running on http://0.0.0.0:${backendPort}`)
-      || contents.includes(`Binding host/port = localhost ${backendPort}`)
-      || contents.includes(`Binding host/port = 0.0.0.0 ${backendPort}`);
+    const startupPatterns = [
+      new RegExp(`\\[NGAT MSSQL READY\\]\\s+host=\\S+\\s+port=${backendPort}\\b`),
+      new RegExp(`Server running on http://[^\\s]+:${backendPort}\\b`),
+      new RegExp(`Binding host/port = [^\\r\\n]+\\s${backendPort}\\b`)
+    ];
+
+    return startupPatterns.some((pattern) => pattern.test(contents));
   } catch (error) {
     debug(`Could not inspect backend stdout log for startup marker: ${error.message}`);
     return false;

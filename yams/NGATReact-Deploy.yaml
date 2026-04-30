@@ -134,32 +134,6 @@ stages:
                 }
             WorkingDirectory: $(deploymentPath)/$(iisSiteName)
 
-          - task: PowerShellOnTargetMachines@3
-            displayName: "Prepare IIS dist root"
-            inputs:
-              Machines: $(targetMachine)
-              ScriptType: Inline
-              InlineScript: |
-                $ErrorActionPreference = 'Stop'
-
-                $appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
-                $distRoot = Join-Path $appRoot "dist"
-                $sourceWebConfig = Join-Path $appRoot "web.config"
-                $targetWebConfig = Join-Path $distRoot "web.config"
-
-                if (!(Test-Path -LiteralPath $sourceWebConfig)) {
-                  throw "Could not find web.config at $sourceWebConfig"
-                }
-
-                if (!(Test-Path -LiteralPath $distRoot)) {
-                  throw "Could not find built dist folder at $distRoot"
-                }
-
-                Copy-Item -LiteralPath $sourceWebConfig -Destination $targetWebConfig -Force
-                Write-Host "Prepared IIS dist root at $distRoot"
-                Write-Host "Backend remains at $appRoot and API requests will be proxied by $targetWebConfig"
-            WorkingDirectory: $(deploymentPath)/$(iisSiteName)
-
           - task: IISWebAppMgmt@3
             displayName: "IIS - Start App Pool"
             inputs:

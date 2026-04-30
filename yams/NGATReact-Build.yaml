@@ -33,7 +33,7 @@ variables:
   ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
     value: "production"
 
-pool: 'Enterprise-Release'
+pool: 'Enterprise'
 
 steps:
 # - script: |

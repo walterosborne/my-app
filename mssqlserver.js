@@ -1297,6 +1297,7 @@ function startServer(host, canFallback = true) {
     const server = app.listen(PORT, host, () => {
         console.log(`[NGAT MSSQL DEBUG 2026-04-13] Binding host/port = ${host} ${PORT}`);
         console.log(`Server running on http://${host}:${PORT}`);
+        console.log(`[NGAT MSSQL READY] host=${host} port=${PORT}`);
     });
 
     server.once('error', (error) => {
