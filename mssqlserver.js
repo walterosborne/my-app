@@ -5,7 +5,6 @@ import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
-import os from 'os';
 import smtpConfig from './smtpConfig.js';
 
 const app = express();
@@ -1375,8 +1374,8 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = 3001;
-const PREFERRED_HOST = os.hostname();
-const FALLBACK_HOST = '0.0.0.0';
+const PREFERRED_HOST = process.env.NGAT_BIND_HOST || '0.0.0.0';
+const FALLBACK_HOST = '127.0.0.1';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
 console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Preferred host =', PREFERRED_HOST);
