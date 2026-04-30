@@ -48,7 +48,7 @@ stages:
       value: "${{ variables.applicationName }} - Stage"
     ${{ if eq(variables['Build.SourceBranchName'],variables['productionBranchName'])}}:
       value: "${{ variables.applicationName }} - Production"
-    ${{ if notIn(variables['Build.SourceBranchName'],variables['developmentBranchName'],variables['stagingBranchName'],variables['productionBranchName'])}}:
+    ${{ if notIn(variables['Build.SourceBranchName'],variables['developmentBranchName'],variables['stagingBranchName'],variables['productionBranchName']) }}:
       value: "${{ variables.applicationName }} - Development"
   - name: targetMachine
     ${{ if eq(variables['Build.SourceBranchName'],variables['developmentBranchName'])}}:
@@ -85,9 +85,9 @@ stages:
           - task: IISWebAppMgmt@3
             displayName: "IIS - Stop App Pool"
             inputs:
-              machinesList: '$(targetMachine)'
-              AdminUserName: '$(BuildUser)'
-              AdminPassword: '$(Password)'
+              machinesList: "$(targetMachine)"
+              AdminUserName: "$(BuildUser)"
+              AdminPassword: "$(Password)"
               WinRMProtocol: "Https"
               IISDeploymentType: "IISApplicationPool"
               ActionIISApplicationPool: "StopAppPool"
@@ -118,8 +118,8 @@ stages:
                 $appRoot = Join-Path "$(deploymentPath)" "$(iisSiteName)"
                 $deployScript = Join-Path $appRoot "scripts\deploy-prod.ps1"
 
-                Write-Host "NGAT YAML: appRoot=$appRoot"
-                Write-Host "NGAT YAML: deployScript=$deployScript"
+                Write-Host "NGAT YAML: appRoot-$appRoot"
+                Write-Host "NGAT YAML: deployScript-$deployScript"
 
                 if (!(Test-Path -LiteralPath $deployScript)) {
                   throw "Could not find deploy script at $deployScript"
@@ -133,7 +133,6 @@ stages:
                   throw "deploy-prod.ps1 failed with exit code $exitCode"
                 }
             WorkingDirectory: $(deploymentPath)/$(iisSiteName)
-
           - task: IISWebAppMgmt@3
             displayName: "IIS - Start App Pool"
             inputs:
