@@ -91,6 +91,37 @@ function Prepare-IisDistRoot {
     Write-NgatDeployLog "STEP END: prepare IIS dist root targetWebConfig=$targetWebConfig"
 }
 
+function Publish-IisDistToAppRoot {
+    $distRoot = Join-Path $AppRoot 'dist'
+
+    Write-NgatDeployLog "STEP START: publish dist to IIS root"
+    Write-NgatDeployLog "distRoot=$distRoot"
+    Write-NgatDeployLog "appRoot=$AppRoot"
+
+    if (!(Test-Path -LiteralPath $distRoot)) {
+        throw "Could not find built dist folder at $distRoot"
+    }
+
+    $distItems = @(Get-ChildItem -LiteralPath $distRoot -Force)
+    if ($distItems.Count -eq 0) {
+        throw "Built dist folder is empty at $distRoot"
+    }
+
+    foreach ($item in $distItems) {
+        $targetPath = Join-Path $AppRoot $item.Name
+
+        if (Test-Path -LiteralPath $targetPath) {
+            Remove-Item -LiteralPath $targetPath -Recurse -Force
+            Write-NgatDeployLog "Removed existing IIS root item $targetPath"
+        }
+
+        Copy-Item -LiteralPath $item.FullName -Destination $targetPath -Recurse -Force
+        Write-NgatDeployLog "Copied dist item $($item.FullName) to $targetPath"
+    }
+
+    Write-NgatDeployLog "STEP END: publish dist to IIS root items=$($distItems.Count)"
+}
+
 try {
     Set-Location -LiteralPath $AppRoot
 
@@ -105,6 +136,7 @@ try {
     Invoke-NpmStep -Name 'clean dist' -Arguments @('run', 'clean')
     Invoke-NpmStep -Name 'vite production build' -Arguments @('run', 'build')
     Prepare-IisDistRoot
+    Publish-IisDistToAppRoot
     Invoke-NpmStep -Name 'start MSSQL backend' -Arguments @('run', 'start:mssqlserver:bg')
 
     Write-NgatDeployLog 'deploy-prod.ps1 completed successfully.'
