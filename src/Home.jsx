@@ -15,6 +15,7 @@ const Home = () => {
 
     React.useEffect(() => {
         async function logAuthDiagnostics() {
+            console.log('NGAT auth diagnostics effect started on Home.');
             try {
                 const diagnosticsPayload = await getHeaderDiagnostics();
                 const authCandidates = diagnosticsPayload?.diagnostics?.authCandidates ?? {};
@@ -35,6 +36,7 @@ const Home = () => {
                 console.log('NGAT likely auth user:', likelyAuthUser);
                 console.log('NGAT auth candidates:', authCandidates);
             } catch (error) {
+                console.log('NGAT AUTH_USER: unavailable because /api/testheaders failed.');
                 console.error('NGAT failed to load auth diagnostics on Home:', error);
             }
         }
