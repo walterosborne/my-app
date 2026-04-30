@@ -1,86 +1,107 @@
-import { React, useEffect, useState } from 'react'
+import React from 'react';
+import './Headers.css';
+import { getHeaderDiagnostics } from './assets/data/apiData';
+
+const DiagnosticsBlock = ({ title, value, defaultOpen = false }) => (
+    <details className="headers-block" open={defaultOpen}>
+        <summary>{title}</summary>
+        <pre>{JSON.stringify(value, null, 2)}</pre>
+    </details>
+);
 
 function Headers() {
-    const [headers, setHeaders] = useState({});
-    const [allRequestHeaders, setAllRequestHeaders] = useState({});
+    const [payload, setPayload] = React.useState(null);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState('');
 
-    useEffect(() => {
-        // Try to get all possible request headers using a real fetch
-        fetch(window.location.href)
-            .then(response => {
-                const headerObj = {};
-                response.headers.forEach((value, key) => {
-                    headerObj[key] = value;
-                });
-                setHeaders(headerObj);
+    const loadDiagnostics = React.useCallback(async () => {
+        setLoading(true);
+        setError('');
 
-                // Also capture request headers from various sources
-                const requestHeaders = {
-                    // Navigator properties
-                    'User-Agent': navigator.userAgent,
-                    'Language': navigator.language,
-                    'Languages': navigator.languages?.join(', '),
-                    'Platform': navigator.platform,
-                    'Cookie-Enabled': navigator.cookieEnabled,
-                    'Online': navigator.onLine,
-                    'Vendor': navigator.vendor,
-
-                    // Document properties
-                    'Referrer': document.referrer,
-                    'Cookie': document.cookie,
-                    'Domain': document.domain,
-
-                    // Window properties
-                    'Origin': window.location.origin,
-                    'Hostname': window.location.hostname,
-                };
-
-                setAllRequestHeaders(requestHeaders);
-
-                // Log all headers to console for inspection
-                console.log('Response Headers:', headerObj);
-                console.log('Request Info:', requestHeaders);
-            })
-            .catch(err => console.error('Error fetching headers:', err));
+        try {
+            const data = await getHeaderDiagnostics();
+            setPayload(data);
+        } catch (err) {
+            console.error('Error loading header diagnostics:', err);
+            setPayload(null);
+            setError(err?.message || 'Failed to load diagnostics.');
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
+    React.useEffect(() => {
+        loadDiagnostics();
+    }, [loadDiagnostics]);
+
+    const diagnostics = payload?.diagnostics ?? {};
+    const request = diagnostics.request ?? {};
+    const authCandidates = diagnostics.authCandidates ?? {};
+    const networkIdPreview = diagnostics.networkIdPreview ?? {};
+    const processInfo = payload?.process ?? {};
+    const dbHealth = payload?.dbHealth ?? {};
+
     return (
-        <div>
-            <h1>All HTTP Headers and Request Information</h1>
+        <div className="headers-page">
+            <div className="headers-shell">
+                <div className="headers-hero">
+                    <div>
+                        <h1>Header Diagnostics</h1>
+                        <p>
+                            This page pulls the backend diagnostics payload from
+                            <code> /api/testheaders?format=json</code> and renders it inside the app.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        className="headers-refresh-button"
+                        onClick={loadDiagnostics}
+                        disabled={loading}
+                    >
+                        {loading ? 'Refreshing...' : 'Refresh Diagnostics'}
+                    </button>
+                </div>
 
-            <h2>Response Headers (from server)</h2>
-            <pre>{JSON.stringify(headers, null, 2)}</pre>
+                {error ? (
+                    <div className="headers-error-panel">
+                        <h2>Request Failed</h2>
+                        <p>{error}</p>
+                    </div>
+                ) : null}
 
-            <h2>Request Information (browser/client)</h2>
-            <pre>{JSON.stringify(allRequestHeaders, null, 2)}</pre>
+                <div className="headers-summary-grid">
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Selected Network ID</span>
+                        <strong>{networkIdPreview.selectedByCurrentCode || 'None'}</strong>
+                    </div>
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Generated At</span>
+                        <strong>{payload?.generatedAt || 'Not loaded'}</strong>
+                    </div>
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Backend PID</span>
+                        <strong>{processInfo.pid || 'Unknown'}</strong>
+                    </div>
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Request Path</span>
+                        <strong>{request.originalUrl || 'Unknown'}</strong>
+                    </div>
+                </div>
 
-            <h2>Window Location</h2>
-            <pre>{JSON.stringify({
-                'href': window.location.href,
-                'protocol': window.location.protocol,
-                'host': window.location.host,
-                'hostname': window.location.hostname,
-                'port': window.location.port,
-                'pathname': window.location.pathname,
-                'search': window.location.search,
-                'hash': window.location.hash,
-                'origin': window.location.origin
-            }, null, 2)}</pre>
-
-            <h2>Document Properties</h2>
-            <pre>{JSON.stringify({
-                'cookie': document.cookie,
-                'domain': document.domain,
-                'referrer': document.referrer,
-                'title': document.title,
-                'URL': document.URL,
-                'lastModified': document.lastModified
-            }, null, 2)}</pre>
-
-            <h2>Check Console</h2>
-            <p>All headers have been logged to the browser console for detailed inspection.</p>
+                <div className="headers-sections">
+                    <DiagnosticsBlock title="Auth Candidates" value={authCandidates} defaultOpen />
+                    <DiagnosticsBlock title="Network ID Preview" value={networkIdPreview} defaultOpen />
+                    <DiagnosticsBlock title="Request Details" value={request} />
+                    <DiagnosticsBlock title="Socket Details" value={diagnostics.socket ?? {}} />
+                    <DiagnosticsBlock title="Database Health" value={dbHealth} />
+                    <DiagnosticsBlock title="Process Info" value={processInfo} />
+                    <DiagnosticsBlock title="All Request Headers" value={diagnostics.headers ?? {}} />
+                    <DiagnosticsBlock title="Environment" value={payload?.env ?? {}} />
+                    <DiagnosticsBlock title="Full Diagnostics Payload" value={payload ?? {}} />
+                </div>
+            </div>
         </div>
-    )
+    );
 }
 
-export default Headers
+export default Headers;

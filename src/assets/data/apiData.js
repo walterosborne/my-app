@@ -44,6 +44,16 @@ export async function getCurrentUser() {
     return await fetchData('current-user', true);
 }
 
+export async function getHeaderDiagnostics() {
+    const response = await fetch(buildApiUrl('testheaders?format=json'), {
+        cache: 'no-store'
+    });
+    if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+}
+
 export async function getPrograms() {
     return await fetchData('programs');
 }
