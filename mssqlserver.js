@@ -38,6 +38,35 @@ const sqlPoolPromise = sqlPool.connect();
 const rosterSqlPool = new sql.ConnectionPool(rosterConfig);
 const rosterPoolPromise = rosterSqlPool.connect();
 
+const buildDbState = (config) => ({
+    configured: Boolean(config.server && config.database && config.user && config.password),
+    connected: false,
+    lastSuccessAt: null,
+    lastError: null
+});
+
+const dbHealth = {
+    audit: buildDbState(sqlConfig),
+    roster: buildDbState(rosterConfig)
+};
+
+const markDbHealthy = (name) => {
+    dbHealth[name] = {
+        ...dbHealth[name],
+        connected: true,
+        lastSuccessAt: new Date().toISOString(),
+        lastError: null
+    };
+};
+
+const markDbUnhealthy = (name, error) => {
+    dbHealth[name] = {
+        ...dbHealth[name],
+        connected: false,
+        lastError: error?.message || String(error)
+    };
+};
+
 const normalizeRow = (row) => {
     if (!row) return row;
     return Object.entries(row).reduce((acc, [key, value]) => {
@@ -86,6 +115,10 @@ const logDatabaseError = (label, error, details = {}) => {
         error: serializeSqlError(error)
     });
 };
+
+process.on('unhandledRejection', (reason) => {
+    console.error('[NGAT] Unhandled promise rejection:', reason);
+});
 
 const applyReturningClause = (queryText) => {
     const match = queryText.match(/\sRETURNING\s+([\s\S]+)$/i);
@@ -803,11 +836,67 @@ const getAuditForAccessCheck = async (client, scheduleId) => {
 sqlPoolPromise
     .then(async () => {
         await pool.query('SELECT GETDATE()');
+        markDbHealthy('audit');
         console.log('Database connected successfully');
     })
     .catch((err) => {
+        markDbUnhealthy('audit', err);
         console.error('Database connection error:', err);
     });
+
+rosterPoolPromise
+    .then(async () => {
+        await rosterPool.query('SELECT GETDATE()');
+        markDbHealthy('roster');
+        console.log('Roster database connected successfully');
+    })
+    .catch((err) => {
+        markDbUnhealthy('roster', err);
+        console.error('Roster database connection error:', err);
+    });
+
+app.get(['/api/healthz'], async (_req, res) => {
+    const result = {
+        ok: true,
+        timestamp: new Date().toISOString(),
+        pid: process.pid,
+        cwd: process.cwd(),
+        db: {
+            audit: { ...dbHealth.audit },
+            roster: { ...dbHealth.roster }
+        },
+        envPresent: {
+            auditserver: Boolean(process.env.auditserver),
+            auditdb: Boolean(process.env.auditdb),
+            server: Boolean(process.env.server),
+            database: Boolean(process.env.database),
+            user: Boolean(process.env.user),
+            password: Boolean(process.env.password)
+        }
+    };
+
+    try {
+        await pool.query('SELECT GETDATE() AS currentTime');
+        markDbHealthy('audit');
+        result.db.audit = { ...dbHealth.audit };
+    } catch (error) {
+        markDbUnhealthy('audit', error);
+        result.ok = false;
+        result.db.audit = { ...dbHealth.audit };
+    }
+
+    try {
+        await rosterPool.query('SELECT GETDATE() AS currentTime');
+        markDbHealthy('roster');
+        result.db.roster = { ...dbHealth.roster };
+    } catch (error) {
+        markDbUnhealthy('roster', error);
+        result.ok = false;
+        result.db.roster = { ...dbHealth.roster };
+    }
+
+    res.status(result.ok ? 200 : 500).json(result);
+});
 
 // Get nonconformances for a specific schedule
 app.get('/api/nonconformances/:scheduleId', async (req, res) => {
