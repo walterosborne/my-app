@@ -252,27 +252,216 @@ const smtpTransport = nodemailer.createTransport({
 
 const HARD_CODED_NETWORK_ID = 'N35589';
 
-const buildHeaderDebugPayload = (req) => ({
-    headers: req.headers,
-    rawHeaders: req.rawHeaders,
-    authCandidates: {
-        auth_user: req.get('AUTH_USER') ?? null,
-        x_auth_header: req.get('X-Auth-Header') ?? null,
-        remote_user: req.get('REMOTE_USER') ?? null,
-        x_iis_windowsauthuserid: req.get('X-IIS-WindowsAuthUserId') ?? null,
-        x_iisnode_auth_user: req.get('X-IISNODE-AUTH_USER') ?? null,
-        x_forwarded_user: req.get('X-Forwarded-User') ?? null
+const escapeHtmlForDebug = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const isSensitiveEnvName = (name) => /pass|secret|token|private|connectionstring|connection_string|api[_-]?key/i.test(name);
+
+const maskEnvValueForDebug = (name, value) => {
+    if (value === undefined) {
+        return null;
     }
+    return isSensitiveEnvName(name) ? '<redacted>' : String(value);
+};
+
+const getHeaderValue = (req, name) => req.get(name) ?? null;
+
+const getAuthCandidateHeaders = (req) => ({
+    auth_user: getHeaderValue(req, 'AUTH_USER'),
+    remote_user: getHeaderValue(req, 'REMOTE_USER'),
+    x_auth_header: getHeaderValue(req, 'X-Auth-Header'),
+    x_auth_user: getHeaderValue(req, 'X-Auth-User'),
+    x_remote_user: getHeaderValue(req, 'X-Remote-User'),
+    x_logon_user: getHeaderValue(req, 'X-Logon-User'),
+    x_auth_type: getHeaderValue(req, 'X-Auth-Type'),
+    x_iis_windowsauthuserid: getHeaderValue(req, 'X-IIS-WindowsAuthUserId'),
+    x_iisnode_auth_user: getHeaderValue(req, 'X-IISNODE-AUTH_USER'),
+    x_forwarded_user: getHeaderValue(req, 'X-Forwarded-User'),
+    x_original_host: getHeaderValue(req, 'X-Original-Host'),
+    x_original_url: getHeaderValue(req, 'X-Original-Url'),
+    x_https: getHeaderValue(req, 'X-Https'),
+    x_remote_addr: getHeaderValue(req, 'X-Remote-Addr')
 });
 
+const normalizePotentialNetworkId = (value) => {
+    if (value === undefined || value === null) {
+        return null;
+    }
+
+    let normalized = String(value).trim();
+    if (!normalized) {
+        return null;
+    }
+
+    if (normalized.includes(',')) {
+        normalized = normalized.split(',')[0].trim();
+    }
+
+    if (normalized.includes(';')) {
+        normalized = normalized.split(';')[0].trim();
+    }
+
+    if (normalized.includes('\\')) {
+        normalized = normalized.split('\\').pop().trim();
+    }
+
+    if (normalized.includes('@')) {
+        normalized = normalized.split('@')[0].trim();
+    }
+
+    return normalized || null;
+};
+
+const getDerivedNetworkIdFromRequest = (req) => {
+    const authCandidates = getAuthCandidateHeaders(req);
+    const sources = [
+        authCandidates.x_auth_header,
+        authCandidates.x_auth_user,
+        authCandidates.x_logon_user,
+        authCandidates.x_remote_user,
+        authCandidates.auth_user,
+        authCandidates.remote_user,
+        authCandidates.x_iis_windowsauthuserid,
+        authCandidates.x_iisnode_auth_user,
+        authCandidates.x_forwarded_user
+    ];
+
+    for (const source of sources) {
+        const normalized = normalizePotentialNetworkId(source);
+        if (normalized) {
+            return normalized;
+        }
+    }
+
+    return null;
+};
+
+const buildEnvDebugPayload = () => Object.fromEntries(
+    Object.entries(process.env)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([name, value]) => [name, maskEnvValueForDebug(name, value)])
+);
+
+const buildHeaderDebugPayload = (req) => {
+    const authCandidates = getAuthCandidateHeaders(req);
+
+    return {
+        request: {
+            method: req.method,
+            originalUrl: req.originalUrl,
+            path: req.path,
+            protocol: req.protocol,
+            secure: req.secure,
+            hostname: req.hostname,
+            ip: req.ip,
+            ips: req.ips,
+            httpVersion: req.httpVersion
+        },
+        socket: {
+            localAddress: req.socket?.localAddress ?? null,
+            localPort: req.socket?.localPort ?? null,
+            remoteAddress: req.socket?.remoteAddress ?? null,
+            remotePort: req.socket?.remotePort ?? null
+        },
+        headers: req.headers,
+        rawHeaders: req.rawHeaders,
+        authCandidates,
+        networkIdPreview: {
+            normalizedCandidates: Object.fromEntries(
+                Object.entries(authCandidates).map(([name, value]) => [name, normalizePotentialNetworkId(value)])
+            ),
+            selectedByCurrentCode: getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID,
+            hardcodedFallback: HARD_CODED_NETWORK_ID
+        }
+    };
+};
+
 const getNetworkIdFromRequest = (req) => {
-    // const networkId = req.get('X-Auth-Header');
-    // return networkId;
-    return HARD_CODED_NETWORK_ID;
+    return getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID;
 };
 
 app.get(['/testheaders', '/api/testheaders'], (req, res) => {
-    res.type('application/json').send(`${JSON.stringify(buildHeaderDebugPayload(req), null, 2)}\n`);
+    const payload = {
+        generatedAt: new Date().toISOString(),
+        process: {
+            pid: process.pid,
+            node: process.version,
+            platform: process.platform,
+            arch: process.arch,
+            cwd: process.cwd()
+        },
+        env: buildEnvDebugPayload(),
+        diagnostics: buildHeaderDebugPayload(req),
+        dbHealth
+    };
+
+    const wantsJson = req.path.startsWith('/api/')
+        || String(req.query.format || '').toLowerCase() === 'json'
+        || String(req.get('accept') || '').includes('application/json');
+
+    if (wantsJson) {
+        res.type('application/json').send(`${JSON.stringify(payload, null, 2)}\n`);
+        return;
+    }
+
+    res.type('text/html').send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NGAT Test Headers</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: Consolas, Monaco, 'Courier New', monospace;
+        background: #101522;
+        color: #e5ecf6;
+      }
+      h1, h2 {
+        margin: 0 0 12px 0;
+      }
+      .section {
+        margin-bottom: 24px;
+        padding: 16px;
+        border: 1px solid #2f3f5e;
+        border-radius: 8px;
+        background: #182235;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .hint {
+        color: #9eb0cd;
+        margin-bottom: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>NGAT IIS / Header Diagnostics</h1>
+    <p class="hint">Sensitive environment values are redacted. Add <code>?format=json</code> to this URL if you want raw JSON.</p>
+    <div class="section">
+      <h2>Summary</h2>
+      <pre>${escapeHtmlForDebug(JSON.stringify({
+        generatedAt: payload.generatedAt,
+        selectedNetworkId: payload.diagnostics.networkIdPreview.selectedByCurrentCode,
+        authCandidates: payload.diagnostics.authCandidates,
+        request: payload.diagnostics.request,
+        socket: payload.diagnostics.socket
+      }, null, 2))}</pre>
+    </div>
+    <div class="section">
+      <h2>Full Payload</h2>
+      <pre>${escapeHtmlForDebug(JSON.stringify(payload, null, 2))}</pre>
+    </div>
+  </body>
+</html>`);
 });
 
 const getRosterRowsByMyIds = async (myIds = []) => {
