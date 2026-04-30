@@ -40,8 +40,7 @@ const Navbar = () => {
             { label: 'Audit Statuses', path: '/audit-statuses' },
             { label: 'Calendar', path: '/calendar' },
             { label: 'Metrics', path: '/metrics' },
-            { label: 'Risk Analysis', path: '/risk-analysis' },
-            { label: 'Header Diagnostics', path: '/headers' }
+            { label: 'Risk Analysis', path: '/risk-analysis' }
         ],
         'Help': [
             { label: 'Info/Support', path: '/info-support' },

@@ -9,6 +9,19 @@ const DiagnosticsBlock = ({ title, value, defaultOpen = false }) => (
     </details>
 );
 
+const getLikelyAuthUser = (authCandidates = {}) => (
+    authCandidates.auth_user
+    || authCandidates.remote_user
+    || authCandidates.x_auth_user
+    || authCandidates.x_logon_user
+    || authCandidates.x_remote_user
+    || authCandidates.x_iis_windowsauthuserid
+    || authCandidates.x_iisnode_auth_user
+    || authCandidates.x_forwarded_user
+    || authCandidates.x_auth_header
+    || null
+);
+
 function Headers() {
     const [payload, setPayload] = React.useState(null);
     const [loading, setLoading] = React.useState(true);
@@ -40,6 +53,8 @@ function Headers() {
     const networkIdPreview = diagnostics.networkIdPreview ?? {};
     const processInfo = payload?.process ?? {};
     const dbHealth = payload?.dbHealth ?? {};
+    const likelyAuthUser = getLikelyAuthUser(authCandidates);
+    const authType = authCandidates.x_auth_type || 'Unknown';
 
     return (
         <div className="headers-page">
@@ -68,6 +83,17 @@ function Headers() {
                         <p>{error}</p>
                     </div>
                 ) : null}
+
+                <div className="headers-auth-panel">
+                    <div className="headers-auth-row">
+                        <span className="headers-auth-label">Auth User</span>
+                        <code className="headers-auth-value">{likelyAuthUser || 'Not present'}</code>
+                    </div>
+                    <div className="headers-auth-row">
+                        <span className="headers-auth-label">Auth Type</span>
+                        <code className="headers-auth-value">{authType}</code>
+                    </div>
+                </div>
 
                 <div className="headers-summary-grid">
                     <div className="headers-summary-card">
