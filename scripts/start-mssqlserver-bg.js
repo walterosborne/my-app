@@ -17,7 +17,7 @@ const azureProcessLookupEnv = 'VSTS_PROCESS_LOOKUP_ID';
 const backendPort = 3001;
 const currentRunId = `${Date.now()}-${process.pid}`;
 const verboseConsoleLogging = String(process.env.NGAT_VERBOSE_STARTUP_LOGS || '').toLowerCase() === 'true';
-const useWindowsScheduledTask = String(process.env.NGAT_USE_WINDOWS_SCHEDULED_TASK || '').toLowerCase() === 'true';
+const useWindowsDirectDetached = String(process.env.NGAT_USE_WINDOWS_DIRECT_DETACHED || '').toLowerCase() === 'true';
 const backendEnvNames = [
   'auditserver',
   'auditdb',
@@ -420,13 +420,13 @@ const startBackend = async () => {
     return startDetachedBackend();
   }
 
-  if (useWindowsScheduledTask) {
-    info(`Using Windows scheduled task startup because NGAT_USE_WINDOWS_SCHEDULED_TASK=${process.env.NGAT_USE_WINDOWS_SCHEDULED_TASK}.`);
-    return startWindowsScheduledTaskBackend();
+  if (useWindowsDirectDetached) {
+    info(`Using Windows detached startup path because NGAT_USE_WINDOWS_DIRECT_DETACHED=${process.env.NGAT_USE_WINDOWS_DIRECT_DETACHED}.`);
+    return startWindowsDetachedBackend();
   }
 
-  info('Using Windows detached startup path by default. Set NGAT_USE_WINDOWS_SCHEDULED_TASK=true to restore the old launcher.');
-  return startWindowsDetachedBackend();
+  info('Using Windows scheduled task startup path by default. Set NGAT_USE_WINDOWS_DIRECT_DETACHED=true to use direct detached startup.');
+  return startWindowsScheduledTaskBackend();
 };
 
 const main = async () => {
