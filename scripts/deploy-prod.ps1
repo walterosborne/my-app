@@ -180,6 +180,11 @@ function Get-NgatListeningProcessIds {
     }
 }
 
+function Get-NgatPastStartTime {
+    $date = (Get-Date).AddMinutes(-1)
+    return $date.ToString('HH:mm')
+}
+
 function Write-NgatFileTail {
     param(
         [Parameter(Mandatory = $true)]
@@ -203,6 +208,25 @@ function Write-NgatFileTail {
     }
 
     Write-NgatDeployLog ('{0} tail from {1}:{2}{3}' -f $Label, $Path, [Environment]::NewLine, ($tail -join [Environment]::NewLine))
+}
+
+function Write-NgatScheduledTaskState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $TaskName
+    )
+
+    try {
+        $output = & schtasks.exe /Query /TN $TaskName /V /FO LIST 2>&1
+        $exitCode = $LASTEXITCODE
+        Write-NgatDeployLog "schtasks /Query exitCode=$exitCode"
+        if ($output) {
+            Write-NgatDeployLog ('schtasks /Query output:{0}{1}' -f [Environment]::NewLine, ($output -join [Environment]::NewLine))
+        }
+    }
+    catch {
+        Write-NgatDeployLog "schtasks /Query threw: $($_.Exception.Message)"
+    }
 }
 
 function Stop-NgatMssqlBackend {
@@ -258,15 +282,18 @@ function Stop-NgatMssqlBackend {
 
 function Start-NgatMssqlBackend {
     $nodePath = Get-NgatNodePath
+    $powershellPath = (Get-Command powershell.exe -ErrorAction Stop).Source
     $serverPath = Join-Path $AppRoot 'mssqlserver.js'
     $stdoutLog = Join-Path $AppRoot 'mssqlserver.log'
     $stderrLog = Join-Path $AppRoot 'mssqlserver.error.log'
     $pidFile = Join-Path $AppRoot '.mssqlserver.pid'
     $launchScript = Join-Path $AppRoot '.mssqlserver-launch.ps1'
     $runId = "$(Get-Date -Format 'yyyyMMddTHHmmssfff')-$PID"
+    $taskName = 'NGAT_MSSQL_Backend'
 
     Write-NgatDeployLog 'STEP START: start MSSQL backend via PowerShell'
     Write-NgatDeployLog "Backend nodePath=$nodePath"
+    Write-NgatDeployLog "Backend powershellPath=$powershellPath"
     Write-NgatDeployLog "Backend serverPath=$serverPath"
 
     if (!(Test-Path -LiteralPath $serverPath)) {
@@ -293,54 +320,37 @@ Set-Location -LiteralPath $quotedAppRoot
 `$stderrLog = $quotedStderrLog
 `$runId = $quotedRunId
 "[{0}] Launching mssqlserver.js from deploy-prod.ps1. runId={1}" -f (Get-Date -Format o), `$runId | Out-File -FilePath `$stdoutLog -Append -Encoding utf8
-Start-Process -FilePath `$nodePath -ArgumentList @(`$serverPath) -WorkingDirectory $quotedAppRoot -RedirectStandardOutput `$stdoutLog -RedirectStandardError `$stderrLog -WindowStyle Hidden | Out-Null
-"[{0}] Start-Process returned for runId={1}" -f (Get-Date -Format o), `$runId | Out-File -FilePath `$stdoutLog -Append -Encoding utf8
+& `$nodePath `$serverPath >> `$stdoutLog 2>> `$stderrLog
+`$exitCode = `$LASTEXITCODE
+"[{0}] mssqlserver.js exited with code {1}. runId={2}" -f (Get-Date -Format o), `$exitCode, `$runId | Out-File -FilePath `$stdoutLog -Append -Encoding utf8
+exit `$exitCode
 "@
 
     Set-Content -LiteralPath $launchScript -Value $launchScriptContents -Encoding UTF8
     Write-NgatDeployLog "Launcher script written to $launchScript"
 
-    $wrapperPsi = New-Object System.Diagnostics.ProcessStartInfo
-    $wrapperPsi.FileName = (Get-Command powershell.exe -ErrorAction Stop).Source
-    $wrapperPsi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launchScript`""
-    $wrapperPsi.WorkingDirectory = $AppRoot
-    $wrapperPsi.UseShellExecute = $false
-    $wrapperPsi.CreateNoWindow = $true
-    $wrapperPsi.RedirectStandardOutput = $true
-    $wrapperPsi.RedirectStandardError = $true
-    [void]$wrapperPsi.EnvironmentVariables.Remove('VSTS_PROCESS_LOOKUP_ID')
+    $taskCommand = "`"$powershellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$launchScript`""
+    Write-NgatDeployLog "Scheduled task command=$taskCommand"
 
-    $wrapperProcess = New-Object System.Diagnostics.Process
-    $wrapperProcess.StartInfo = $wrapperPsi
-    [void]$wrapperProcess.Start()
-
-    if (-not $wrapperProcess.WaitForExit(15000)) {
-        try {
-            $wrapperProcess.Kill()
-        }
-        catch {
-            # Ignore secondary cleanup failures.
-        }
-
-        throw 'The backend launcher wrapper did not exit within 15 seconds.'
+    $createOutput = & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONCE /ST (Get-NgatPastStartTime) /F 2>&1
+    $createExitCode = $LASTEXITCODE
+    Write-NgatDeployLog "schtasks /Create exitCode=$createExitCode"
+    if ($createOutput) {
+        Write-NgatDeployLog ('schtasks /Create output:{0}{1}' -f [Environment]::NewLine, ($createOutput -join [Environment]::NewLine))
+    }
+    if ($createExitCode -ne 0) {
+        throw "schtasks /Create failed with exit code $createExitCode."
     }
 
-    $wrapperStdOut = $wrapperProcess.StandardOutput.ReadToEnd().Trim()
-    $wrapperStdErr = $wrapperProcess.StandardError.ReadToEnd().Trim()
-    Write-NgatDeployLog "Launcher wrapper exitCode=$($wrapperProcess.ExitCode)"
-
-    if ($wrapperStdOut) {
-        Write-NgatDeployLog "Launcher wrapper stdout:`n$wrapperStdOut"
+    $runOutput = & schtasks.exe /Run /TN $taskName 2>&1
+    $runExitCode = $LASTEXITCODE
+    Write-NgatDeployLog "schtasks /Run exitCode=$runExitCode"
+    if ($runOutput) {
+        Write-NgatDeployLog ('schtasks /Run output:{0}{1}' -f [Environment]::NewLine, ($runOutput -join [Environment]::NewLine))
     }
-
-    if ($wrapperStdErr) {
-        Write-NgatDeployLog "Launcher wrapper stderr:`n$wrapperStdErr"
-    }
-
-    if ($wrapperProcess.ExitCode -ne 0) {
-        Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog
-        Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog
-        throw "The backend launcher wrapper failed with exit code $($wrapperProcess.ExitCode)."
+    if ($runExitCode -ne 0) {
+        Write-NgatScheduledTaskState -TaskName $taskName
+        throw "schtasks /Run failed with exit code $runExitCode."
     }
 
     $deadline = (Get-Date).AddSeconds(30)
@@ -376,6 +386,7 @@ Start-Process -FilePath `$nodePath -ArgumentList @(`$serverPath) -WorkingDirecto
         Start-Sleep -Milliseconds 500
     } while ((Get-Date) -lt $deadline)
 
+    Write-NgatScheduledTaskState -TaskName $taskName
     Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog
     Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog
     throw 'Failed to confirm that mssqlserver.js started within 30 seconds.'
