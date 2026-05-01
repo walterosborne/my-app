@@ -64,7 +64,7 @@ export async function getIisAuthPayload({ skipCache = false } = {}) {
         }
 
         throw new Error(`IIS auth endpoints failed (${failures.join('; ')})`);
-    }).catch((error) => {
+    })().catch((error) => {
         cachedIisAuthPromise = null;
         throw error;
     });
