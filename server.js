@@ -8,6 +8,13 @@ import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import os from 'os';
 import smtpConfig from './smtpConfig.js';
+import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
+
+const runtimeEnv = loadRuntimeEnv({
+    appRoot: getAppRootFromImportMetaUrl(import.meta.url),
+    mode: 'development'
+});
+console.log(`[NGAT ENV] server.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
 
 const app = express();
 app.use(cors());
@@ -582,11 +589,11 @@ const getAuditForAccessCheck = async (client, scheduleId) => {
 
 // PostgreSQL connection pool
 const pool = new Pool({
-    user: 'walterosborne',
-    host: 'localhost',
-    database: 'audit_db',
-    password: 'postgres',
-    port: 5432,
+    user: process.env.PGUSER || 'walterosborne',
+    host: process.env.PGHOST || 'localhost',
+    database: process.env.PGDATABASE || 'audit_db',
+    password: process.env.PGPASSWORD || 'postgres',
+    port: Number(process.env.PGPORT || 5432),
 });
 
 // Test database connection

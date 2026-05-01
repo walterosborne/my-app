@@ -6,6 +6,13 @@ import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import smtpConfig from './smtpConfig.js';
+import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
+
+const runtimeEnv = loadRuntimeEnv({
+    appRoot: getAppRootFromImportMetaUrl(import.meta.url),
+    mode: 'production'
+});
+console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
 
 const app = express();
 app.use(cors());
