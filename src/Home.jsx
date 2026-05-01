@@ -24,6 +24,7 @@ const Home = () => {
                     authCandidates.auth_user
                     || authCandidates.remote_user
                     || authCandidates.x_auth_user
+                    || authCandidates.x_client_auth_user
                     || authCandidates.x_logon_user
                     || authCandidates.x_remote_user
                     || authCandidates.x_iis_windowsauthuserid
@@ -32,7 +33,7 @@ const Home = () => {
                     || authCandidates.x_auth_header
                     || null;
 
-                console.log('NGAT AUTH_USER:', authUser);
+                console.log('NGAT AUTH_USER header:', authUser);
                 console.log('NGAT likely auth user:', likelyAuthUser);
                 console.log('NGAT auth candidates:', authCandidates);
             } catch (error) {

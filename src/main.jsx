@@ -30,6 +30,9 @@ import Metrics from './Metrics.jsx'
 import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
+import { installIisAuthFetchShim } from './iisAuthClient.js'
+
+installIisAuthFetchShim();
 
 const getEntryTitle = (searchParams) => {
   const type = searchParams.get('type');

@@ -13,6 +13,7 @@ const getLikelyAuthUser = (authCandidates = {}) => (
     authCandidates.auth_user
     || authCandidates.remote_user
     || authCandidates.x_auth_user
+    || authCandidates.x_client_auth_user
     || authCandidates.x_logon_user
     || authCandidates.x_remote_user
     || authCandidates.x_iis_windowsauthuserid
@@ -55,7 +56,7 @@ function Headers() {
     const processInfo = payload?.process ?? {};
     const dbHealth = payload?.dbHealth ?? {};
     const likelyAuthUser = getLikelyAuthUser(authCandidates);
-    const authType = authCandidates.x_auth_type || 'Unknown';
+    const authType = authCandidates.x_auth_type || authCandidates.x_client_auth_type || 'Unknown';
 
     return (
         <div className="headers-page">

@@ -330,9 +330,11 @@ const getAuthCandidateHeaders = (req) => ({
     remote_user: getHeaderValue(req, 'REMOTE_USER'),
     x_auth_header: getHeaderValue(req, 'X-Auth-Header'),
     x_auth_user: getHeaderValue(req, 'X-Auth-User'),
+    x_client_auth_user: getHeaderValue(req, 'X-Client-Auth-User'),
     x_remote_user: getHeaderValue(req, 'X-Remote-User'),
     x_logon_user: getHeaderValue(req, 'X-Logon-User'),
     x_auth_type: getHeaderValue(req, 'X-Auth-Type'),
+    x_client_auth_type: getHeaderValue(req, 'X-Client-Auth-Type'),
     x_iis_windowsauthuserid: getHeaderValue(req, 'X-IIS-WindowsAuthUserId'),
     x_iisnode_auth_user: getHeaderValue(req, 'X-IISNODE-AUTH_USER'),
     x_forwarded_user: getHeaderValue(req, 'X-Forwarded-User'),
@@ -378,6 +380,7 @@ const buildAuthTransportDebug = (req) => {
         'remote_user',
         'x_auth_header',
         'x_auth_user',
+        'x_client_auth_user',
         'x_remote_user',
         'x_logon_user',
         'x_iis_windowsauthuserid',
@@ -396,8 +399,8 @@ const buildAuthTransportDebug = (req) => {
         proxyAuthorizationScheme: proxyAuthorization.scheme,
         populatedIdentityFields,
         backendSeesForwardedIdentity: populatedIdentityFields.length > 0,
-        backendSeesAuthType: Boolean(authCandidates.x_auth_type),
-        note: 'Authorization headers are often terminated by IIS, so missing Authorization does not prove Kerberos failed. Forwarded identity headers are the main signal for the proxied Node app.'
+        backendSeesAuthType: Boolean(authCandidates.x_auth_type || authCandidates.x_client_auth_type),
+        note: 'Authorization headers are often terminated by IIS, so missing Authorization does not prove Kerberos failed. Forwarded identity headers are the main signal for the proxied Node app. X-Client-Auth-User is a browser-fetched fallback from the IIS-hosted auth endpoint.'
     };
 };
 
@@ -412,7 +415,8 @@ const getDerivedNetworkIdFromRequest = (req) => {
         authCandidates.remote_user,
         authCandidates.x_iis_windowsauthuserid,
         authCandidates.x_iisnode_auth_user,
-        authCandidates.x_forwarded_user
+        authCandidates.x_forwarded_user,
+        authCandidates.x_client_auth_user
     ];
 
     for (const source of sources) {
