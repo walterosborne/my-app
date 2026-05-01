@@ -108,35 +108,29 @@ process.on('exit', (code) => {
   debug(`PROCESS exit code=${code} elapsedMs=${Date.now() - startedAt}`);
 });
 
-debug('start-mssqlserver-bg.js entered.');
-debug(`platform=${process.platform} node=${process.version} cwd=${process.cwd()} appRoot=${appRoot}`);
-debug(`VSTS_PROCESS_LOOKUP_ID present=${process.env[azureProcessLookupEnv] ? 'yes' : 'no'}`);
-debug(`backend env present=${backendEnvNames.map((name) => `${name}:${process.env[name] === undefined ? 'no' : 'yes'}`).join(', ')}`);
+const stopExistingBackend = () => {
+  debug(`Running stop helper: ${stopScriptPath}`);
+  const stopResult = spawnSync(process.execPath, [stopScriptPath], {
+    cwd: appRoot,
+    stdio: 'inherit',
+    timeout: 15000
+  });
+  debug(`Stop helper returned status=${stopResult.status} signal=${stopResult.signal ?? 'none'} error=${stopResult.error?.message ?? 'none'}`);
 
-debug(`Running stop helper: ${stopScriptPath}`);
-const stopResult = spawnSync(process.execPath, [stopScriptPath], {
-  cwd: appRoot,
-  stdio: 'inherit',
-  timeout: 15000
-});
-debug(`Stop helper returned status=${stopResult.status} signal=${stopResult.signal ?? 'none'} error=${stopResult.error?.message ?? 'none'}`);
+  if (stopResult.error) {
+    throw new Error(`Failed to stop the existing MSSQL backend: ${stopResult.error.message}`);
+  }
 
-if (stopResult.error) {
-  throw new Error(`Failed to stop the existing MSSQL backend: ${stopResult.error.message}`);
-}
-
-if (stopResult.status !== 0) {
-  throw new Error(`Failed to stop the existing MSSQL backend. Exit code: ${stopResult.status}`);
-}
-
-resetBackendLogs();
+  if (stopResult.status !== 0) {
+    throw new Error(`Failed to stop the existing MSSQL backend. Exit code: ${stopResult.status}`);
+  }
+};
 
 const detachedEnv = { ...process.env };
 
 // Azure Pipelines tracks and cleans up children with this env var; do not let
 // the long-running backend inherit it.
 delete detachedEnv[azureProcessLookupEnv];
-debug(`Detached env VSTS_PROCESS_LOOKUP_ID present=${detachedEnv[azureProcessLookupEnv] ? 'yes' : 'no'}`);
 
 const quotePowerShellLiteral = (value) => {
   const normalized = String(value).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -430,6 +424,15 @@ const startBackend = async () => {
 };
 
 const main = async () => {
+  debug('start-mssqlserver-bg.js entered.');
+  debug(`platform=${process.platform} node=${process.version} cwd=${process.cwd()} appRoot=${appRoot}`);
+  debug(`VSTS_PROCESS_LOOKUP_ID present=${process.env[azureProcessLookupEnv] ? 'yes' : 'no'}`);
+  debug(`backend env present=${backendEnvNames.map((name) => `${name}:${process.env[name] === undefined ? 'no' : 'yes'}`).join(', ')}`);
+  debug(`Detached env VSTS_PROCESS_LOOKUP_ID present=${detachedEnv[azureProcessLookupEnv] ? 'yes' : 'no'}`);
+
+  stopExistingBackend();
+  resetBackendLogs();
+
   const pid = await startBackend();
 
   if (!Number.isInteger(pid) || pid <= 0) {
