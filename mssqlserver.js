@@ -305,6 +305,26 @@ const maskEnvValueForDebug = (name, value) => {
 
 const getHeaderValue = (req, name) => req.get(name) ?? null;
 
+const getAuthorizationDebug = (req, headerName = 'Authorization') => {
+    const value = getHeaderValue(req, headerName);
+    if (!value) {
+        return {
+            present: false,
+            scheme: null,
+            preview: null
+        };
+    }
+
+    const text = String(value).trim();
+    const scheme = text.split(/\s+/, 1)[0] || null;
+
+    return {
+        present: true,
+        scheme,
+        preview: scheme ? `${scheme} <redacted>` : '<redacted>'
+    };
+};
+
 const getAuthCandidateHeaders = (req) => ({
     auth_user: getHeaderValue(req, 'AUTH_USER'),
     remote_user: getHeaderValue(req, 'REMOTE_USER'),
@@ -349,6 +369,36 @@ const normalizePotentialNetworkId = (value) => {
     }
 
     return normalized || null;
+};
+
+const buildAuthTransportDebug = (req) => {
+    const authCandidates = getAuthCandidateHeaders(req);
+    const identityFieldNames = [
+        'auth_user',
+        'remote_user',
+        'x_auth_header',
+        'x_auth_user',
+        'x_remote_user',
+        'x_logon_user',
+        'x_iis_windowsauthuserid',
+        'x_iisnode_auth_user',
+        'x_forwarded_user'
+    ];
+    const populatedIdentityFields = identityFieldNames.filter((name) => Boolean(authCandidates[name]));
+    const authorization = getAuthorizationDebug(req, 'Authorization');
+    const proxyAuthorization = getAuthorizationDebug(req, 'Proxy-Authorization');
+
+    return {
+        backendSeesAuthorizationHeader: authorization.present,
+        authorizationScheme: authorization.scheme,
+        authorizationPreview: authorization.preview,
+        backendSeesProxyAuthorizationHeader: proxyAuthorization.present,
+        proxyAuthorizationScheme: proxyAuthorization.scheme,
+        populatedIdentityFields,
+        backendSeesForwardedIdentity: populatedIdentityFields.length > 0,
+        backendSeesAuthType: Boolean(authCandidates.x_auth_type),
+        note: 'Authorization headers are often terminated by IIS, so missing Authorization does not prove Kerberos failed. Forwarded identity headers are the main signal for the proxied Node app.'
+    };
 };
 
 const getDerivedNetworkIdFromRequest = (req) => {
@@ -404,6 +454,7 @@ const buildHeaderDebugPayload = (req) => {
         },
         headers: req.headers,
         rawHeaders: req.rawHeaders,
+        authTransport: buildAuthTransportDebug(req),
         authCandidates,
         networkIdPreview: {
             normalizedCandidates: Object.fromEntries(
@@ -485,6 +536,7 @@ app.get(['/testheaders', '/api/testheaders'], (req, res) => {
       <h2>Summary</h2>
       <pre>${escapeHtmlForDebug(JSON.stringify({
         generatedAt: payload.generatedAt,
+        authTransport: payload.diagnostics.authTransport,
         selectedNetworkId: payload.diagnostics.networkIdPreview.selectedByCurrentCode,
         authCandidates: payload.diagnostics.authCandidates,
         request: payload.diagnostics.request,

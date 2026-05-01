@@ -49,6 +49,7 @@ function Headers() {
 
     const diagnostics = payload?.diagnostics ?? {};
     const request = diagnostics.request ?? {};
+    const authTransport = diagnostics.authTransport ?? {};
     const authCandidates = diagnostics.authCandidates ?? {};
     const networkIdPreview = diagnostics.networkIdPreview ?? {};
     const processInfo = payload?.process ?? {};
@@ -112,9 +113,22 @@ function Headers() {
                         <span className="headers-summary-label">Request Path</span>
                         <strong>{request.originalUrl || 'Unknown'}</strong>
                     </div>
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Backend Sees Auth Header</span>
+                        <strong>{authTransport.backendSeesAuthorizationHeader ? 'Yes' : 'No'}</strong>
+                    </div>
+                    <div className="headers-summary-card">
+                        <span className="headers-summary-label">Forwarded Identity Fields</span>
+                        <strong>
+                            {Array.isArray(authTransport.populatedIdentityFields) && authTransport.populatedIdentityFields.length > 0
+                                ? authTransport.populatedIdentityFields.join(', ')
+                                : 'None'}
+                        </strong>
+                    </div>
                 </div>
 
                 <div className="headers-sections">
+                    <DiagnosticsBlock title="Auth Transport" value={authTransport} defaultOpen />
                     <DiagnosticsBlock title="Auth Candidates" value={authCandidates} defaultOpen />
                     <DiagnosticsBlock title="Network ID Preview" value={networkIdPreview} defaultOpen />
                     <DiagnosticsBlock title="Request Details" value={request} />
