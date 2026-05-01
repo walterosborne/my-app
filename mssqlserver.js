@@ -13,6 +13,16 @@ const runtimeEnv = loadRuntimeEnv({
     mode: 'production'
 });
 console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
+console.log('[NGAT ENV] mssqlserver.js env present =', {
+    auditserver: Boolean(process.env.auditserver),
+    auditdb: Boolean(process.env.auditdb),
+    server: Boolean(process.env.server),
+    database: Boolean(process.env.database),
+    user: Boolean(process.env.user),
+    password: Boolean(process.env.password),
+    APP_BASE_URL: Boolean(process.env.APP_BASE_URL),
+    NODE_ENV: process.env.NODE_ENV || ''
+});
 
 const app = express();
 app.use(cors());
@@ -125,6 +135,24 @@ const logDatabaseError = (label, error, details = {}) => {
 process.on('unhandledRejection', (reason) => {
     console.error('[NGAT] Unhandled promise rejection:', reason);
 });
+
+process.on('uncaughtException', (error) => {
+    console.error('[NGAT] Uncaught exception:', error);
+});
+
+process.on('beforeExit', (code) => {
+    console.log(`[NGAT] beforeExit code=${code}`);
+});
+
+process.on('exit', (code) => {
+    console.log(`[NGAT] exit code=${code}`);
+});
+
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, () => {
+        console.warn(`[NGAT] Received ${signal}`);
+    });
+}
 
 const applyReturningClause = (queryText) => {
     const match = queryText.match(/\sRETURNING\s+([\s\S]+)$/i);
@@ -1582,6 +1610,10 @@ function startServer(host, canFallback = true) {
         console.log(`[NGAT MSSQL DEBUG 2026-04-13] Binding host/port = ${host} ${PORT}`);
         console.log(`Server running on http://${host}:${PORT}`);
         console.log(`[NGAT MSSQL READY] host=${host} port=${PORT}`);
+    });
+
+    server.on('close', () => {
+        console.warn(`[NGAT MSSQL DEBUG 2026-04-13] HTTP server closed for ${host}:${PORT}`);
     });
 
     server.once('error', (error) => {

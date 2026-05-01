@@ -229,6 +229,65 @@ function Write-NgatScheduledTaskState {
     }
 }
 
+function Invoke-NgatBackendProbe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $AppRoot
+    )
+
+    $stdoutLog = Join-Path $AppRoot 'mssqlserver.log'
+    $stderrLog = Join-Path $AppRoot 'mssqlserver.error.log'
+    $probeUrls = @(
+        'http://127.0.0.1:3001/api/testheaders?format=json',
+        'http://127.0.0.1:3001/api/healthz'
+    )
+
+    Write-NgatDeployLog 'STEP START: backend probe'
+
+    $backendProcessIds = @(Get-NgatBackendProcessIds)
+    $listeningProcessIds = @(Get-NgatListeningProcessIds -Port 3001)
+    Write-NgatDeployLog "Backend process ids after launch: $($(if ($backendProcessIds.Count -gt 0) { $backendProcessIds -join ', ' } else { 'none' }))"
+    Write-NgatDeployLog "Listening process ids on port 3001: $($(if ($listeningProcessIds.Count -gt 0) { $listeningProcessIds -join ', ' } else { 'none' }))"
+
+    foreach ($probeUrl in $probeUrls) {
+        try {
+            $response = Invoke-WebRequest -Uri $probeUrl -UseBasicParsing -TimeoutSec 5
+            $body = if ($null -ne $response.Content) { [string]$response.Content } else { '' }
+            $snippet = if ($body.Length -gt 800) { $body.Substring(0, 800) + '...' } else { $body }
+            Write-NgatDeployLog ('Backend probe success url={0} status={1} bodySnippet={2}' -f $probeUrl, [int]$response.StatusCode, $snippet)
+        }
+        catch {
+            $statusCode = $null
+            $bodySnippet = ''
+
+            if ($_.Exception.Response) {
+                try {
+                    $statusCode = [int]$_.Exception.Response.StatusCode
+                }
+                catch {
+                    $statusCode = $null
+                }
+
+                try {
+                    $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+                    $bodyText = $reader.ReadToEnd()
+                    $reader.Dispose()
+                    $bodySnippet = if ($bodyText.Length -gt 800) { $bodyText.Substring(0, 800) + '...' } else { $bodyText }
+                }
+                catch {
+                    $bodySnippet = ''
+                }
+            }
+
+            Write-NgatDeployLog ('Backend probe failure url={0} status={1} message={2} bodySnippet={3}' -f $probeUrl, $(if ($null -ne $statusCode) { $statusCode } else { 'n/a' }), $_.Exception.Message, $bodySnippet)
+        }
+    }
+
+    Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog -TailLines 25
+    Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog -TailLines 25
+    Write-NgatDeployLog 'STEP END: backend probe'
+}
+
 function Stop-NgatMssqlBackend {
     $pidFile = Join-Path $AppRoot '.mssqlserver.pid'
     $taskScript = Join-Path $AppRoot '.mssqlserver-task.ps1'
@@ -410,6 +469,7 @@ try {
     Publish-IisDistToAppRoot
     Stop-NgatMssqlBackend
     Start-NgatMssqlBackend
+    Invoke-NgatBackendProbe -AppRoot $AppRoot
 
     Write-NgatDeployLog 'deploy-prod.ps1 completed successfully.'
     exit 0
