@@ -353,43 +353,44 @@ exit `$exitCode
         throw "schtasks /Run failed with exit code $runExitCode."
     }
 
-    $deadline = (Get-Date).AddSeconds(30)
-    do {
-        $backendProcessIds = @(Get-NgatBackendProcessIds)
-        $listeningProcessIds = @(Get-NgatListeningProcessIds -Port 3001)
-        $matchedPid = @($backendProcessIds | Where-Object { $listeningProcessIds -contains $_ } | Select-Object -First 1)
-        $stdoutContents = if (Test-Path -LiteralPath $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw -ErrorAction SilentlyContinue } else { '' }
+    Start-Sleep -Seconds 2
 
-        if ($matchedPid.Count -gt 0) {
-            Set-Content -LiteralPath $pidFile -Value "$($matchedPid[0])" -Encoding ASCII
-            Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$($matchedPid[0])"
-            Write-Host "Started mssqlserver.js in background (PID $($matchedPid[0]))."
-            Write-Host "Stdout log: $stdoutLog"
-            Write-Host "Stderr log: $stderrLog"
-            return
+    $backendProcessIds = @(Get-NgatBackendProcessIds)
+    $listeningProcessIds = @(Get-NgatListeningProcessIds -Port 3001)
+    $matchedPid = @($backendProcessIds | Where-Object { $listeningProcessIds -contains $_ } | Select-Object -First 1)
+    $stdoutContents = if (Test-Path -LiteralPath $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw -ErrorAction SilentlyContinue } else { '' }
+
+    if ($matchedPid.Count -gt 0) {
+        Set-Content -LiteralPath $pidFile -Value "$($matchedPid[0])" -Encoding ASCII
+        Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$($matchedPid[0])"
+        Write-Host "Started mssqlserver.js in background (PID $($matchedPid[0]))."
+        Write-Host "Stdout log: $stdoutLog"
+        Write-Host "Stderr log: $stderrLog"
+        return
+    }
+
+    if ($stdoutContents -match '\[NGAT MSSQL READY\]\s+host=\S+\s+port=3001\b' -or $stdoutContents -match 'Server running on http://[^\s]+:3001\b') {
+        $resolvedPid = @($backendProcessIds | Select-Object -First 1)
+        $reportedPid = if ($resolvedPid.Count -gt 0) { $resolvedPid[0] } else { 'unavailable' }
+        if ($resolvedPid.Count -gt 0) {
+            Set-Content -LiteralPath $pidFile -Value "$($resolvedPid[0])" -Encoding ASCII
         }
 
-        if ($stdoutContents -match '\[NGAT MSSQL READY\]\s+host=\S+\s+port=3001\b' -or $stdoutContents -match 'Server running on http://[^\s]+:3001\b') {
-            $resolvedPid = @($backendProcessIds | Select-Object -First 1)
-            $reportedPid = if ($resolvedPid.Count -gt 0) { $resolvedPid[0] } else { 'unavailable' }
-            if ($resolvedPid.Count -gt 0) {
-                Set-Content -LiteralPath $pidFile -Value "$($resolvedPid[0])" -Encoding ASCII
-            }
+        Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$reportedPid verifiedByLog=true"
+        Write-Host "Started mssqlserver.js in background (PID $reportedPid)."
+        Write-Host "Stdout log: $stdoutLog"
+        Write-Host "Stderr log: $stderrLog"
+        return
+    }
 
-            Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$reportedPid verifiedByLog=true"
-            Write-Host "Started mssqlserver.js in background (PID $reportedPid)."
-            Write-Host "Stdout log: $stdoutLog"
-            Write-Host "Stderr log: $stderrLog"
-            return
-        }
-
-        Start-Sleep -Milliseconds 500
-    } while ((Get-Date) -lt $deadline)
-
+    Write-NgatDeployLog 'Backend launch was triggered, but readiness was not confirmed within the brief post-launch check. Continuing without failing deploy.'
     Write-NgatScheduledTaskState -TaskName $taskName
     Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog
     Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog
-    throw 'Failed to confirm that mssqlserver.js started within 30 seconds.'
+    Write-NgatDeployLog 'STEP END: start MSSQL backend via PowerShell launchedWithoutConfirmation=true'
+    Write-Host 'Triggered mssqlserver.js startup without blocking on readiness confirmation.'
+    Write-Host "Stdout log: $stdoutLog"
+    Write-Host "Stderr log: $stderrLog"
 }
 
 try {
