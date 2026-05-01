@@ -175,7 +175,7 @@ function Get-NgatListeningProcessIds {
         return @($processIds | Sort-Object -Unique)
     }
     catch {
-        Write-NgatDeployLog "Port lookup on $Port failed: $($_.Exception.Message)"
+        Write-NgatDeployLog ('Port lookup on {0} failed: {1}' -f $Port, $_.Exception.Message)
         return @()
     }
 }
@@ -192,17 +192,17 @@ function Write-NgatFileTail {
     )
 
     if (!(Test-Path -LiteralPath $Path)) {
-        Write-NgatDeployLog "$Label does not exist: $Path"
+        Write-NgatDeployLog ('{0} does not exist: {1}' -f $Label, $Path)
         return
     }
 
     $tail = @(Get-Content -LiteralPath $Path -Tail $TailLines -ErrorAction SilentlyContinue)
     if ($tail.Count -eq 0) {
-        Write-NgatDeployLog "$Label tail from $Path: <empty>"
+        Write-NgatDeployLog ('{0} tail from {1}: <empty>' -f $Label, $Path)
         return
     }
 
-    Write-NgatDeployLog "$Label tail from $Path:`n$($tail -join [Environment]::NewLine)"
+    Write-NgatDeployLog ('{0} tail from {1}:{2}{3}' -f $Label, $Path, [Environment]::NewLine, ($tail -join [Environment]::NewLine))
 }
 
 function Stop-NgatMssqlBackend {
@@ -242,7 +242,7 @@ function Stop-NgatMssqlBackend {
             Write-NgatDeployLog "Stopped existing backend-related PID $pid."
         }
         catch {
-            Write-NgatDeployLog "taskkill skipped for PID $pid: $($_.Exception.Message)"
+            Write-NgatDeployLog ('taskkill skipped for PID {0}: {1}' -f $pid, $_.Exception.Message)
         }
     }
 

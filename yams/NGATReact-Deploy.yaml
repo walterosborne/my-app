@@ -124,6 +124,17 @@ stages:
                     throw "Could not find deploy script at $deployScript"
                   }
 
+                  $deployScriptHash = (Get-FileHash -LiteralPath $deployScript -Algorithm SHA256).Hash
+                  Write-Host "NGAT YAML: deployScript sha256=$deployScriptHash"
+
+                  $deployScriptLines = Get-Content -LiteralPath $deployScript
+                  $lineStart = [Math]::Max(0, 194 - 1)
+                  $lineEnd = [Math]::Min($deployScriptLines.Count - 1, 206 - 1)
+                  for ($index = $lineStart; $index -le $lineEnd; $index++) {
+                    $lineNumber = $index + 1
+                    Write-Host ("NGAT YAML: deploy-prod.ps1 line {0}: {1}" -f $lineNumber, $deployScriptLines[$index])
+                  }
+
                   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $deployScript -AppRoot $appRoot
                   $exitCode = $LASTEXITCODE
 
