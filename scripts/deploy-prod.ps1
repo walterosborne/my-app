@@ -254,19 +254,19 @@ function Stop-NgatMssqlBackend {
     }
 
     $pids = New-Object System.Collections.Generic.HashSet[int]
-    foreach ($pid in @(Get-NgatBackendProcessIds) + @(Get-NgatListeningProcessIds -Port 3001)) {
-        if ($pid -gt 0) {
-            [void]$pids.Add([int]$pid)
+    foreach ($backendProcessId in @(Get-NgatBackendProcessIds) + @(Get-NgatListeningProcessIds -Port 3001)) {
+        if ($backendProcessId -gt 0) {
+            [void]$pids.Add([int]$backendProcessId)
         }
     }
 
-    foreach ($pid in $pids) {
+    foreach ($backendProcessId in $pids) {
         try {
-            & taskkill.exe /PID $pid /T /F *> $null
-            Write-NgatDeployLog "Stopped existing backend-related PID $pid."
+            & taskkill.exe /PID $backendProcessId /T /F *> $null
+            Write-NgatDeployLog "Stopped existing backend-related PID $backendProcessId."
         }
         catch {
-            Write-NgatDeployLog ('taskkill skipped for PID {0}: {1}' -f $pid, $_.Exception.Message)
+            Write-NgatDeployLog ('taskkill skipped for PID {0}: {1}' -f $backendProcessId, $_.Exception.Message)
         }
     }
 
