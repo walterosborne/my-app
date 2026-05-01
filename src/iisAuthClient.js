@@ -1,4 +1,4 @@
-const IIS_AUTH_ENDPOINT = '/iis-auth.aspx';
+const IIS_AUTH_ENDPOINTS = ['/iis-auth.aspx', '/iis-auth.asp'];
 const CLIENT_AUTH_USER_HEADER = 'X-Client-Auth-User';
 const CLIENT_AUTH_TYPE_HEADER = 'X-Client-Auth-Type';
 
@@ -35,17 +35,35 @@ export async function getIisAuthPayload({ skipCache = false } = {}) {
         return cachedIisAuthPromise;
     }
 
-    cachedIisAuthPromise = fetch(IIS_AUTH_ENDPOINT, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json'
+    cachedIisAuthPromise = (async () => {
+        const failures = [];
+
+        for (const endpoint of IIS_AUTH_ENDPOINTS) {
+            try {
+                const response = await fetch(endpoint, {
+                    cache: 'no-store',
+                    credentials: 'same-origin',
+                    headers: {
+                        Accept: 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    failures.push(`${endpoint}: ${response.status}`);
+                    continue;
+                }
+
+                const payload = await response.json();
+                return {
+                    ...payload,
+                    source: payload?.source || endpoint
+                };
+            } catch (error) {
+                failures.push(`${endpoint}: ${error?.message || String(error)}`);
+            }
         }
-    }).then(async (response) => {
-        if (!response.ok) {
-            throw new Error(`IIS auth endpoint failed with status ${response.status}`);
-        }
-        return await response.json();
+
+        throw new Error(`IIS auth endpoints failed (${failures.join('; ')})`);
     }).catch((error) => {
         cachedIisAuthPromise = null;
         throw error;

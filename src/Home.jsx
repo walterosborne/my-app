@@ -19,6 +19,7 @@ const Home = () => {
             try {
                 const diagnosticsPayload = await getHeaderDiagnostics();
                 const authCandidates = diagnosticsPayload?.diagnostics?.authCandidates ?? {};
+                const fallbackSource = authCandidates.x_client_auth_user ? 'iis-auth fallback' : 'none';
                 const authUser = authCandidates.auth_user ?? null;
                 const likelyAuthUser =
                     authCandidates.auth_user
@@ -35,6 +36,7 @@ const Home = () => {
 
                 console.log('NGAT AUTH_USER header:', authUser);
                 console.log('NGAT likely auth user:', likelyAuthUser);
+                console.log('NGAT auth fallback source:', fallbackSource);
                 console.log('NGAT auth candidates:', authCandidates);
             } catch (error) {
                 console.log('NGAT AUTH_USER: unavailable because /api/testheaders failed.');
