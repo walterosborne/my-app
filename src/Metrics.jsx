@@ -65,6 +65,7 @@ const Metrics = () => {
     typeof window !== 'undefined' ? window.matchMedia(METRICS_STACKED_LAYOUT_QUERY).matches : false
   ));
   const [activeTab, setActiveTab] = useState('All');
+  const [metricsViewMode, setMetricsViewMode] = useState('compact');
   const [colorBy, setColorBy] = useState('division');
   const [timelineGranularity, setTimelineGranularity] = useState('Monthly');
   const [severityTimelineGranularity, setSeverityTimelineGranularity] = useState('Monthly');
@@ -1536,19 +1537,29 @@ const Metrics = () => {
           </div>
           <div className="metrics-panel">
             <div className="metrics-tabs">
-              {['All', 'Finding Analysis', 'PCAB', 'Other'].map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className={`metrics-tab ${activeTab === tab ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {tab}
-                </button>
-              ))}
+              <div className="metrics-tabs-group">
+                {['All', 'Finding Analysis', 'PCAB', 'Other'].map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={`metrics-tab ${activeTab === tab ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className={`metrics-view-chip ${metricsViewMode === 'expanded' ? 'is-expanded' : ''}`}
+                onClick={() => setMetricsViewMode((prev) => prev === 'compact' ? 'expanded' : 'compact')}
+                aria-pressed={metricsViewMode === 'expanded'}
+              >
+                {metricsViewMode === 'expanded' ? 'Expanded View' : 'Compact View'}
+              </button>
             </div>
             <div className="metrics-panel-body">
-              <div className="metrics-grid">
+              <div className={`metrics-grid ${metricsViewMode === 'expanded' ? 'metrics-grid--expanded' : ''}`}>
                 {showStageMetric && (
                   <div className="metrics-card">
                     <div className="metrics-card-header">

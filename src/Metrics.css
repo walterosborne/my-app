@@ -125,11 +125,19 @@
 
 .metrics-tabs {
   display: flex;
-  gap: 12px;
+  justify-content: space-between;
+  gap: 16px;
   padding: 12px 16px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   height: 10%;
   min-height: 48px;
+  align-items: center;
+}
+
+.metrics-tabs-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
 }
 
@@ -144,6 +152,23 @@
 }
 
 .metrics-tab.active {
+  background: var(--color-primary-dark, #003366);
+  color: #ffffff;
+}
+
+.metrics-view-chip {
+  background: #e5e7eb;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-weight: 600;
+  color: #1f2937;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.metrics-view-chip.is-expanded {
   background: var(--color-primary-dark, #003366);
   color: #ffffff;
 }
@@ -178,7 +203,24 @@
   overflow: visible;
 }
 
+.metrics-grid.metrics-grid--expanded {
+  grid-template-columns: 1fr;
+}
+
 @media (max-width: 1100px) {
+  .metrics-tabs {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metrics-tabs-group {
+    justify-content: center;
+  }
+
+  .metrics-view-chip {
+    width: 100%;
+  }
+
   .metrics-grid {
     grid-template-columns: 1fr;
   }
