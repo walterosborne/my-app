@@ -25,7 +25,6 @@ import AuditStatuses from './AuditStatuses.jsx'
 import AuditReports from './AuditReports.jsx'
 import RequestAuditorAccess from './RequestAuditorAccess.jsx'
 import TableTest from './TableTest.jsx'
-import Headers from './Headers.jsx'
 import Metrics from './Metrics.jsx'
 import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
@@ -111,8 +110,6 @@ const getPageTitle = (location) => {
       return 'Admin Menu';
     case '/tabletest':
       return 'Table Test';
-    case '/headers':
-      return 'Headers';
     default:
       if (location.pathname.startsWith('/audit/')) {
         const auditId = location.pathname.split('/')[2];
@@ -184,7 +181,6 @@ createRoot(document.getElementById('root')).render(
         <Route path="/audit-statuses" element={<AuditStatuses />} />
         <Route path="/admin" element={<AdminMenu />} />
         <Route path="/tabletest" element={<TableTest />} />
-        <Route path="/headers" element={<Headers />} />
       </Routes>
     </BrowserRouter>
   </StrictMode>,

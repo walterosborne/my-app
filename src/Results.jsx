@@ -39,6 +39,13 @@ import {
   searchRoster
 } from './assets/data/apiData';
 
+const findingTypeReverseMap = {
+  1: 'Nonconformity',
+  2: 'Conformity',
+  3: 'OFI',
+  4: 'OBS'
+};
+
 const normalizeMarkdownText = (value) => {
   const text = String(value || '');
   return text
@@ -382,7 +389,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   };
 
-  const normalizeFileIds = (value) => {
+  const normalizeFileIds = useCallback((value) => {
     if (Array.isArray(value)) return value;
     if (typeof value === 'string') {
       try {
@@ -393,7 +400,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
     }
     return [];
-  };
+  }, []);
 
   // Load all lookup data from API on mount
   useEffect(() => {
@@ -444,11 +451,17 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   // Fetch nonconformances from database when schedule changes
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchNonconformances() {
       if (!selectedAudit?.scheduleId) {
+        setEveryTimeQuestionsList([]);
         setNonconformances([]);
         return;
       }
+
+      setEveryTimeQuestionsList([]);
+      setNonconformances([]);
 
       try {
         const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
@@ -458,6 +471,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           getEveryTimeQuestions(divisionFilter)
         ]);
         const data = await ncResponse.json();
+        if (cancelled) return;
         const etqList = Array.isArray(everyTimeQuestions)
           ? everyTimeQuestions.filter((question) => (question.active ?? 1) === 1)
           : [];
@@ -483,11 +497,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
         setNonconformances(converted);
       } catch (error) {
+        if (cancelled) return;
         console.error('Error fetching nonconformances:', error);
+        setEveryTimeQuestionsList([]);
         setNonconformances([]);
       }
     }
     fetchNonconformances();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedAudit?.scheduleId, selectedAudit?.divisionId]);
 
   // Find selected audit from URL or from user selection
@@ -545,13 +564,117 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     control,
     reset,
     setValue,
-    getValues,
     watch
   } = useForm(
     {
       defaultValues: {}
     }
   )
+
+  const clearAuditQuestionUiState = useCallback(() => {
+    setNewPEQs(0);
+    setDeletedPEQs(new Set());
+    setStandardAdditional({});
+    setDeletedStandardQuestions({});
+    setCollapsedSections({});
+    setCollapsedSubsections({});
+    setExpandedTexts({});
+  }, []);
+
+  const buildResultsFormValues = useCallback((audit, auditNCs, etqQuestions) => {
+    const values = {
+      overview: audit?.overview || '',
+      cui: audit?.cui ?? null,
+      standards: audit?.standardIds || [],
+      programs: audit?.programIds || [],
+      evaluator: audit?.evaluator || '',
+      relatedItems: audit?.relatedItems || '',
+      interviewees: audit?.intervieweeIds || [],
+      auditDate: audit?.startDate ? formatDateForInput(audit.startDate) : '',
+      delayCause: audit?.delayCause ?? null,
+      programManager: audit?.programManager || '',
+      maLeadManager: audit?.maLeadManager || '',
+      peIntroduction: audit?.peIntroduction || ''
+    };
+
+    if (Array.isArray(audit?.processElements)) {
+      audit.processElements.forEach((pe, idx) => {
+        values[`pe${idx}_question`] = pe?.question || '';
+        values[`pe${idx}_standard`] = pe?.standard || '';
+        values[`pe${idx}_response`] = pe?.response || '';
+        values[`pe${idx}_evidence`] = pe?.evidence || '';
+        values[`pe${idx}_interviewees`] = Array.isArray(pe?.interviewees) ? pe.interviewees.join('; ') : '';
+      });
+    }
+
+    const etqQuestionsSet = new Set((etqQuestions || []).map((question) => question.question));
+    const peqNCs = auditNCs.filter((nc) => nc.type === 'PEQ');
+    const etqNCs = auditNCs.filter((nc) => nc.type === 'ETQ');
+    const validEtqNCs = etqNCs.filter((nc) => etqQuestionsSet.has(nc.question));
+    const convertedEtqNCs = etqNCs.filter((nc) => !etqQuestionsSet.has(nc.question));
+    const combinedPeqs = [
+      ...peqNCs,
+      ...convertedEtqNCs.map((nc) => ({ ...nc, type: 'PEQ' }))
+    ];
+
+    combinedPeqs.forEach((nc, idx) => {
+      values[`peqQuestion${idx}`] = nc.question || '';
+      values[`peq${idx}`] = nc.response || '';
+      values[`auditorComment${idx}`] = nc.auditorComment || '';
+      values[`auditeeResponse${idx}`] = nc.response || '';
+      values[`findingType${idx}`] = findingTypeReverseMap[nc.findingType] || null;
+      values[`prOPCorporate${idx}`] = nc.qma || [];
+      values[`prOPSector${idx}`] = nc.sector || [];
+      values[`prOPDivision${idx}`] = nc.division || [];
+      values[`prOPOther${idx}`] = nc.other || [];
+      values[`peqFiles${idx}`] = normalizeFileIds(nc.files);
+    });
+
+    (etqQuestions || []).forEach((question, idx) => {
+      const etqNc = validEtqNCs.find((nc) => nc.question === question.question);
+      values[`etqAuditeeResponse${idx}`] = etqNc?.response || '';
+      values[`etqAuditorComment${idx}`] = etqNc?.auditorComment || '';
+      values[`etqFindingType${idx}`] = etqNc ? (findingTypeReverseMap[etqNc.findingType] || null) : null;
+      values[`etqPrOPCorporate${idx}`] = etqNc?.qma || [];
+      values[`etqPrOPSector${idx}`] = etqNc?.sector || [];
+      values[`etqPrOPDivision${idx}`] = etqNc?.division || [];
+      values[`etqPrOPOther${idx}`] = etqNc?.other || [];
+      values[`etqFiles${idx}`] = etqNc ? normalizeFileIds(etqNc.files) : [];
+    });
+
+    const standardAdditionalTemp = {};
+    const activeStandardSet = new Set((audit?.standardIds || []).map((id) => Number(id)));
+
+    auditNCs.forEach((nc) => {
+      const standardId = Number(nc.type);
+      if (!Number.isFinite(standardId)) return;
+      if (!activeStandardSet.has(standardId)) return;
+      if (nc.section === null || nc.subsection === null) return;
+
+      const key = `${standardId}_${nc.section}_${nc.subsection}`;
+      if (!standardAdditionalTemp[key]) {
+        standardAdditionalTemp[key] = 0;
+      }
+      const addIdx = standardAdditionalTemp[key];
+      standardAdditionalTemp[key] += 1;
+
+      values[`standardAdditionalQuestion_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.question || '';
+      values[`standardAdditionalAuditeeResponse_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.response || '';
+      values[`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = findingTypeReverseMap[nc.findingType] || null;
+      values[`standardAdditionalAuditorComment_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.auditorComment || '';
+      values[`standardAdditionalPrOPCorporate_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.qma || [];
+      values[`standardAdditionalPrOPSector_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.sector || [];
+      values[`standardAdditionalPrOPDivision_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.division || [];
+      values[`standardAdditionalPrOPOther_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.other || [];
+      values[`standardAdditionalFiles_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = normalizeFileIds(nc.files);
+    });
+
+    return {
+      values,
+      combinedPeqs,
+      standardAdditionalTemp
+    };
+  }, [normalizeFileIds]);
 
   const watchedStandards = watch('standards');
   const selectedStandardIds = useMemo(() => {
@@ -604,203 +727,30 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     parseCalendarDate(auditDate) > parseCalendarDate(expectedStartDate)
   );
 
-  const areArrayValuesEqual = (left = [], right = []) => {
-    if (left === right) return true;
-    if (!Array.isArray(left) || !Array.isArray(right)) return false;
-    if (left.length !== right.length) return false;
-    for (let i = 0; i < left.length; i += 1) {
-      if (left[i] !== right[i]) return false;
-    }
-    return true;
-  };
-
   // Update form when audit is selected
   useEffect(() => {
     if (loading) {
       return;
     }
     if (schedule && selectedAudit) {
-      // Map finding type integers to strings for UI
-      const findingTypeReverseMap = {
-        1: 'Nonconformity',
-        2: 'Conformity',
-        3: 'OFI',
-        4: 'OBS'
-      };
-
-      // Set overview (always, even if empty)
-      setValue('overview', selectedAudit.overview || '');
-      setValue('cui', selectedAudit.cui ?? null);
-
-      // Set standards if available
-      if (selectedAudit.standardIds) {
-        const currentStandards = getValues('standards') || [];
-        const nextStandards = selectedAudit.standardIds || [];
-        if (!areArrayValuesEqual(currentStandards, nextStandards)) {
-          setValue('standards', nextStandards);
-        }
-      }
-
-      // Set programs if available
-      if (selectedAudit.programIds) {
-        setValue('programs', selectedAudit.programIds);
-      }
-
-      // Set evaluator if available
-      if (selectedAudit.evaluator) {
-        setValue('evaluator', selectedAudit.evaluator);
-      }
-
-      // Set related items if available
-      if (selectedAudit.relatedItems) {
-        setValue('relatedItems', selectedAudit.relatedItems);
-      }
-
-      // Set interviewees if available
-      if (selectedAudit.intervieweeIds) {
-        setValue('interviewees', selectedAudit.intervieweeIds);
-      }
-
-      // Set start date if available
-      if (selectedAudit.startDate) {
-        const startDate = formatDateForInput(selectedAudit.startDate);
-        setValue('auditDate', startDate);
-      }
-
-      if (selectedAudit.delayCause !== null && selectedAudit.delayCause !== undefined) {
-        setValue('delayCause', selectedAudit.delayCause);
-      }
-
-      // Set program manager if available
-      if (selectedAudit.programManager) {
-        setValue('programManager', selectedAudit.programManager);
-      }
-
-      // Set MA lead/manager if available
-      if (selectedAudit.maLeadManager) {
-        setValue('maLeadManager', selectedAudit.maLeadManager);
-      }
-
-      // Set process elements if available
-      if (selectedAudit?.processElements?.[0]) {
-        setValue('peIntroduction', selectedAudit.peIntroduction);
-        selectedAudit.processElements.forEach((pe, idx) => {
-          setValue(`pe${idx}_question`, pe.question);
-          setValue(`pe${idx}_standard`, pe.standard);
-          setValue(`pe${idx}_response`, pe.response);
-          setValue(`pe${idx}_evidence`, pe.evidence);
-          setValue(`pe${idx}_interviewees`, pe.interviewees?.join('; '));
-        });
-      }
-
       const scheduleId = Number(selectedAudit.scheduleId);
-      // Filter nonconformances for this audit
       const auditNCs = nonconformances.filter(nc => Number(nc.scheduleId) === scheduleId);
+      const {
+        values,
+        combinedPeqs,
+        standardAdditionalTemp
+      } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
 
-      // Populate PEQ responses from nonconformances
-      const peqNCs = auditNCs.filter(nc => nc.type === 'PEQ');
-      const etqNCs = auditNCs.filter(nc => nc.type === 'ETQ');
-      const validEtqNCs = etqNCs.filter(nc => etqQuestionSet.has(nc.question));
-      const convertedEtqNCs = etqNCs.filter(nc => !etqQuestionSet.has(nc.question));
-      const combinedPeqs = [
-        ...peqNCs,
-        ...convertedEtqNCs.map(nc => ({ ...nc, type: 'PEQ' }))
-      ];
-
-      if (convertedEtqNCs.length > 0 && selectedAudit?.scheduleId) {
-        if (!etqConversionNotifiedRef.current.has(selectedAudit.scheduleId)) {
-          toast.info('ETQ converted to PEQ');
-          etqConversionNotifiedRef.current.add(selectedAudit.scheduleId);
-        }
-      }
-
-      setNewPEQs(combinedPeqs.length); // Set the number of PEQ boxes to display
-      setDeletedPEQs(new Set()); // Reset deleted PEQs
-      combinedPeqs.forEach((nc, idx) => {
-        setValue(`peqQuestion${idx}`, nc.question || '');
-        setValue(`peq${idx}`, nc.response || '');
-        setValue(`auditorComment${idx}`, nc.auditorComment || '');
-        setValue(`auditeeResponse${idx}`, nc.response || '');
-        setValue(`findingType${idx}`, findingTypeReverseMap[nc.findingType] || null);
-        setValue(`prOPCorporate${idx}`, nc.qma || []); // QMA goes in corporate
-        setValue(`prOPSector${idx}`, nc.sector || []);
-        setValue(`prOPDivision${idx}`, nc.division || []);
-        setValue(`prOPOther${idx}`, nc.other || []);
-        setValue(`peqFiles${idx}`, normalizeFileIds(nc.files));
-      });
-
-      // Clear all ETQ fields first
-      filteredEveryTimeQuestions.forEach((question, idx) => {
-        setValue(`etqAuditeeResponse${idx}`, '');
-        setValue(`etqAuditorComment${idx}`, '');
-        setValue(`etqPrOPCorporate${idx}`, []);
-        setValue(`etqPrOPSector${idx}`, []);
-        setValue(`etqPrOPDivision${idx}`, []);
-        setValue(`etqPrOPOther${idx}`, []);
-        setValue(`etqFiles${idx}`, []);
-      });
-
-      // Populate ETQ responses from nonconformances
-      filteredEveryTimeQuestions.forEach((question, idx) => {
-        const etqNc = validEtqNCs.find(nc => nc.question === question.question); // Match by question text
-        if (etqNc) {
-          setValue(`etqAuditeeResponse${idx}`, etqNc.response || '');
-          setValue(`etqAuditorComment${idx}`, etqNc.auditorComment || '');
-          setValue(`etqFindingType${idx}`, findingTypeReverseMap[etqNc.findingType] || null);
-          setValue(`etqPrOPCorporate${idx}`, etqNc.qma || []); // QMA goes in corporate
-          setValue(`etqPrOPSector${idx}`, etqNc.sector || []);
-          setValue(`etqPrOPDivision${idx}`, etqNc.division || []);
-          setValue(`etqPrOPOther${idx}`, etqNc.other || []);
-          setValue(`etqFiles${idx}`, normalizeFileIds(etqNc.files));
-        }
-      });
-
-      // Clear all standard-based fields first
-      setStandardAdditional({});
-      setDeletedStandardQuestions({});
-
-      // Populate standard-based responses from nonconformances
-      const standardAdditionalTemp = {};
-      const activeStandardSet = new Set((selectedAudit?.standardIds || []).map((id) => Number(id)));
-
-      auditNCs.forEach(nc => {
-        const standardId = Number(nc.type);
-        if (!Number.isFinite(standardId)) {
-          return;
-        }
-        if (!activeStandardSet.has(standardId)) {
-          return;
-        }
-        if (nc.section === null || nc.subsection === null) {
-          return;
-        }
-
-        const key = `${standardId}_${nc.section}_${nc.subsection}`;
-        if (!standardAdditionalTemp[key]) {
-          standardAdditionalTemp[key] = 0;
-        }
-        const addIdx = standardAdditionalTemp[key];
-        standardAdditionalTemp[key] += 1;
-
-        setValue(`standardAdditionalQuestion_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.question || '');
-        setValue(`standardAdditionalAuditeeResponse_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.response || '');
-        setValue(`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, findingTypeReverseMap[nc.findingType] || null);
-        setValue(`standardAdditionalAuditorComment_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.auditorComment || '');
-        setValue(`standardAdditionalPrOPCorporate_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.qma || []);
-        setValue(`standardAdditionalPrOPSector_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.sector || []);
-        setValue(`standardAdditionalPrOPDivision_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.division || []);
-        setValue(`standardAdditionalPrOPOther_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, nc.other || []);
-        setValue(`standardAdditionalFiles_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`, normalizeFileIds(nc.files));
-      });
-
+      setNewPEQs(combinedPeqs.length);
+      setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
-    } else {
-      // Reset form when no schedule selected
-      setStandardAdditional({});
       setDeletedStandardQuestions({});
+      reset(values);
+    } else {
+      clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, setValue, reset, filteredEveryTimeQuestions, etqQuestionSet, loading, getValues]);
+  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, clearAuditQuestionUiState]);
 
   useEffect(() => {
     if (!isDelayed) {

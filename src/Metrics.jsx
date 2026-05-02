@@ -37,6 +37,8 @@ import {
   getSites
 } from './assets/data/apiData';
 
+const METRICS_STACKED_LAYOUT_QUERY = '(max-width: 1100px)';
+
 const Metrics = () => {
   const exportToastOptions = {
     progressStyle: { backgroundColor: '#2196f3' },
@@ -56,6 +58,12 @@ const Metrics = () => {
   const [functionsList, setFunctionsList] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isStackedLayout, setIsStackedLayout] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia(METRICS_STACKED_LAYOUT_QUERY).matches : false
+  ));
+  const [filtersCollapsed, setFiltersCollapsed] = useState(() => (
+    typeof window !== 'undefined' ? window.matchMedia(METRICS_STACKED_LAYOUT_QUERY).matches : false
+  ));
   const [activeTab, setActiveTab] = useState('All');
   const [colorBy, setColorBy] = useState('division');
   const [timelineGranularity, setTimelineGranularity] = useState('Monthly');
@@ -136,6 +144,30 @@ const Metrics = () => {
       }
     }
     loadData();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(METRICS_STACKED_LAYOUT_QUERY);
+    const handleLayoutChange = (event) => {
+      const matches = event.matches;
+      setIsStackedLayout(matches);
+      setFiltersCollapsed(matches);
+    };
+
+    setIsStackedLayout(mediaQuery.matches);
+    setFiltersCollapsed(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleLayoutChange);
+      return () => mediaQuery.removeEventListener('change', handleLayoutChange);
+    }
+
+    mediaQuery.addListener(handleLayoutChange);
+    return () => mediaQuery.removeListener(handleLayoutChange);
   }, []);
 
   const normalizeIdArray = (value) => {
@@ -1369,118 +1401,138 @@ const Metrics = () => {
         </div>
         <div className="metrics-layout">
           <div className="metrics-filters">
-            <div className="metrics-filter">
-              <label>Date Field</label>
-              <Select
-                isClearable={false}
-                options={dateFieldOptions}
-                styles={customStyles}
-                placeholder="Select Date Field"
-                value={dateFieldOptions.find((option) => option.value === dateField) || null}
-                onChange={(option) => setDateField(option?.value || 'expectedStartDate')}
-              />
-              <p className="metrics-filter-note">
-                Selecting later-stage dates will filter out audits that have not reached that stage
-                (Approval Date requires approved audits, Submitted Date requires submitted audits, and Audit Start Date
-                requires results completion).
-                Historical audits are excluded unless you enable the toggle below.
-              </p>
-            </div>
-            <div className="metrics-filter">
-              <label>Date Range</label>
-              <div className="metrics-date-range">
-                <div className="metrics-date-field">
-                  <span className="metrics-date-label">From</span>
-                  <input
-                    type="date"
-                    className="metrics-date"
-                    value={filters.dateFrom}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+            {isStackedLayout && (
+              <div className="metrics-filters-header">
+                <div className="metrics-filters-title-group">
+                  <span className="metrics-filters-eyebrow">Filters</span>
+                  <h3 className="metrics-filters-title">Metrics Filters</h3>
+                </div>
+                <button
+                  type="button"
+                  className="metrics-filters-toggle-button"
+                  onClick={() => setFiltersCollapsed((prev) => !prev)}
+                  aria-expanded={!filtersCollapsed}
+                >
+                  {filtersCollapsed ? 'Show Filters' : 'Hide Filters'}
+                </button>
+              </div>
+            )}
+            {(!isStackedLayout || !filtersCollapsed) && (
+              <>
+                <div className="metrics-filter">
+                  <label>Date Field</label>
+                  <Select
+                    isClearable={false}
+                    options={dateFieldOptions}
+                    styles={customStyles}
+                    placeholder="Select Date Field"
+                    value={dateFieldOptions.find((option) => option.value === dateField) || null}
+                    onChange={(option) => setDateField(option?.value || 'expectedStartDate')}
+                  />
+                  <p className="metrics-filter-note">
+                    Selecting later-stage dates will filter out audits that have not reached that stage
+                    (Approval Date requires approved audits, Submitted Date requires submitted audits, and Audit Start Date
+                    requires results completion).
+                    Historical audits are excluded unless you enable the toggle below.
+                  </p>
+                </div>
+                <div className="metrics-filter">
+                  <label>Date Range</label>
+                  <div className="metrics-date-range">
+                    <div className="metrics-date-field">
+                      <span className="metrics-date-label">From</span>
+                      <input
+                        type="date"
+                        className="metrics-date"
+                        value={filters.dateFrom}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, dateFrom: event.target.value }))}
+                      />
+                    </div>
+                    <div className="metrics-date-field">
+                      <span className="metrics-date-label">To</span>
+                      <input
+                        type="date"
+                        className="metrics-date"
+                        value={filters.dateTo}
+                        onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="metrics-filter metrics-toggle">
+                  <label>Historical Audits</label>
+                  <div className="metrics-toggle-row">
+                    <input
+                      type="checkbox"
+                      checked={includeHistorical}
+                      onChange={(event) => setIncludeHistorical(event.target.checked)}
+                    />
+                    <span>Include historical audits</span>
+                  </div>
+                </div>
+                <div className="metrics-filter">
+                  <label>Auditors</label>
+                  <Select
+                    isClearable
+                    options={auditorOptions}
+                    styles={customStyles}
+                    placeholder="Select Auditor"
+                    value={filters.auditorId ? auditorOptions.find((option) => option.value === filters.auditorId) : null}
+                    onChange={handleFilterChange('auditorId')}
                   />
                 </div>
-                <div className="metrics-date-field">
-                  <span className="metrics-date-label">To</span>
-                  <input
-                    type="date"
-                    className="metrics-date"
-                    value={filters.dateTo}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, dateTo: event.target.value }))}
+                <div className="metrics-filter">
+                  <label>Division</label>
+                  <Select
+                    isMulti
+                    options={divisionOptions}
+                    styles={customStyles}
+                    placeholder="Select Division"
+                    value={divisionOptions.filter((option) => filters.divisionIds.includes(option.value))}
+                    onChange={(selected) => setFilters((prev) => ({
+                      ...prev,
+                      divisionIds: selected ? selected.map((option) => option.value) : []
+                    }))}
                   />
                 </div>
-              </div>
-            </div>
-            <div className="metrics-filter metrics-toggle">
-              <label>Historical Audits</label>
-              <div className="metrics-toggle-row">
-                <input
-                  type="checkbox"
-                  checked={includeHistorical}
-                  onChange={(event) => setIncludeHistorical(event.target.checked)}
-                />
-                <span>Include historical audits</span>
-              </div>
-            </div>
-            <div className="metrics-filter">
-              <label>Auditors</label>
-              <Select
-                isClearable
-                options={auditorOptions}
-                styles={customStyles}
-                placeholder="Select Auditor"
-                value={filters.auditorId ? auditorOptions.find((option) => option.value === filters.auditorId) : null}
-                onChange={handleFilterChange('auditorId')}
-              />
-            </div>
-            <div className="metrics-filter">
-              <label>Division</label>
-              <Select
-                isMulti
-                options={divisionOptions}
-                styles={customStyles}
-                placeholder="Select Division"
-                value={divisionOptions.filter((option) => filters.divisionIds.includes(option.value))}
-                onChange={(selected) => setFilters((prev) => ({
-                  ...prev,
-                  divisionIds: selected ? selected.map((option) => option.value) : []
-                }))}
-              />
-            </div>
-            <div className="metrics-filter">
-              <label>Function</label>
-              <Select
-                isMulti
-                options={functionOptions}
-                styles={customStyles}
-                placeholder="Select Function"
-                value={functionOptions.filter((option) => filters.functionIds.includes(option.value))}
-                onChange={(selected) => setFilters((prev) => ({
-                  ...prev,
-                  functionIds: selected ? selected.map((option) => option.value) : []
-                }))}
-              />
-            </div>
-            <div className="metrics-filter">
-              <label>Program</label>
-              <Select
-                isClearable
-                options={programOptions}
-                styles={customStyles}
-                placeholder="Select Program"
-                value={filters.programId ? programOptions.find((option) => option.value === filters.programId) : null}
-                onChange={handleFilterChange('programId')}
-              />
-            </div>
-            <div className="metrics-filter">
-              <label>Sites</label>
-              <Select
-                isClearable
-                options={siteOptions}
-                styles={customStyles}
-                placeholder="Select Site"
-                value={filters.siteId ? siteOptions.find((option) => option.value === filters.siteId) : null}
-                onChange={handleFilterChange('siteId')}
-              />
-            </div>
+                <div className="metrics-filter">
+                  <label>Function</label>
+                  <Select
+                    isMulti
+                    options={functionOptions}
+                    styles={customStyles}
+                    placeholder="Select Function"
+                    value={functionOptions.filter((option) => filters.functionIds.includes(option.value))}
+                    onChange={(selected) => setFilters((prev) => ({
+                      ...prev,
+                      functionIds: selected ? selected.map((option) => option.value) : []
+                    }))}
+                  />
+                </div>
+                <div className="metrics-filter">
+                  <label>Program</label>
+                  <Select
+                    isClearable
+                    options={programOptions}
+                    styles={customStyles}
+                    placeholder="Select Program"
+                    value={filters.programId ? programOptions.find((option) => option.value === filters.programId) : null}
+                    onChange={handleFilterChange('programId')}
+                  />
+                </div>
+                <div className="metrics-filter">
+                  <label>Sites</label>
+                  <Select
+                    isClearable
+                    options={siteOptions}
+                    styles={customStyles}
+                    placeholder="Select Site"
+                    value={filters.siteId ? siteOptions.find((option) => option.value === filters.siteId) : null}
+                    onChange={handleFilterChange('siteId')}
+                  />
+                </div>
+              </>
+            )}
           </div>
           <div className="metrics-panel">
             <div className="metrics-tabs">
