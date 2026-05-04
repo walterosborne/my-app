@@ -39,7 +39,7 @@ import {
 } from './assets/data/apiData';
 
 const METRICS_STACKED_LAYOUT_QUERY = '(max-width: 1100px)';
-const METRICS_PRIMARY_BAR_COLOR = '#003366';
+const METRICS_PRIMARY_BAR_COLOR = '#1d4ed8';
 
 const Metrics = () => {
   const exportToastOptions = {

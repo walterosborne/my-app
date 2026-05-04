@@ -1,4 +1,4 @@
-import { StrictMode, useEffect } from 'react'
+import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
@@ -34,31 +34,47 @@ import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
 
 installIisAuthFetchShim();
 
-let authBootstrapStarted = false;
+const AppBootstrapGate = ({ children }) => {
+  const [isReady, setIsReady] = useState(false)
 
-const primeAppAuthBootstrap = () => {
-  if (authBootstrapStarted || typeof window === 'undefined') {
-    return;
+  useEffect(() => {
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        await getIisAuthPayload()
+      } catch (error) {
+        console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error)
+      }
+
+      try {
+        await getCurrentUser()
+      } catch (error) {
+        console.warn('NGAT failed to warm current user at app bootstrap:', error)
+      }
+
+      if (!cancelled) {
+        setIsReady(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  if (!isReady) {
+    return (
+      <div className="entry-page">
+        <div className="entry-container">
+          <div className="entry-message">Loading NGAT...</div>
+        </div>
+      </div>
+    )
   }
 
-  authBootstrapStarted = true;
-
-  (async () => {
-    try {
-      await getIisAuthPayload();
-    } catch (error) {
-      console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error);
-    }
-
-    try {
-      await getCurrentUser();
-    } catch (error) {
-      console.warn('NGAT failed to warm current user at app bootstrap:', error);
-    }
-  })();
-};
-
-primeAppAuthBootstrap();
+  return children
+}
 
 const getEntryTitle = (searchParams) => {
   const type = searchParams.get('type');
@@ -171,44 +187,46 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <AppMetadata />
-      <ToastContainer
-        position="top-right"
-        autoClose={3000}
-        hideProgressBar={false}
-        newestOnTop={false}
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss={false}
-        draggable
-        pauseOnHover={false}
-      />
-      <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/audit" element={<Audit />} />
-        <Route path="/audit/:id" element={<Audit />} />
-        <Route path="/myaudits" element={<AllReports />} />
-        <Route path="/audit-reports" element={<AuditReports />} />
-        <Route path="/reports" element={<ThirtySixtyNinety />} />
-        <Route path="/entry" element={<Entry />} />
-        <Route path="/approve/:scheduleId" element={<Approval />} />
-        <Route path="/email-outbox" element={<EmailOutbox />} />
-        <Route path="/schedule" element={<Schedule />} />
-        <Route path="/planning" element={<Planning />} />
-        <Route path="/results" element={<Results />} />
-        <Route path="/nonconformaties" element={<Nonconformaties />} />
-        <Route path="/calendar" element={<Calendar />} />
-        <Route path="/metrics" element={<Metrics />} />
-        <Route path="/risk-analysis" element={<RiskAnalysis />} />
-        <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
-        <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
-        <Route path="/foe" element={<FOE />} />
-        <Route path="/info-support" element={<InfoSupport />} />
-        <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
-        <Route path="/audit-statuses" element={<AuditStatuses />} />
-        <Route path="/admin" element={<AdminMenu />} />
-        <Route path="/tabletest" element={<TableTest />} />
-      </Routes>
+      <AppBootstrapGate>
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss={false}
+          draggable
+          pauseOnHover={false}
+        />
+        <Navbar />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/audit" element={<Audit />} />
+          <Route path="/audit/:id" element={<Audit />} />
+          <Route path="/myaudits" element={<AllReports />} />
+          <Route path="/audit-reports" element={<AuditReports />} />
+          <Route path="/reports" element={<ThirtySixtyNinety />} />
+          <Route path="/entry" element={<Entry />} />
+          <Route path="/approve/:scheduleId" element={<Approval />} />
+          <Route path="/email-outbox" element={<EmailOutbox />} />
+          <Route path="/schedule" element={<Schedule />} />
+          <Route path="/planning" element={<Planning />} />
+          <Route path="/results" element={<Results />} />
+          <Route path="/nonconformaties" element={<Nonconformaties />} />
+          <Route path="/calendar" element={<Calendar />} />
+          <Route path="/metrics" element={<Metrics />} />
+          <Route path="/risk-analysis" element={<RiskAnalysis />} />
+          <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
+          <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
+          <Route path="/foe" element={<FOE />} />
+          <Route path="/info-support" element={<InfoSupport />} />
+          <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
+          <Route path="/audit-statuses" element={<AuditStatuses />} />
+          <Route path="/admin" element={<AdminMenu />} />
+          <Route path="/tabletest" element={<TableTest />} />
+        </Routes>
+      </AppBootstrapGate>
     </BrowserRouter>
   </StrictMode>,
 )
