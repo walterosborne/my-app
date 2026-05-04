@@ -373,17 +373,20 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       id: idx + 1,
       NCID: nc.ncId,
       Question: nc.question,
+      RawType: nc.type,
       Type: getQuestionTypeLabel(nc.type),
+      Section: nc.section,
+      Subsection: nc.subsection,
       Severity: 'N/A'
     }));
 
   const standardBasedGroups = useMemo(() => {
     const standardNcs = nonconformaties
-      .filter((nc) => nc.Type !== 'PEQ' && nc.Type !== 'ETQ')
+      .filter((nc) => nc.RawType !== 'PEQ' && nc.RawType !== 'ETQ')
       .slice()
       .sort((a, b) => {
-        const labelA = getQuestionTypeLabel(a.Type);
-        const labelB = getQuestionTypeLabel(b.Type);
+        const labelA = getQuestionTypeLabel(a.RawType);
+        const labelB = getQuestionTypeLabel(b.RawType);
         if (labelA !== labelB) {
           return (labelA || '').localeCompare(labelB || '');
         }
@@ -398,7 +401,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
     const grouped = new Map();
     standardNcs.forEach((nc) => {
-      const label = getQuestionTypeLabel(nc.Type) || 'Standard';
+      const label = getQuestionTypeLabel(nc.RawType) || 'Standard';
       if (!grouped.has(label)) {
         grouped.set(label, []);
       }

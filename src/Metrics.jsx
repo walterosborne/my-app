@@ -73,7 +73,7 @@ const Metrics = () => {
   const [severityTimelineGranularity, setSeverityTimelineGranularity] = useState('Monthly');
   const [monthlyMetrics, setMonthlyMetrics] = useState(['Audit Count']);
   const [findingsIntExtId, setFindingsIntExtId] = useState(null);
-  const [findingsClauseStandardId, setFindingsClauseStandardId] = useState(null);
+  const [findingsClauseStandardKey, setFindingsClauseStandardKey] = useState(null);
   const [dateField, setDateField] = useState('expectedStartDate');
   const [includeHistorical, setIncludeHistorical] = useState(false);
   const stageChartApiRef = React.useRef(null);
@@ -283,6 +283,32 @@ const Metrics = () => {
       return { numeric: asNumber, text: String(value) };
     }
     return { numeric: Number.POSITIVE_INFINITY, text: String(value) };
+  };
+
+  const getStandardToggleOption = (typeValue) => {
+    const rawType = String(typeValue ?? '').trim();
+    if (!rawType) {
+      return null;
+    }
+
+    const normalized = rawType.toUpperCase();
+    if (normalized === 'PEQ' || normalized === 'ETQ') {
+      return null;
+    }
+
+    const parsed = Number(rawType);
+    if (Number.isFinite(parsed)) {
+      const standard = standardsList.find((entry) => Number(entry.standardId) === parsed);
+      return {
+        key: `id:${parsed}`,
+        label: standard?.standardName || `Standard ${parsed}`
+      };
+    }
+
+    return {
+      key: `raw:${rawType}`,
+      label: rawType
+    };
   };
 
   const nonconformanceBySchedule = useMemo(() => {
@@ -823,21 +849,12 @@ const Metrics = () => {
 
   const findingsByClauseData = useMemo(() => {
     const auditBySchedule = new Map(filteredAudits.map((audit) => [Number(audit.scheduleId), audit]));
-    const standardLookup = new Map(
-      standardsList.map((standard) => [Number(standard.standardId), standard.standardName])
-    );
     const countsByStandard = new Map();
     const availableStandardsMap = new Map();
 
     nonconformances.forEach((nc) => {
-      const typeValue = nc.type;
-      const typeText = String(typeValue ?? '').trim();
-      if (!typeText || typeText.toUpperCase() === 'PEQ' || typeText.toUpperCase() === 'ETQ') {
-        return;
-      }
-
-      const standardId = Number(typeValue);
-      if (!Number.isFinite(standardId)) {
+      const standardOption = getStandardToggleOption(nc.type);
+      if (!standardOption) {
         return;
       }
 
@@ -856,26 +873,26 @@ const Metrics = () => {
         ? String(section)
         : `${section}.${subsection}`;
 
-      if (!countsByStandard.has(standardId)) {
-        countsByStandard.set(standardId, new Map());
+      if (!countsByStandard.has(standardOption.key)) {
+        countsByStandard.set(standardOption.key, new Map());
       }
-      const standardCounts = countsByStandard.get(standardId);
+      const standardCounts = countsByStandard.get(standardOption.key);
       standardCounts.set(clauseLabel, (standardCounts.get(clauseLabel) || 0) + 1);
 
-      if (!availableStandardsMap.has(standardId)) {
-        availableStandardsMap.set(standardId, standardLookup.get(standardId) || `Standard ${standardId}`);
+      if (!availableStandardsMap.has(standardOption.key)) {
+        availableStandardsMap.set(standardOption.key, standardOption.label);
       }
     });
 
     const availableStandards = Array.from(availableStandardsMap.entries())
-      .map(([value, label]) => ({ value, label }))
+      .map(([key, label]) => ({ key, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
 
-    const selectedStandard = availableStandards.find((option) => Number(option.value) === Number(findingsClauseStandardId))
+    const selectedStandard = availableStandards.find((option) => option.key === findingsClauseStandardKey)
       || availableStandards[0]
       || null;
 
-    const selectedCounts = selectedStandard ? countsByStandard.get(Number(selectedStandard.value)) : null;
+    const selectedCounts = selectedStandard ? countsByStandard.get(selectedStandard.key) : null;
     const rows = Array.from(selectedCounts?.entries() || [])
       .map(([label, count]) => {
         const [sectionPart, subsectionPart = ''] = String(label).split('.');
@@ -912,26 +929,26 @@ const Metrics = () => {
         }
       ],
       availableStandards,
-      selectedStandardId: selectedStandard?.value ?? null,
+      selectedStandardKey: selectedStandard?.key ?? null,
       selectedStandardLabel: selectedStandard?.label ?? '',
       total: rows.reduce((sum, row) => sum + row.count, 0)
     };
-  }, [filteredAudits, nonconformances, standardsList, findingsClauseStandardId]);
+  }, [filteredAudits, nonconformances, standardsList, findingsClauseStandardKey]);
 
   useEffect(() => {
     const availableStandards = findingsByClauseData.availableStandards;
     if (availableStandards.length === 0) {
-      if (findingsClauseStandardId !== null) {
-        setFindingsClauseStandardId(null);
+      if (findingsClauseStandardKey !== null) {
+        setFindingsClauseStandardKey(null);
       }
       return;
     }
 
-    const hasCurrent = availableStandards.some((option) => Number(option.value) === Number(findingsClauseStandardId));
+    const hasCurrent = availableStandards.some((option) => option.key === findingsClauseStandardKey);
     if (!hasCurrent) {
-      setFindingsClauseStandardId(availableStandards[0].value);
+      setFindingsClauseStandardKey(availableStandards[0].key);
     }
-  }, [findingsByClauseData.availableStandards, findingsClauseStandardId]);
+  }, [findingsByClauseData.availableStandards, findingsClauseStandardKey]);
 
   const monthlyChartData = useMemo(() => {
     const resolveAuditDate = (audit) => {
@@ -1977,11 +1994,11 @@ const Metrics = () => {
                       <div className="metrics-chip-group" role="tablist" aria-label="Findings by clause standard toggle">
                         {findingsByClauseData.availableStandards.map((option) => (
                           <button
-                            key={option.value}
+                            key={option.key}
                             type="button"
-                            className={`metrics-chip ${Number(option.value) === Number(findingsClauseStandardId) ? 'active' : ''}`}
-                            onClick={() => setFindingsClauseStandardId(option.value)}
-                            aria-pressed={Number(option.value) === Number(findingsClauseStandardId)}
+                            className={`metrics-chip ${option.key === findingsClauseStandardKey ? 'active' : ''}`}
+                            onClick={() => setFindingsClauseStandardKey(option.key)}
+                            aria-pressed={option.key === findingsClauseStandardKey}
                           >
                             {option.label}
                           </button>
