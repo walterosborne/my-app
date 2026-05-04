@@ -34,6 +34,7 @@ import {
   getPrograms,
   getSectors,
   getSeverities,
+  getStandards,
   getSites
 } from './assets/data/apiData';
 
@@ -53,6 +54,7 @@ const Metrics = () => {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [sectorsList, setSectorsList] = useState([]);
   const [severitiesList, setSeveritiesList] = useState([]);
+  const [standardsList, setStandardsList] = useState([]);
   const [sitesList, setSitesList] = useState([]);
   const [programsList, setProgramsList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
@@ -71,16 +73,19 @@ const Metrics = () => {
   const [severityTimelineGranularity, setSeverityTimelineGranularity] = useState('Monthly');
   const [monthlyMetrics, setMonthlyMetrics] = useState(['Audit Count']);
   const [findingsIntExtId, setFindingsIntExtId] = useState(null);
+  const [findingsClauseStandardId, setFindingsClauseStandardId] = useState(null);
   const [dateField, setDateField] = useState('expectedStartDate');
   const [includeHistorical, setIncludeHistorical] = useState(false);
   const stageChartApiRef = React.useRef(null);
   const monthlyChartApiRef = React.useRef(null);
   const findingsChartApiRef = React.useRef(null);
+  const findingsClauseChartApiRef = React.useRef(null);
   const delayChartApiRef = React.useRef(null);
   const severityChartApiRef = React.useRef(null);
   const stageChartWrapperRef = React.useRef(null);
   const monthlyChartWrapperRef = React.useRef(null);
   const findingsChartWrapperRef = React.useRef(null);
+  const findingsClauseChartWrapperRef = React.useRef(null);
   const delayChartWrapperRef = React.useRef(null);
   const severityChartWrapperRef = React.useRef(null);
   const [filters, setFilters] = useState({
@@ -107,6 +112,7 @@ const Metrics = () => {
           sitesData,
           programsData,
           functionsData,
+          standardsData,
           nonconformancesData,
           intExtData,
           severitiesData
@@ -121,6 +127,7 @@ const Metrics = () => {
           getSites(),
           getPrograms(),
           getFunctions(),
+          getStandards(),
           getNonconformances(),
           getIntExt(),
           getSeverities()
@@ -137,6 +144,7 @@ const Metrics = () => {
         setSitesList(sitesData);
         setProgramsList(programsData);
         setFunctionsList(functionsData);
+        setStandardsList(standardsData);
         setNonconformances(nonconformancesData);
         setLoading(false);
       } catch (error) {
@@ -261,9 +269,21 @@ const Metrics = () => {
 
   useEffect(() => {
     if (!findingsIntExtId && intExtOptions.length > 0) {
-      setFindingsIntExtId(intExtOptions[0].value);
+      const defaultOption = intExtOptions.find((option) => /internal/i.test(option.label)) || intExtOptions[0];
+      setFindingsIntExtId(defaultOption.value);
     }
   }, [findingsIntExtId, intExtOptions]);
+
+  const parseClauseSortPart = (value) => {
+    if (value === null || value === undefined || value === '') {
+      return { numeric: Number.POSITIVE_INFINITY, text: '' };
+    }
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) {
+      return { numeric: asNumber, text: String(value) };
+    }
+    return { numeric: Number.POSITIVE_INFINITY, text: String(value) };
+  };
 
   const nonconformanceBySchedule = useMemo(() => {
     return nonconformances.reduce((acc, nc) => {
@@ -704,7 +724,6 @@ const Metrics = () => {
   }, [filteredAudits, nonconformances, severitiesList, severityTimelineGranularity, dateField]);
 
   const findingsChartData = useMemo(() => {
-    const auditBySchedule = new Map(filteredAudits.map((audit) => [Number(audit.scheduleId), audit]));
     const functionLookup = new Map(functionsList.map((func) => [Number(func.functionId), func.functionName]));
     const severityLookup = new Map(severitiesList.map((severity) => [Number(severity.severityId), severity.severity]));
 
@@ -712,6 +731,7 @@ const Metrics = () => {
       if (!findingsIntExtId) return true;
       return Number(audit.intExtId) === Number(findingsIntExtId);
     });
+    const auditBySchedule = new Map(auditsForFindings.map((audit) => [Number(audit.scheduleId), audit]));
 
     const functionLabels = Array.from(
       new Set(
@@ -800,6 +820,118 @@ const Metrics = () => {
     findingsIntExtId,
     severitiesList
   ]);
+
+  const findingsByClauseData = useMemo(() => {
+    const auditBySchedule = new Map(filteredAudits.map((audit) => [Number(audit.scheduleId), audit]));
+    const standardLookup = new Map(
+      standardsList.map((standard) => [Number(standard.standardId), standard.standardName])
+    );
+    const countsByStandard = new Map();
+    const availableStandardsMap = new Map();
+
+    nonconformances.forEach((nc) => {
+      const typeValue = nc.type;
+      const typeText = String(typeValue ?? '').trim();
+      if (!typeText || typeText.toUpperCase() === 'PEQ' || typeText.toUpperCase() === 'ETQ') {
+        return;
+      }
+
+      const standardId = Number(typeValue);
+      if (!Number.isFinite(standardId)) {
+        return;
+      }
+
+      const audit = auditBySchedule.get(Number(nc.scheduleId ?? nc.scheduleid));
+      if (!audit) {
+        return;
+      }
+
+      const section = nc.section ?? nc.Section;
+      if (section === null || section === undefined || section === '') {
+        return;
+      }
+
+      const subsection = nc.subsection ?? nc.Subsection;
+      const clauseLabel = subsection === null || subsection === undefined || subsection === ''
+        ? String(section)
+        : `${section}.${subsection}`;
+
+      if (!countsByStandard.has(standardId)) {
+        countsByStandard.set(standardId, new Map());
+      }
+      const standardCounts = countsByStandard.get(standardId);
+      standardCounts.set(clauseLabel, (standardCounts.get(clauseLabel) || 0) + 1);
+
+      if (!availableStandardsMap.has(standardId)) {
+        availableStandardsMap.set(standardId, standardLookup.get(standardId) || `Standard ${standardId}`);
+      }
+    });
+
+    const availableStandards = Array.from(availableStandardsMap.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    const selectedStandard = availableStandards.find((option) => Number(option.value) === Number(findingsClauseStandardId))
+      || availableStandards[0]
+      || null;
+
+    const selectedCounts = selectedStandard ? countsByStandard.get(Number(selectedStandard.value)) : null;
+    const rows = Array.from(selectedCounts?.entries() || [])
+      .map(([label, count]) => {
+        const [sectionPart, subsectionPart = ''] = String(label).split('.');
+        return {
+          label,
+          count,
+          sectionSort: parseClauseSortPart(sectionPart),
+          subsectionSort: parseClauseSortPart(subsectionPart)
+        };
+      })
+      .sort((a, b) => {
+        if (a.sectionSort.numeric !== b.sectionSort.numeric) {
+          return a.sectionSort.numeric - b.sectionSort.numeric;
+        }
+        if (a.sectionSort.text !== b.sectionSort.text) {
+          return a.sectionSort.text.localeCompare(b.sectionSort.text);
+        }
+        if (a.subsectionSort.numeric !== b.subsectionSort.numeric) {
+          return a.subsectionSort.numeric - b.subsectionSort.numeric;
+        }
+        return a.subsectionSort.text.localeCompare(b.subsectionSort.text);
+      });
+
+    return {
+      labels: rows.map((row) => row.label),
+      series: [
+        {
+          id: 'Findings',
+          label: 'Findings',
+          data: rows.map((row) => row.count),
+          color: '#0ea5e9',
+          barLabel: (item) => (item.value ? `${item.value}` : null),
+          barLabelPlacement: 'center'
+        }
+      ],
+      availableStandards,
+      selectedStandardId: selectedStandard?.value ?? null,
+      selectedStandardLabel: selectedStandard?.label ?? '',
+      total: rows.reduce((sum, row) => sum + row.count, 0)
+    };
+  }, [filteredAudits, nonconformances, standardsList, findingsClauseStandardId]);
+
+  useEffect(() => {
+    const availableStandards = findingsByClauseData.availableStandards;
+    if (availableStandards.length === 0) {
+      if (findingsClauseStandardId !== null) {
+        setFindingsClauseStandardId(null);
+      }
+      return;
+    }
+
+    const hasCurrent = availableStandards.some((option) => Number(option.value) === Number(findingsClauseStandardId));
+    if (!hasCurrent) {
+      setFindingsClauseStandardId(availableStandards[0].value);
+    }
+  }, [findingsByClauseData.availableStandards, findingsClauseStandardId]);
 
   const monthlyChartData = useMemo(() => {
     const resolveAuditDate = (audit) => {
@@ -1369,12 +1501,30 @@ const Metrics = () => {
     </BarChart>
   );
 
+  const renderFindingsClauseChart = (width, height) => (
+    <BarChart
+      xAxis={[{ scaleType: 'band', data: findingsByClauseData.labels }]}
+      yAxis={[{ tickMinStep: 1 }]}
+      series={findingsByClauseData.series}
+      slots={{ tooltip: MetricsTooltip }}
+      slotProps={{
+        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
+        tooltip: { trigger: 'axis' }
+      }}
+      width={width}
+      height={height}
+      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
+    />
+  );
+
   const showStageMetric = activeTab === 'All' || activeTab === 'PCAB';
   const showDelayMetric = activeTab === 'All' || activeTab === 'Other';
   const showMonthlyMetric = activeTab === 'All' || activeTab === 'Finding Analysis';
   const showSeverityMetric = activeTab === 'All' || activeTab === 'Finding Analysis';
   const showFindingsMetric = activeTab === 'All' || activeTab === 'Finding Analysis';
+  const showFindingsByClauseMetric = activeTab === 'All' || activeTab === 'Finding Analysis';
   const hasSeverityData = severityTrendData.series.length > 0 && severityTrendData.labels.length > 0;
+  const hasFindingsByClauseData = findingsByClauseData.labels.length > 0;
 
   const handleFilterChange = (key) => (selectedOption) => {
     setFilters((prev) => ({
@@ -1781,6 +1931,64 @@ const Metrics = () => {
                     />
                   </div>
                 </div>
+                )}
+                {showFindingsByClauseMetric && (
+                  <div className="metrics-card">
+                    <div className="metrics-card-header">
+                      <div className="metrics-card-title">
+                        <span>Findings by Clause</span>
+                        <span className="metrics-card-total">
+                          {findingsByClauseData.selectedStandardLabel
+                            ? `${findingsByClauseData.selectedStandardLabel} · ${findingsByClauseData.total} findings`
+                            : 'No standard findings for the selected filters'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="metrics-export-button"
+                        onClick={() => handleExport(
+                          findingsClauseChartApiRef,
+                          findingsClauseChartWrapperRef,
+                          'findings-by-clause',
+                          renderFindingsClauseChart
+                        )}
+                      >
+                        Export
+                      </button>
+                    </div>
+                    <div className="metrics-card-body" ref={findingsClauseChartWrapperRef}>
+                      {hasFindingsByClauseData ? (
+                        <BarChart
+                          apiRef={findingsClauseChartApiRef}
+                          xAxis={[{ scaleType: 'band', data: findingsByClauseData.labels }]}
+                          yAxis={[{ tickMinStep: 1 }]}
+                          series={findingsByClauseData.series}
+                          slots={{ tooltip: MetricsTooltip }}
+                          slotProps={{ tooltip: { trigger: 'axis' } }}
+                          height={260}
+                          margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
+                        />
+                      ) : (
+                        <div className="metrics-empty">No standard-based findings found for the selected filters.</div>
+                      )}
+                    </div>
+                    <div className="metrics-card-footer">
+                      <label>Standard</label>
+                      <div className="metrics-chip-group" role="tablist" aria-label="Findings by clause standard toggle">
+                        {findingsByClauseData.availableStandards.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={`metrics-chip ${Number(option.value) === Number(findingsClauseStandardId) ? 'active' : ''}`}
+                            onClick={() => setFindingsClauseStandardId(option.value)}
+                            aria-pressed={Number(option.value) === Number(findingsClauseStandardId)}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
