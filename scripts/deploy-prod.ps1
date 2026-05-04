@@ -180,11 +180,6 @@ function Get-NgatListeningProcessIds {
     }
 }
 
-function Get-NgatFutureStartTime {
-    $date = (Get-Date).AddMinutes(2)
-    return $date.ToString('HH:mm')
-}
-
 function Write-NgatFileTail {
     param(
         [Parameter(Mandatory = $true)]
@@ -391,7 +386,7 @@ exit `$exitCode
     $taskCommand = "`"$powershellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$launchScript`""
     Write-NgatDeployLog "Scheduled task command=$taskCommand"
 
-    $createOutput = & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONCE /ST (Get-NgatFutureStartTime) /RU SYSTEM /RL HIGHEST /F 2>&1
+    $createOutput = & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONSTART /RU SYSTEM /RL HIGHEST /F 2>&1
     $createExitCode = $LASTEXITCODE
     Write-NgatDeployLog "schtasks /Create exitCode=$createExitCode"
     if ($createOutput) {
