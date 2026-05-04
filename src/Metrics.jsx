@@ -93,6 +93,7 @@ const Metrics = () => {
     dateTo: '',
     auditorId: null,
     divisionIds: [],
+    intExtId: null,
     siteId: null,
     programId: null,
     functionIds: []
@@ -226,6 +227,13 @@ const Metrics = () => {
     ];
   }, []);
 
+  const timelineOptions = useMemo(() => ([
+    { value: 'Annual', label: 'Annual' },
+    { value: 'Quarterly', label: 'Quarterly' },
+    { value: 'Monthly', label: 'Monthly' },
+    { value: 'This Week', label: 'This Week' }
+  ]), []);
+
   const dateFieldOptions = useMemo(() => ([
     { value: 'expectedStartDate', label: 'Expected Start Date' },
     { value: 'expectedCompletionDate', label: 'Expected Completion Date' },
@@ -283,6 +291,52 @@ const Metrics = () => {
       return { numeric: asNumber, text: String(value) };
     }
     return { numeric: Number.POSITIVE_INFINITY, text: String(value) };
+  };
+
+  const getCurrentWeekRange = () => {
+    const now = new Date();
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = (day + 6) % 7;
+    start.setDate(start.getDate() - diff);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  };
+
+  const getTimelineKeyAndLabel = (dateValue, granularity) => {
+    const date = parseCalendarDate(dateValue);
+    if (!date || Number.isNaN(date.getTime())) return null;
+
+    if (granularity === 'Annual') {
+      return {
+        key: `${date.getFullYear()}`,
+        label: `${date.getFullYear()}`
+      };
+    }
+
+    if (granularity === 'Quarterly') {
+      const quarter = Math.floor(date.getMonth() / 3) + 1;
+      return {
+        key: `${date.getFullYear()}-Q${quarter}`,
+        label: `Q${quarter} ${date.getFullYear()}`
+      };
+    }
+
+    if (granularity === 'This Week') {
+      return {
+        key: date.toDateString(),
+        label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      };
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return {
+      key: `${date.getFullYear()}-${month}`,
+      label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    };
   };
 
   const getStandardToggleOption = (typeValue) => {
@@ -414,6 +468,10 @@ const Metrics = () => {
         if (!programs.map(Number).includes(Number(filters.programId))) {
           return false;
         }
+      }
+
+      if (filters.intExtId && Number(audit.intExtId) !== Number(filters.intExtId)) {
+        return false;
       }
 
       if (filters.functionIds.length > 0) {
@@ -631,6 +689,7 @@ const Metrics = () => {
         label: severity.severity
       }))
       .sort((a, b) => a.id - b.id);
+    const specialFindingLabels = ['OFIs', 'Observations'];
 
     const resolveAuditDate = (audit) => {
       switch (dateField) {
@@ -648,42 +707,7 @@ const Metrics = () => {
       }
     };
 
-    const getKeyAndLabel = (dateValue) => {
-      const date = parseCalendarDate(dateValue);
-      if (!date || Number.isNaN(date.getTime())) return null;
-      if (severityTimelineGranularity === 'Annual') {
-        return {
-          key: `${date.getFullYear()}`,
-          label: `${date.getFullYear()}`
-        };
-      }
-      if (severityTimelineGranularity === 'This Week') {
-        return {
-          key: date.toDateString(),
-          label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        };
-      }
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const key = `${date.getFullYear()}-${month}`;
-      return {
-        key,
-        label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-      };
-    };
-
-    const weekRange = (() => {
-      if (severityTimelineGranularity !== 'This Week') return null;
-      const now = new Date();
-      const start = new Date(now);
-      const day = start.getDay();
-      const diff = (day + 6) % 7;
-      start.setDate(start.getDate() - diff);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    })();
+    const weekRange = severityTimelineGranularity === 'This Week' ? getCurrentWeekRange() : null;
 
     const severityLabels = severityOptions.map((entry) => entry.label);
     const countsBySeverity = {};
@@ -691,13 +715,14 @@ const Metrics = () => {
     const usedSeverities = new Set();
 
     nonconformances.forEach((nc) => {
-      if (Number(nc.findingType) !== 1) return;
+      const findingType = Number(nc.findingType);
+      if (![1, 3, 4].includes(findingType)) return;
       const scheduleId = Number(nc.scheduleId ?? nc.scheduleid);
       const audit = auditBySchedule.get(scheduleId);
       if (!audit) return;
       const dateValue = resolveAuditDate(audit);
       if (!dateValue) return;
-      const keyData = getKeyAndLabel(dateValue);
+      const keyData = getTimelineKeyAndLabel(dateValue, severityTimelineGranularity);
       if (!keyData) return;
       if (severityTimelineGranularity === 'This Week' && weekRange) {
         const date = parseCalendarDate(dateValue);
@@ -706,7 +731,9 @@ const Metrics = () => {
         }
       }
       keyLabelMap.set(keyData.key, keyData.label);
-      const severityLabel = severityOptions.find((entry) => entry.id === Number(nc.severity))?.label || 'Unspecified';
+      const severityLabel = findingType === 1
+        ? (severityOptions.find((entry) => entry.id === Number(nc.severity))?.label || 'Unspecified')
+        : (findingType === 3 ? 'OFIs' : 'Observations');
       usedSeverities.add(severityLabel);
       if (!countsBySeverity[severityLabel]) {
         countsBySeverity[severityLabel] = {};
@@ -714,7 +741,10 @@ const Metrics = () => {
       countsBySeverity[severityLabel][keyData.key] = (countsBySeverity[severityLabel][keyData.key] || 0) + 1;
     });
 
-    const activeSeverityLabels = severityLabels.filter((label) => usedSeverities.has(label));
+    const activeSeverityLabels = [
+      ...severityLabels.filter((label) => usedSeverities.has(label)),
+      ...specialFindingLabels.filter((label) => usedSeverities.has(label))
+    ];
     if (usedSeverities.has('Unspecified') && !activeSeverityLabels.includes('Unspecified')) {
       activeSeverityLabels.push('Unspecified');
     }
@@ -969,42 +999,7 @@ const Metrics = () => {
 
     const auditsWithDates = filteredAudits.filter((audit) => resolveAuditDate(audit));
 
-    const getKeyAndLabel = (dateValue) => {
-      const date = parseCalendarDate(dateValue);
-      if (!date || Number.isNaN(date.getTime())) return null;
-      if (timelineGranularity === 'Annual') {
-        return {
-          key: `${date.getFullYear()}`,
-          label: `${date.getFullYear()}`
-        };
-      }
-      if (timelineGranularity === 'This Week') {
-        return {
-          key: date.toDateString(),
-          label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        };
-      }
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const key = `${date.getFullYear()}-${month}`;
-      return {
-        key,
-        label: date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-      };
-    };
-
-    const weekRange = (() => {
-      if (timelineGranularity !== 'This Week') return null;
-      const now = new Date();
-      const start = new Date(now);
-      const day = start.getDay();
-      const diff = (day + 6) % 7;
-      start.setDate(start.getDate() - diff);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setDate(start.getDate() + 6);
-      end.setHours(23, 59, 59, 999);
-      return { start, end };
-    })();
+    const weekRange = timelineGranularity === 'This Week' ? getCurrentWeekRange() : null;
 
     const filteredByGranularity = timelineGranularity === 'This Week'
       ? auditsWithDates.filter((audit) => {
@@ -1019,7 +1014,7 @@ const Metrics = () => {
     const monthMap = new Map();
     filteredByGranularity.forEach((audit) => {
       const dateValue = resolveAuditDate(audit);
-      const keyData = dateValue ? getKeyAndLabel(dateValue) : null;
+      const keyData = dateValue ? getTimelineKeyAndLabel(dateValue, timelineGranularity) : null;
       if (!keyData) return;
       if (!monthMap.has(keyData.key)) {
         monthMap.set(keyData.key, { label: keyData.label, audits: [] });
@@ -1046,7 +1041,7 @@ const Metrics = () => {
 
     filteredByGranularity.forEach((audit) => {
       const dateValue = resolveAuditDate(audit);
-      const keyData = dateValue ? getKeyAndLabel(dateValue) : null;
+      const keyData = dateValue ? getTimelineKeyAndLabel(dateValue, timelineGranularity) : null;
       if (!keyData) return;
       const key = keyData.key;
       if (monthlyMetrics.includes('Audit Count')) {
@@ -1678,6 +1673,17 @@ const Metrics = () => {
                   />
                 </div>
                 <div className="metrics-filter">
+                  <label>Internal / External</label>
+                  <Select
+                    isClearable
+                    options={intExtOptions}
+                    styles={customStyles}
+                    placeholder="Select Audit Type"
+                    value={filters.intExtId ? intExtOptions.find((option) => option.value === filters.intExtId) : null}
+                    onChange={handleFilterChange('intExtId')}
+                  />
+                </div>
+                <div className="metrics-filter">
                   <label>Program</label>
                   <Select
                     isClearable
@@ -1810,7 +1816,7 @@ const Metrics = () => {
                 {showMonthlyMetric && (
                   <div className="metrics-card">
                   <div className="metrics-card-header">
-                    <span>Audits Conducted per Month</span>
+                    <span>Audits Over Time</span>
                     <button
                       type="button"
                       className="metrics-export-button"
@@ -1835,11 +1841,7 @@ const Metrics = () => {
                     <label>Timeline</label>
                     <Select
                       isClearable={false}
-                      options={[
-                        { value: 'Annual', label: 'Annual' },
-                        { value: 'Monthly', label: 'Monthly' },
-                        { value: 'This Week', label: 'This Week' }
-                      ]}
+                      options={timelineOptions}
                       styles={customStyles}
                       placeholder="Select"
                       value={{ value: timelineGranularity, label: timelineGranularity }}
@@ -1865,12 +1867,12 @@ const Metrics = () => {
                   <div className="metrics-card">
                     <div className="metrics-card-header">
                       <div className="metrics-card-title">
-                        <span>NC Severity Mix Over Time</span>
+                        <span>Finding Severities</span>
                       </div>
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(severityChartApiRef, severityChartWrapperRef, 'nc-severity-mix', renderSeverityChart)}
+                        onClick={() => handleExport(severityChartApiRef, severityChartWrapperRef, 'finding-severities', renderSeverityChart)}
                       >
                         Export
                       </button>
@@ -1888,18 +1890,14 @@ const Metrics = () => {
                           margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
                         />
                       ) : (
-                        <div className="metrics-empty">No nonconformities found for the selected filters.</div>
+                        <div className="metrics-empty">No findings found for the selected filters.</div>
                       )}
                     </div>
                     <div className="metrics-card-footer">
                       <label>Timeline</label>
                       <Select
                         isClearable={false}
-                        options={[
-                          { value: 'Annual', label: 'Annual' },
-                          { value: 'Monthly', label: 'Monthly' },
-                          { value: 'This Week', label: 'This Week' }
-                        ]}
+                        options={timelineOptions}
                         styles={customStyles}
                         placeholder="Select"
                         value={{ value: severityTimelineGranularity, label: severityTimelineGranularity }}
