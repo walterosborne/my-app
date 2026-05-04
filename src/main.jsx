@@ -29,9 +29,36 @@ import Metrics from './Metrics.jsx'
 import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
-import { installIisAuthFetchShim } from './iisAuthClient.js'
+import { getCurrentUser } from './assets/data/apiData'
+import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
 
 installIisAuthFetchShim();
+
+let authBootstrapStarted = false;
+
+const primeAppAuthBootstrap = () => {
+  if (authBootstrapStarted || typeof window === 'undefined') {
+    return;
+  }
+
+  authBootstrapStarted = true;
+
+  (async () => {
+    try {
+      await getIisAuthPayload();
+    } catch (error) {
+      console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error);
+    }
+
+    try {
+      await getCurrentUser();
+    } catch (error) {
+      console.warn('NGAT failed to warm current user at app bootstrap:', error);
+    }
+  })();
+};
+
+primeAppAuthBootstrap();
 
 const getEntryTitle = (searchParams) => {
   const type = searchParams.get('type');

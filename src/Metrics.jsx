@@ -39,6 +39,7 @@ import {
 } from './assets/data/apiData';
 
 const METRICS_STACKED_LAYOUT_QUERY = '(max-width: 1100px)';
+const METRICS_PRIMARY_BAR_COLOR = '#003366';
 
 const Metrics = () => {
   const exportToastOptions = {
@@ -672,7 +673,7 @@ const Metrics = () => {
           id: 'Audits',
           label: 'Audits',
           data,
-          color: '#0ea5e9',
+          color: METRICS_PRIMARY_BAR_COLOR,
           barLabel: (item) => (item.value ? `${item.value}` : null),
           barLabelPlacement: 'center'
         }
@@ -953,7 +954,7 @@ const Metrics = () => {
           id: 'Findings',
           label: 'Findings',
           data: rows.map((row) => row.count),
-          color: '#0ea5e9',
+          color: METRICS_PRIMARY_BAR_COLOR,
           barLabel: (item) => (item.value ? `${item.value}` : null),
           barLabelPlacement: 'center'
         }
@@ -1989,19 +1990,19 @@ const Metrics = () => {
                     </div>
                     <div className="metrics-card-footer">
                       <label>Standard</label>
-                      <div className="metrics-chip-group" role="tablist" aria-label="Findings by clause standard toggle">
-                        {findingsByClauseData.availableStandards.map((option) => (
-                          <button
-                            key={option.key}
-                            type="button"
-                            className={`metrics-chip ${option.key === findingsClauseStandardKey ? 'active' : ''}`}
-                            onClick={() => setFindingsClauseStandardKey(option.key)}
-                            aria-pressed={option.key === findingsClauseStandardKey}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
+                      <Select
+                        isClearable={false}
+                        options={findingsByClauseData.availableStandards.map((option) => ({
+                          value: option.key,
+                          label: option.label
+                        }))}
+                        styles={customStyles}
+                        placeholder="Select Standard"
+                        value={findingsByClauseData.availableStandards
+                          .map((option) => ({ value: option.key, label: option.label }))
+                          .find((option) => option.value === findingsClauseStandardKey) || null}
+                        onChange={(option) => setFindingsClauseStandardKey(option?.value || null)}
+                      />
                     </div>
                   </div>
                 )}

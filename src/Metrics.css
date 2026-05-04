@@ -286,36 +286,6 @@
   color: #1f2937;
 }
 
-.metrics-chip-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.metrics-chip {
-  border: none;
-  border-radius: 999px;
-  background: #e5e7eb;
-  color: #1f2937;
-  padding: 8px 14px;
-  font-weight: 600;
-  cursor: pointer;
-  line-height: 1.2;
-}
-
-.metrics-chip.active {
-  background: var(--color-primary-dark, #003366);
-  color: #ffffff;
-}
-
-.metrics-chip:hover {
-  background: #d1d5db;
-}
-
-.metrics-chip.active:hover {
-  background: #0b4d78;
-}
-
 .metrics-tooltip-total .MuiChartsTooltipCell {
   font-weight: 600;
   color: #111827;
