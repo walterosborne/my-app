@@ -281,6 +281,26 @@
   flex: 1 0 auto;
 }
 
+.metrics-card-footer--paired {
+  gap: 12px;
+}
+
+.metrics-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.metrics-grid--expanded .metrics-card-footer--paired {
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.metrics-grid--expanded .metrics-card-footer--paired .metrics-control-group {
+  flex: 1 1 0;
+}
+
 .metrics-card-footer label {
   font-weight: 600;
   color: #1f2937;
@@ -313,6 +333,10 @@
   .metrics-filters {
     flex: 1 1 auto;
     width: 100%;
+  }
+
+  .metrics-grid--expanded .metrics-card-footer--paired {
+    flex-direction: column;
   }
 }
 

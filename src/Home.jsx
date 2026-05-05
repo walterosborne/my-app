@@ -10,6 +10,7 @@ const Home = () => {
     const [upcomingAudits, setUpcomingAudits] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
     const [currentUser, setCurrentUser] = React.useState(null);
+    const [currentUserLoading, setCurrentUserLoading] = React.useState(true);
     const leftBubbleRef = React.useRef(null);
     const rightBubbleRef = React.useRef(null);
 
@@ -47,16 +48,30 @@ const Home = () => {
         logAuthDiagnostics();
     }, []);
 
+    React.useEffect(() => {
+        async function loadCurrentUser() {
+            try {
+                const userData = await getCurrentUser();
+                setCurrentUser(userData?.name && userData.name !== 'User' ? userData : null);
+            } catch (error) {
+                console.error('Error loading current user:', error);
+                setCurrentUser(null);
+            } finally {
+                setCurrentUserLoading(false);
+            }
+        }
+
+        loadCurrentUser();
+    }, []);
+
     // Load audits from API and format for display
     React.useEffect(() => {
         async function loadAudits() {
             try {
-                const [auditsData, auditorsData, userData] = await Promise.all([
+                const [auditsData, auditorsData] = await Promise.all([
                     getAuditsAll(true),
-                    getAuditors(),
-                    getCurrentUser()
+                    getAuditors()
                 ]);
-                setCurrentUser(userData?.name && userData.name !== 'User' ? userData : null);
 
                 // Calculate date range for 30-day lookahead
                 const now = new Date();
@@ -118,8 +133,10 @@ const Home = () => {
             <div className="home-content" ref={leftBubbleRef}>
                 <div className="home-header">
                     <h1 className="home-title">Northrop Grumman Audit Tool (NGAT)</h1>
-                    {currentUser?.name && (
-                        <p className="welcome-text">Welcome {currentUser.name}!</p>
+                    {(currentUserLoading || currentUser?.name) && (
+                        <p className="welcome-text">
+                            {currentUserLoading ? 'Loading user info...' : `Welcome ${currentUser.name}!`}
+                        </p>
                     )}
                 </div>
 

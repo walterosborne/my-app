@@ -40,6 +40,15 @@ import {
 
 const METRICS_STACKED_LAYOUT_QUERY = '(max-width: 1100px)';
 const METRICS_PRIMARY_BAR_COLOR = '#1d4ed8';
+const STAGE_LABELS = [
+  'Planning',
+  'Conduct Audit',
+  'Nonconformaties',
+  'Pending Approval',
+  'Approved',
+  'Historical',
+  'Unknown Stage'
+];
 
 const Metrics = () => {
   const exportToastOptions = {
@@ -69,6 +78,7 @@ const Metrics = () => {
   ));
   const [activeTab, setActiveTab] = useState('All');
   const [metricsViewMode, setMetricsViewMode] = useState('compact');
+  const [stageCategoryBy, setStageCategoryBy] = useState('stage');
   const [colorBy, setColorBy] = useState('division');
   const [timelineGranularity, setTimelineGranularity] = useState('Monthly');
   const [severityTimelineGranularity, setSeverityTimelineGranularity] = useState('Monthly');
@@ -202,6 +212,7 @@ const Metrics = () => {
 
   const colorByOptions = useMemo(() => {
     return [
+      { value: 'stage', label: 'Stage' },
       { value: 'businessUnit', label: 'Business Unit' },
       { value: 'division', label: 'Division' },
       { value: 'function', label: 'Function' },
@@ -366,6 +377,65 @@ const Metrics = () => {
     };
   };
 
+  const getBarChartPeakValue = (series = []) => {
+    const normalizedSeries = Array.isArray(series) ? series : [];
+    if (normalizedSeries.length === 0) {
+      return 0;
+    }
+
+    const maxDataLength = normalizedSeries.reduce(
+      (max, entry) => Math.max(max, Array.isArray(entry?.data) ? entry.data.length : 0),
+      0
+    );
+    const isStacked = normalizedSeries.some((entry) => entry?.stack);
+
+    if (isStacked) {
+      let stackedPeak = 0;
+      for (let index = 0; index < maxDataLength; index += 1) {
+        const total = normalizedSeries.reduce((sum, entry) => sum + (Number(entry?.data?.[index]) || 0), 0);
+        stackedPeak = Math.max(stackedPeak, total);
+      }
+      return stackedPeak;
+    }
+
+    return normalizedSeries.reduce((seriesMax, entry) => {
+      const entryMax = Array.isArray(entry?.data)
+        ? entry.data.reduce((max, value) => Math.max(max, Number(value) || 0), 0)
+        : 0;
+      return Math.max(seriesMax, entryMax);
+    }, 0);
+  };
+
+  const getBarAxisRoundingUnit = (maxValue) => {
+    if (maxValue <= 10) return 1;
+    if (maxValue <= 50) return 5;
+    if (maxValue <= 100) return 10;
+    if (maxValue <= 250) return 20;
+    if (maxValue <= 500) return 25;
+    if (maxValue <= 1000) return 50;
+    if (maxValue <= 2500) return 100;
+    if (maxValue <= 5000) return 250;
+    return 500;
+  };
+
+  const buildTightBarYAxis = (series = []) => {
+    const peakValue = getBarChartPeakValue(series);
+    if (peakValue <= 0) {
+      return [{ min: 0, max: 5, tickMinStep: 1, domainLimit: 'strict' }];
+    }
+
+    const roundingUnit = getBarAxisRoundingUnit(peakValue);
+    const paddedMax = peakValue * 1.08;
+    const roundedMax = Math.ceil(paddedMax / roundingUnit) * roundingUnit;
+
+    return [{
+      min: 0,
+      max: Math.max(roundingUnit, roundedMax),
+      tickMinStep: 1,
+      domainLimit: 'strict'
+    }];
+  };
+
   const nonconformanceBySchedule = useMemo(() => {
     return nonconformances.reduce((acc, nc) => {
       const scheduleId = Number(nc.scheduleId ?? nc.scheduleid);
@@ -416,6 +486,64 @@ const Metrics = () => {
         return 'Nonconformaties';
       default:
         return 'Unknown Stage';
+    }
+  };
+
+  const sortDimensionLabels = (labels, dimension) => {
+    const normalizedLabels = Array.from(new Set(labels.filter(Boolean)));
+    if (dimension === 'stage') {
+      return STAGE_LABELS.filter((label) => normalizedLabels.includes(label));
+    }
+    return normalizedLabels.sort((a, b) => a.localeCompare(b));
+  };
+
+  const resolveDimensionEntityLabel = (value, list, idKey, nameKey) => {
+    if (!value) return null;
+    const match = list.find((item) => Number(item[idKey]) === Number(value));
+    return match ? match[nameKey] : `${value}`;
+  };
+
+  const resolveAuditDimensionLabels = (audit, dimension) => {
+    switch (dimension) {
+      case 'stage':
+        return [getStageLabel(audit)];
+      case 'businessUnit': {
+        const ids = Array.isArray(audit.businessUnitIds) ? audit.businessUnitIds : [];
+        return ids.map((id) => resolveDimensionEntityLabel(id, businessUnitsList, 'businessUnitId', 'businessUnitName')).filter(Boolean);
+      }
+      case 'operatingUnit': {
+        const ids = Array.isArray(audit.operatingUnitIds) ? audit.operatingUnitIds : [];
+        return ids.map((id) => resolveDimensionEntityLabel(id, operatingUnitsList, 'operatingUnitId', 'operatingUnitName')).filter(Boolean);
+      }
+      case 'division': {
+        const ids = normalizeIdArray(audit.divisionId);
+        return ids
+          .map((id) => resolveDimensionEntityLabel(id, divisionsList, 'divisionId', 'divisionName'))
+          .filter(Boolean);
+      }
+      case 'sector': {
+        const label = resolveDimensionEntityLabel(audit.sectorId, sectorsList, 'sectorId', 'sectorName');
+        return label ? [label] : [];
+      }
+      case 'program': {
+        const ids = Array.isArray(audit.programIds) ? audit.programIds : [];
+        return ids.map((id) => resolveDimensionEntityLabel(id, programsList, 'programId', 'programName')).filter(Boolean);
+      }
+      case 'site': {
+        const ids = Array.isArray(audit.siteIds) ? audit.siteIds : [];
+        return ids.map((id) => {
+          const site = sitesList.find((entry) => Number(entry.siteId) === Number(id));
+          return site ? getSiteLabel(site) : `${id}`;
+        }).filter(Boolean);
+      }
+      case 'function': {
+        const ids = normalizeIdArray(audit.functionId);
+        return ids
+          .map((id) => resolveDimensionEntityLabel(id, functionsList, 'functionId', 'functionName'))
+          .filter(Boolean);
+      }
+      default:
+        return [];
     }
   };
 
@@ -525,92 +653,48 @@ const Metrics = () => {
   }, [audits, filters, dateField, includeHistorical]);
 
   const stageChartData = useMemo(() => {
-    const stageLabels = [
-      'Planning',
-      'Conduct Audit',
-      'Nonconformaties',
-      'Pending Approval',
-      'Approved',
-      'Historical',
-      'Unknown Stage'
-    ];
-
-    const resolveLabel = (value, list, idKey, nameKey) => {
-      if (!value) return null;
-      const match = list.find((item) => Number(item[idKey]) === Number(value));
-      return match ? match[nameKey] : `${value}`;
-    };
-
-    const resolveGroupLabels = (audit) => {
-      switch (colorBy) {
-        case 'businessUnit': {
-          const ids = Array.isArray(audit.businessUnitIds) ? audit.businessUnitIds : [];
-          return ids.map((id) => resolveLabel(id, businessUnitsList, 'businessUnitId', 'businessUnitName')).filter(Boolean);
-        }
-        case 'operatingUnit': {
-          const ids = Array.isArray(audit.operatingUnitIds) ? audit.operatingUnitIds : [];
-          return ids.map((id) => resolveLabel(id, operatingUnitsList, 'operatingUnitId', 'operatingUnitName')).filter(Boolean);
-        }
-        case 'division': {
-          const ids = normalizeIdArray(audit.divisionId);
-          return ids
-            .map((id) => resolveLabel(id, divisionsList, 'divisionId', 'divisionName'))
-            .filter(Boolean);
-        }
-        case 'sector': {
-          const label = resolveLabel(audit.sectorId, sectorsList, 'sectorId', 'sectorName');
-          return label ? [label] : [];
-        }
-        case 'program': {
-          const ids = Array.isArray(audit.programIds) ? audit.programIds : [];
-          return ids.map((id) => resolveLabel(id, programsList, 'programId', 'programName')).filter(Boolean);
-        }
-        case 'site': {
-          const ids = Array.isArray(audit.siteIds) ? audit.siteIds : [];
-          return ids.map((id) => {
-            const site = sitesList.find((entry) => Number(entry.siteId) === Number(id));
-            return site ? getSiteLabel(site) : `${id}`;
-          }).filter(Boolean);
-        }
-        case 'function': {
-          const ids = normalizeIdArray(audit.functionId);
-          return ids
-            .map((id) => resolveLabel(id, functionsList, 'functionId', 'functionName'))
-            .filter(Boolean);
-        }
-        default:
-          return [];
-      }
-    };
-
-    const groupMap = new Map();
+    const categoryMap = new Map();
     filteredAudits.forEach((audit) => {
-      const stage = getStageLabel(audit);
-      const groups = resolveGroupLabels(audit);
-      const groupLabels = groups.length > 0 ? groups : ['Unspecified'];
-      groupLabels.forEach((label) => {
-        if (!groupMap.has(label)) {
-          groupMap.set(label, stageLabels.reduce((acc, stageLabel) => {
-            acc[stageLabel] = 0;
-            return acc;
-          }, {}));
+      const categoryLabels = resolveAuditDimensionLabels(audit, stageCategoryBy);
+      const seriesLabels = resolveAuditDimensionLabels(audit, colorBy);
+      const normalizedCategoryLabels = categoryLabels.length > 0 ? categoryLabels : ['Unspecified'];
+      const normalizedSeriesLabels = seriesLabels.length > 0 ? seriesLabels : ['Unspecified'];
+
+      if (stageCategoryBy === colorBy) {
+        normalizedCategoryLabels.forEach((label) => {
+          if (!categoryMap.has(label)) {
+            categoryMap.set(label, {});
+          }
+          const bucket = categoryMap.get(label);
+          bucket[label] = (bucket[label] || 0) + 1;
+        });
+        return;
+      }
+
+      normalizedCategoryLabels.forEach((categoryLabel) => {
+        if (!categoryMap.has(categoryLabel)) {
+          categoryMap.set(categoryLabel, {});
         }
-        const stageCounts = groupMap.get(label);
-        stageCounts[stage] = (stageCounts[stage] || 0) + 1;
+        const bucket = categoryMap.get(categoryLabel);
+        normalizedSeriesLabels.forEach((seriesLabel) => {
+          bucket[seriesLabel] = (bucket[seriesLabel] || 0) + 1;
+        });
       });
     });
 
-    const labels = stageLabels.filter((label) => {
-      return Array.from(groupMap.values()).some((counts) => counts[label] > 0);
-    });
-
+    const labels = sortDimensionLabels(Array.from(categoryMap.keys()), stageCategoryBy);
     const colorPalette = ['#1d4ed8', '#0ea5e9', '#14b8a6', '#22c55e', '#f97316', '#a855f7', '#e11d48', '#64748b'];
-    const groupLabels = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
+    const seriesLabels = sortDimensionLabels(
+      Array.from(
+        new Set(labels.flatMap((label) => Object.keys(categoryMap.get(label) || {})))
+      ),
+      colorBy
+    );
 
-    const series = groupLabels.map((label, idx) => ({
-      id: label,
-      label,
-      data: labels.map((stage) => groupMap.get(label)?.[stage] || 0),
+    const series = seriesLabels.map((seriesLabel, idx) => ({
+      id: seriesLabel,
+      label: seriesLabel,
+      data: labels.map((categoryLabel) => categoryMap.get(categoryLabel)?.[seriesLabel] || 0),
       stack: 'total',
       color: colorPalette[idx % colorPalette.length],
       valueFormatter: (value) => (value ? `${value}` : null),
@@ -629,6 +713,7 @@ const Metrics = () => {
     };
   }, [
     filteredAudits,
+    stageCategoryBy,
     colorBy,
     businessUnitsList,
     divisionsList,
@@ -638,6 +723,8 @@ const Metrics = () => {
     sitesList,
     functionsList
   ]);
+
+  const stageCategoryOption = colorByOptions.find((option) => option.value === stageCategoryBy) || { label: 'Stage' };
 
   const delayChartData = useMemo(() => {
     const causeLookup = new Map(
@@ -1439,7 +1526,7 @@ const Metrics = () => {
   const renderStageChart = (width, height) => (
     <BarChart
       xAxis={[{ scaleType: 'band', data: stageChartData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
+      yAxis={buildTightBarYAxis(stageChartData.series)}
       series={stageChartData.series}
       slots={{ tooltip: MetricsTooltip }}
       slotProps={{
@@ -1457,7 +1544,7 @@ const Metrics = () => {
   const renderDelayChart = (width, height) => (
     <BarChart
       xAxis={[{ scaleType: 'band', data: delayChartData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
+      yAxis={buildTightBarYAxis(delayChartData.series)}
       series={delayChartData.series}
       slots={{ tooltip: MetricsTooltip }}
       slotProps={{
@@ -1499,7 +1586,7 @@ const Metrics = () => {
   const renderFindingsChart = (width, height) => (
     <BarChart
       xAxis={[{ scaleType: 'band', data: findingsChartData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
+      yAxis={buildTightBarYAxis(findingsChartData.series)}
       series={findingsChartData.series}
       slots={{ tooltip: MetricsTooltip }}
       slotProps={{
@@ -1517,7 +1604,7 @@ const Metrics = () => {
   const renderFindingsClauseChart = (width, height) => (
     <BarChart
       xAxis={[{ scaleType: 'band', data: findingsByClauseData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
+      yAxis={buildTightBarYAxis(findingsByClauseData.series)}
       series={findingsByClauseData.series}
       slots={{ tooltip: MetricsTooltip }}
       slotProps={{
@@ -1738,43 +1825,56 @@ const Metrics = () => {
                   <div className="metrics-card">
                     <div className="metrics-card-header">
                       <div className="metrics-card-title">
-                        <span>Audits by Stage</span>
+                        <span>{`Audits by ${stageCategoryOption.label}`}</span>
                       </div>
                       <button
                         type="button"
                         className="metrics-export-button"
                         onClick={() => handleExport(stageChartApiRef, stageChartWrapperRef, 'audits-by-stage', renderStageChart)}
-                    >
-                      Export
-                    </button>
-                  </div>
-                  <div className="metrics-card-body" ref={stageChartWrapperRef}>
-                    <BarChart
-                      apiRef={stageChartApiRef}
-                      xAxis={[{ scaleType: 'band', data: stageChartData.labels }]}
-                      yAxis={[{ tickMinStep: 1 }]}
-                      series={stageChartData.series}
-                      slots={{ tooltip: MetricsTooltip }}
-                      slotProps={{
-                        barLabel: { style: { fontSize: 10, fontWeight: 500 } },
-                        tooltip: { trigger: 'axis' }
-                      }}
-                      height={260}
-                      margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
-                    >
-                      <StageTotalsOverlay labels={stageChartData.labels} totals={stageChartData.totals} />
-                    </BarChart>
-                  </div>
-                    <div className="metrics-card-footer">
-                      <label>Color by</label>
-                      <Select
-                        isClearable={false}
-                        options={colorByOptions}
-                        styles={customStyles}
-                        placeholder="Select"
-                        value={colorByOptions.find((option) => option.value === colorBy) || null}
-                        onChange={(option) => setColorBy(option?.value || 'division')}
-                      />
+                      >
+                        Export
+                      </button>
+                    </div>
+                    <div className="metrics-card-body" ref={stageChartWrapperRef}>
+                      <BarChart
+                        apiRef={stageChartApiRef}
+                        xAxis={[{ scaleType: 'band', data: stageChartData.labels }]}
+                        yAxis={buildTightBarYAxis(stageChartData.series)}
+                        series={stageChartData.series}
+                        slots={{ tooltip: MetricsTooltip }}
+                        slotProps={{
+                          barLabel: { style: { fontSize: 10, fontWeight: 500 } },
+                          tooltip: { trigger: 'axis' }
+                        }}
+                        height={260}
+                        margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
+                      >
+                        <StageTotalsOverlay labels={stageChartData.labels} totals={stageChartData.totals} />
+                      </BarChart>
+                    </div>
+                    <div className="metrics-card-footer metrics-card-footer--paired">
+                      <div className="metrics-control-group">
+                        <label>Categories</label>
+                        <Select
+                          isClearable={false}
+                          options={colorByOptions}
+                          styles={customStyles}
+                          placeholder="Select"
+                          value={colorByOptions.find((option) => option.value === stageCategoryBy) || null}
+                          onChange={(option) => setStageCategoryBy(option?.value || 'stage')}
+                        />
+                      </div>
+                      <div className="metrics-control-group">
+                        <label>Color by</label>
+                        <Select
+                          isClearable={false}
+                          options={colorByOptions}
+                          styles={customStyles}
+                          placeholder="Select"
+                          value={colorByOptions.find((option) => option.value === colorBy) || null}
+                          onChange={(option) => setColorBy(option?.value || 'division')}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1801,7 +1901,7 @@ const Metrics = () => {
                       <BarChart
                         apiRef={delayChartApiRef}
                         xAxis={[{ scaleType: 'band', data: delayChartData.labels }]}
-                        yAxis={[{ tickMinStep: 1 }]}
+                        yAxis={buildTightBarYAxis(delayChartData.series)}
                         series={delayChartData.series}
                         slots={{ tooltip: MetricsTooltip }}
                         slotProps={{
@@ -1816,53 +1916,57 @@ const Metrics = () => {
                 )}
                 {showMonthlyMetric && (
                   <div className="metrics-card">
-                  <div className="metrics-card-header">
-                    <span>Audits Over Time</span>
-                    <button
-                      type="button"
-                      className="metrics-export-button"
-                      onClick={() => handleExport(monthlyChartApiRef, monthlyChartWrapperRef, 'audits-by-month', renderMonthlyChart)}
-                    >
-                      Export
-                    </button>
+                    <div className="metrics-card-header">
+                      <span>Audits Over Time</span>
+                      <button
+                        type="button"
+                        className="metrics-export-button"
+                        onClick={() => handleExport(monthlyChartApiRef, monthlyChartWrapperRef, 'audits-by-month', renderMonthlyChart)}
+                      >
+                        Export
+                      </button>
+                    </div>
+                    <div className="metrics-card-body" ref={monthlyChartWrapperRef}>
+                      <LineChart
+                        apiRef={monthlyChartApiRef}
+                        xAxis={[{ scaleType: 'point', data: monthlyChartData.labels }]}
+                        yAxis={[{ tickMinStep: 1 }]}
+                        series={monthlyChartData.series}
+                        slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
+                        slotProps={{ tooltip: { trigger: 'axis' } }}
+                        height={260}
+                        margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
+                      />
+                    </div>
+                    <div className="metrics-card-footer metrics-card-footer--paired">
+                      <div className="metrics-control-group">
+                        <label>Timeline</label>
+                        <Select
+                          isClearable={false}
+                          options={timelineOptions}
+                          styles={customStyles}
+                          placeholder="Select"
+                          value={{ value: timelineGranularity, label: timelineGranularity }}
+                          onChange={(option) => setTimelineGranularity(option?.value || 'Monthly')}
+                        />
+                      </div>
+                      <div className="metrics-control-group">
+                        <label>Metrics</label>
+                        <Select
+                          isMulti
+                          closeMenuOnSelect={false}
+                          options={monthlyMetricOptions}
+                          styles={customStyles}
+                          placeholder="Select metrics"
+                          value={monthlyMetricOptions.filter((option) => monthlyMetrics.includes(option.value))}
+                          onChange={(options) => {
+                            const values = Array.isArray(options) ? options.map((opt) => opt.value) : [];
+                            setMonthlyMetrics(values.length > 0 ? values : ['Audit Count']);
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="metrics-card-body" ref={monthlyChartWrapperRef}>
-                    <LineChart
-                      apiRef={monthlyChartApiRef}
-                      xAxis={[{ scaleType: 'point', data: monthlyChartData.labels }]}
-                      yAxis={[{ tickMinStep: 1 }]}
-                      series={monthlyChartData.series}
-                      slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
-                      slotProps={{ tooltip: { trigger: 'axis' } }}
-                      height={260}
-                      margin={{ top: 20, bottom: 30, left: 40, right: 10 }}
-                    />
-                  </div>
-                  <div className="metrics-card-footer">
-                    <label>Timeline</label>
-                    <Select
-                      isClearable={false}
-                      options={timelineOptions}
-                      styles={customStyles}
-                      placeholder="Select"
-                      value={{ value: timelineGranularity, label: timelineGranularity }}
-                      onChange={(option) => setTimelineGranularity(option?.value || 'Monthly')}
-                    />
-                    <label>Metrics</label>
-                    <Select
-                      isMulti
-                      closeMenuOnSelect={false}
-                      options={monthlyMetricOptions}
-                      styles={customStyles}
-                      placeholder="Select metrics"
-                      value={monthlyMetricOptions.filter((option) => monthlyMetrics.includes(option.value))}
-                      onChange={(options) => {
-                        const values = Array.isArray(options) ? options.map((opt) => opt.value) : [];
-                        setMonthlyMetrics(values.length > 0 ? values : ['Audit Count']);
-                      }}
-                    />
-                  </div>
-                </div>
                 )}
                 {showSeverityMetric && (
                   <div className="metrics-card">
@@ -1883,7 +1987,7 @@ const Metrics = () => {
                         <BarChart
                           apiRef={severityChartApiRef}
                           xAxis={[{ scaleType: 'band', data: severityTrendData.labels }]}
-                          yAxis={[{ tickMinStep: 1 }]}
+                          yAxis={buildTightBarYAxis(severityTrendData.series)}
                           series={severityTrendData.series}
                           slots={{ tooltip: MetricsTooltip }}
                           slotProps={{ tooltip: { trigger: 'axis' } }}
@@ -1925,7 +2029,7 @@ const Metrics = () => {
                       <BarChart
                         apiRef={findingsChartApiRef}
                         xAxis={[{ scaleType: 'band', data: findingsChartData.labels }]}
-                        yAxis={[{ tickMinStep: 1 }]}
+                        yAxis={buildTightBarYAxis(findingsChartData.series)}
                         series={findingsChartData.series}
                         slots={{ tooltip: MetricsTooltip }}
                         slotProps={{ tooltip: { trigger: 'axis' } }}
@@ -1977,7 +2081,7 @@ const Metrics = () => {
                         <BarChart
                           apiRef={findingsClauseChartApiRef}
                           xAxis={[{ scaleType: 'band', data: findingsByClauseData.labels }]}
-                          yAxis={[{ tickMinStep: 1 }]}
+                          yAxis={buildTightBarYAxis(findingsByClauseData.series)}
                           series={findingsByClauseData.series}
                           slots={{ tooltip: MetricsTooltip }}
                           slotProps={{ tooltip: { trigger: 'axis' } }}

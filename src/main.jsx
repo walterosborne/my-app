@@ -29,7 +29,7 @@ import Metrics from './Metrics.jsx'
 import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
-import { getCurrentUser } from './assets/data/apiData'
+import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
 import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
 
 installIisAuthFetchShim();
@@ -45,6 +45,12 @@ const AppBootstrapGate = ({ children }) => {
         await getIisAuthPayload()
       } catch (error) {
         console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error)
+      }
+
+      try {
+        await getHeaderDiagnostics()
+      } catch (error) {
+        console.warn('NGAT failed to warm auth diagnostics at app bootstrap:', error)
       }
 
       try {
