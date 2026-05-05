@@ -26,8 +26,10 @@ import {
   getAuditors,
   getBusinessUnits,
   getCauses,
+  getCurrentUser,
   getDivisions,
   getFunctions,
+  getHeaderDiagnostics,
   getNonconformances,
   getIntExt,
   getOperatingUnits,
@@ -70,6 +72,7 @@ const Metrics = () => {
   const [functionsList, setFunctionsList] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const [isStackedLayout, setIsStackedLayout] = useState(() => (
     typeof window !== 'undefined' ? window.matchMedia(METRICS_STACKED_LAYOUT_QUERY).matches : false
   ));
@@ -111,6 +114,56 @@ const Metrics = () => {
   });
 
   useEffect(() => {
+    async function warmAuthContext() {
+      try {
+        console.log('NGAT auth diagnostics effect started on Metrics.');
+        try {
+          const diagnosticsPayload = await getHeaderDiagnostics();
+          const authCandidates = diagnosticsPayload?.diagnostics?.authCandidates ?? {};
+          const fallbackSource = authCandidates.x_client_auth_user ? 'iis-auth fallback' : 'none';
+          const authUser = authCandidates.auth_user ?? null;
+          const likelyAuthUser =
+            authCandidates.auth_user
+            || authCandidates.remote_user
+            || authCandidates.x_auth_user
+            || authCandidates.x_client_auth_user
+            || authCandidates.x_logon_user
+            || authCandidates.x_remote_user
+            || authCandidates.x_iis_windowsauthuserid
+            || authCandidates.x_iisnode_auth_user
+            || authCandidates.x_forwarded_user
+            || authCandidates.x_auth_header
+            || null;
+
+          console.log('NGAT AUTH_USER header on Metrics:', authUser);
+          console.log('NGAT likely auth user on Metrics:', likelyAuthUser);
+          console.log('NGAT auth fallback source on Metrics:', fallbackSource);
+          console.log('NGAT auth candidates on Metrics:', authCandidates);
+        } catch (error) {
+          console.log('NGAT AUTH_USER on Metrics: unavailable because /api/testheaders failed.');
+          console.error('NGAT failed to load auth diagnostics on Metrics:', error);
+        }
+
+        try {
+          await getCurrentUser();
+        } catch (error) {
+          console.error('Error loading current user on Metrics:', error);
+        }
+      } catch (error) {
+        console.error('Error warming auth on Metrics:', error);
+      } finally {
+        setAuthReady(true);
+      }
+    }
+
+    warmAuthContext();
+  }, []);
+
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+
     async function loadData() {
       try {
         const [
@@ -164,8 +217,9 @@ const Metrics = () => {
         setLoading(false);
       }
     }
+
     loadData();
-  }, []);
+  }, [authReady]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
