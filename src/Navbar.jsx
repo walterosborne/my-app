@@ -50,10 +50,10 @@ const Navbar = () => {
 
     return (
         <nav className="navbar">
-            <a className="navbar-left" href="/">
+            <Link className="navbar-left" to="/">
                 <img src={logo} alt="NG Logo" className="navbar-logo" />
                 <span className="navbar-title">NGAT</span>
-            </a>
+            </Link>
 
             <div className="navbar-right">
                 <div className="nav-item-wrapper" onMouseEnter={() => handleMouseEnter('auditing')} onMouseLeave={handleMouseLeave}>

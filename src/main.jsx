@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
@@ -191,7 +191,7 @@ const AppMetadata = () => {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <HashRouter>
       <AppMetadata />
       <AppBootstrapGate>
         <ToastContainer
@@ -233,6 +233,6 @@ createRoot(document.getElementById('root')).render(
           <Route path="/tabletest" element={<TableTest />} />
         </Routes>
       </AppBootstrapGate>
-    </BrowserRouter>
+    </HashRouter>
   </StrictMode>,
 )
