@@ -45,7 +45,7 @@ const METRICS_PRIMARY_BAR_COLOR = '#1d4ed8';
 const STAGE_LABELS = [
   'Planning',
   'Conduct Audit',
-  'Nonconformaties',
+  'Nonconformities',
   'Pending Approval',
   'Approved',
   'Historical',
@@ -535,9 +535,9 @@ const Metrics = () => {
       case 2:
         return 'Conduct Audit';
       case 3:
-        return 'Nonconformaties';
+        return 'Nonconformities';
       case 4:
-        return 'Nonconformaties';
+        return 'Nonconformities';
       default:
         return 'Unknown Stage';
     }

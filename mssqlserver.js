@@ -305,6 +305,86 @@ const maskEnvValueForDebug = (name, value) => {
 
 const getHeaderValue = (req, name) => req.get(name) ?? null;
 
+const getUrlOriginFromHeader = (value) => {
+    if (!value) return null;
+    const candidate = String(value).split(',')[0].trim();
+    if (!candidate) return null;
+    try {
+        return new URL(candidate).origin;
+    } catch {
+        return null;
+    }
+};
+
+const getForwardedHost = (req) => {
+    const candidates = [
+        getHeaderValue(req, 'X-Forwarded-Host'),
+        getHeaderValue(req, 'X-Original-Host'),
+        getHeaderValue(req, 'Host')
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = String(candidate || '').split(',')[0].trim();
+        if (normalized) {
+            return normalized;
+        }
+    }
+
+    return null;
+};
+
+const getForwardedProtocol = (req) => {
+    const forwardedProtoHeaders = [
+        getHeaderValue(req, 'X-Forwarded-Proto'),
+        getHeaderValue(req, 'X-Forwarded-Protocol'),
+        getHeaderValue(req, 'X-Forwarded-Scheme'),
+        getHeaderValue(req, 'X-Original-Proto')
+    ];
+
+    for (const candidate of forwardedProtoHeaders) {
+        const normalized = String(candidate || '').split(',')[0].trim().toLowerCase();
+        if (normalized === 'http' || normalized === 'https') {
+            return normalized;
+        }
+    }
+
+    const xHttps = String(getHeaderValue(req, 'X-Https') || '').trim().toLowerCase();
+    if (xHttps && xHttps !== 'off' && xHttps !== '0') {
+        return 'https';
+    }
+
+    if (getHeaderValue(req, 'X-Arr-Ssl')) {
+        return 'https';
+    }
+
+    if (req.secure) {
+        return 'https';
+    }
+
+    return req.protocol || 'https';
+};
+
+const getRequestAppBaseUrl = (req) => {
+    const headerOrigin = getUrlOriginFromHeader(getHeaderValue(req, 'Origin'))
+        || getUrlOriginFromHeader(getHeaderValue(req, 'Referer'));
+    if (headerOrigin) {
+        return headerOrigin;
+    }
+
+    const forwardedHost = getForwardedHost(req);
+    if (forwardedHost) {
+        return `${getForwardedProtocol(req)}://${forwardedHost}`;
+    }
+
+    return process.env.APP_BASE_URL || 'http://localhost:5173';
+};
+
+const buildAppRouteUrl = (req, path = '/') => {
+    const baseUrl = getRequestAppBaseUrl(req).replace(/\/+$/, '');
+    const normalizedPath = `/${String(path || '').replace(/^\/+/, '')}`;
+    return `${baseUrl}/#${normalizedPath}`;
+};
+
 const getAuthorizationDebug = (req, headerName = 'Authorization') => {
     const value = getHeaderValue(req, headerName);
     if (!value) {
@@ -714,12 +794,12 @@ const buildEmailShell = ({
 </div>
 `.trim();
 
-const buildApprovalEmail = ({ approverName, auditTitle, scheduleId, approvalLink, reviewLink }) => {
+const buildApprovalEmail = ({ approverName, auditTitle, scheduleId, approvalLink, reviewLink, reminder = false }) => {
     const safeApprover = approverName || 'Approver';
     const safeTitle = auditTitle || `Audit ${scheduleId}`;
-    const subject = `Approval Request: ${safeTitle} (Schedule ID ${scheduleId})`;
+    const subject = `${reminder ? 'Approval Reminder' : 'Approval Request'}: ${safeTitle} (Schedule ID ${scheduleId})`;
     const body = buildEmailShell({
-        title: `Approval request for Audit ${scheduleId}`,
+        title: `${reminder ? 'Approval reminder' : 'Approval request'} for Audit ${scheduleId}`,
         subtitle: 'You have been selected as an approver in NGAT',
         lead: `Hello ${safeApprover},`,
         detailRows: [
@@ -1049,6 +1129,84 @@ const parseAuditRow = (row) => {
     };
 };
 
+const normalizeIdentifierList = (value) => {
+    if (Array.isArray(value)) {
+        return value
+            .map((item) => String(item ?? '').trim())
+            .filter(Boolean);
+    }
+    if (value === null || value === undefined) {
+        return [];
+    }
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return [];
+        }
+        try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) {
+                return parsed
+                    .map((item) => String(item ?? '').trim())
+                    .filter(Boolean);
+            }
+            if (parsed !== null && parsed !== undefined) {
+                const parsedValue = String(parsed).trim();
+                return parsedValue ? [parsedValue] : [];
+            }
+        } catch {
+            // fall through to treat as a plain scalar identifier
+        }
+        return [trimmed];
+    }
+    const trimmed = String(value).trim();
+    return trimmed ? [trimmed] : [];
+};
+
+const resolveApproverIdentifierToMyId = async (queryable, identifier) => {
+    const normalizedIdentifier = String(identifier ?? '').trim();
+    if (!normalizedIdentifier) {
+        return null;
+    }
+
+    const rosterRows = await getRosterRowsByMyIds([normalizedIdentifier]);
+    if (rosterRows[0]?.myid) {
+        return rosterRows[0].myid;
+    }
+
+    const parsedAuditorId = Number(normalizedIdentifier);
+    if (Number.isFinite(parsedAuditorId)) {
+        const auditorResult = await queryable.query(
+            `SELECT TOP 1 myid
+             FROM auditors_r
+             WHERE auditorid = $1`,
+            [parsedAuditorId]
+        );
+        if (auditorResult.rows[0]?.myid) {
+            return auditorResult.rows[0].myid;
+        }
+    }
+
+    return normalizedIdentifier;
+};
+
+const resolveApproverIdentifiersToMyIds = async (queryable, identifiers) => {
+    const normalizedIdentifiers = [...new Set(normalizeIdentifierList(identifiers))];
+    if (normalizedIdentifiers.length === 0) {
+        return [];
+    }
+
+    const resolvedIdentifiers = [];
+    for (const identifier of normalizedIdentifiers) {
+        const resolvedMyId = await resolveApproverIdentifierToMyId(queryable, identifier);
+        if (resolvedMyId && !resolvedIdentifiers.includes(resolvedMyId)) {
+            resolvedIdentifiers.push(resolvedMyId);
+        }
+    }
+
+    return resolvedIdentifiers;
+};
+
 const canEditAudit = ({ audit, userInfo }) => {
     if (!userInfo?.auditorid) return false;
     const auditorId = Number(userInfo.auditorid);
@@ -1217,6 +1375,45 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
 });
 
 // Get files for current auditor
+let auditorFilesStatusColumnsPromise = null;
+
+async function getAuditorFilesStatusColumns() {
+    if (!auditorFilesStatusColumnsPromise) {
+        auditorFilesStatusColumnsPromise = pool.query(
+            `SELECT LOWER(COLUMN_NAME) AS column_name
+             FROM INFORMATION_SCHEMA.COLUMNS
+             WHERE LOWER(TABLE_NAME) = LOWER('auditor_files_r')
+               AND LOWER(COLUMN_NAME) IN ('active', 'archived')`
+        )
+            .then((result) => {
+                const columnNames = new Set(result.rows.map((row) => row.column_name));
+                return {
+                    hasActiveColumn: columnNames.has('active'),
+                    hasArchivedColumn: columnNames.has('archived')
+                };
+            })
+            .catch((error) => {
+                auditorFilesStatusColumnsPromise = null;
+                throw error;
+            });
+    }
+    return auditorFilesStatusColumnsPromise;
+}
+
+function isTruthyStatusValue(value) {
+    return value === true || value === 1 || value === '1' || value === 't' || value === 'true';
+}
+
+function getAuditorFileActiveValue(row, statusColumns) {
+    if (statusColumns.hasActiveColumn) {
+        return isTruthyStatusValue(row.active);
+    }
+    if (statusColumns.hasArchivedColumn) {
+        return !isTruthyStatusValue(row.archived);
+    }
+    return true;
+}
+
 app.get('/api/auditor-files', async (req, res) => {
     try {
         const auditorId = await getCurrentAuditorId(req);
@@ -1224,8 +1421,9 @@ app.get('/api/auditor-files', async (req, res) => {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
 
+        const statusColumns = await getAuditorFilesStatusColumns();
         const result = await pool.query(
-            `SELECT fileId, fileName, mimeType, fileSize, createdAt
+            `SELECT fileId, fileName, mimeType, fileSize, createdAt${statusColumns.hasActiveColumn ? ', active' : ''}${statusColumns.hasArchivedColumn ? ', archived' : ''}
              FROM auditor_files_r
              WHERE auditorId = $1
              ORDER BY createdAt DESC`,
@@ -1237,7 +1435,8 @@ app.get('/api/auditor-files', async (req, res) => {
             fileName: row.filename,
             mimeType: row.mimetype,
             fileSize: row.filesize,
-            createdAt: row.createdat
+            createdAt: row.createdat,
+            active: getAuditorFileActiveValue(row, statusColumns) ? 1 : 0
         }));
 
         res.json(files);
@@ -1270,18 +1469,26 @@ app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
         }
 
         const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
+        const statusColumns = await getAuditorFilesStatusColumns();
+        const statusInsertColumn = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
+        const statusInsertPlaceholder = statusColumns.hasActiveColumn || statusColumns.hasArchivedColumn ? ', $7' : '';
+        const statusReturning = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
+        const statusInsertValue = statusColumns.hasActiveColumn ? [1] : (statusColumns.hasArchivedColumn ? [0] : []);
 
         const insertResult = await pool.query(
-            `INSERT INTO auditor_files_r (auditorId, fileName, mimeType, fileSize, fileHash, fileData)
-             VALUES ($1, $2, $3, $4, $5, $6)
-             RETURNING fileId, fileName, mimeType, fileSize, createdAt`,
+            `INSERT INTO auditor_files_r (
+                auditorId, fileName, mimeType, fileSize, fileHash, fileData${statusInsertColumn}
+             )
+             VALUES ($1, $2, $3, $4, $5, $6${statusInsertPlaceholder})
+             RETURNING fileId, fileName, mimeType, fileSize, createdAt${statusReturning}`,
             [
                 auditorId,
                 fileName,
                 req.file.mimetype,
                 req.file.size,
                 fileHash,
-                req.file.buffer
+                req.file.buffer,
+                ...statusInsertValue
             ]
         );
 
@@ -1291,7 +1498,8 @@ app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
             fileName: saved.filename,
             mimeType: saved.mimetype,
             fileSize: saved.filesize,
-            createdAt: saved.createdat
+            createdAt: saved.createdat,
+            active: getAuditorFileActiveValue(saved, statusColumns) ? 1 : 0
         });
     } catch (error) {
         console.error('Error uploading auditor file:', error);
@@ -1328,6 +1536,57 @@ app.get('/api/auditor-files/:fileId/download', async (req, res) => {
         console.error('Error downloading auditor file:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+async function updateAuditorFileActiveHandler(req, res) {
+    try {
+        const auditorId = await getCurrentAuditorId(req);
+        if (!auditorId) {
+            return res.status(403).json({ success: false, error: 'User is not an auditor.' });
+        }
+
+        const statusColumns = await getAuditorFilesStatusColumns();
+        if (!statusColumns.hasActiveColumn && !statusColumns.hasArchivedColumn) {
+            return res.status(501).json({ success: false, error: 'File status is not configured on this server.' });
+        }
+
+        const { fileId } = req.params;
+        const activeValue = req.body?.active ? 1 : 0;
+        const persistedStatusValue = statusColumns.hasActiveColumn ? activeValue : (activeValue ? 0 : 1);
+        const statusAssignment = statusColumns.hasActiveColumn ? 'active = $1' : 'archived = $1';
+        const statusReturning = `${statusColumns.hasActiveColumn ? ', active' : ''}${statusColumns.hasArchivedColumn ? ', archived' : ''}`;
+        const result = await pool.query(
+            `UPDATE auditor_files_r
+             SET ${statusAssignment}
+             WHERE fileId = $2 AND auditorId = $3
+             RETURNING fileId, fileName, mimeType, fileSize, createdAt${statusReturning}`,
+            [persistedStatusValue, Number(fileId), auditorId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+
+        const row = result.rows[0];
+        res.json({
+            success: true,
+            file: {
+                fileId: row.fileid,
+                fileName: row.filename,
+                mimeType: row.mimetype,
+                fileSize: row.filesize,
+                createdAt: row.createdat,
+                active: getAuditorFileActiveValue(row, statusColumns) ? 1 : 0
+            }
+        });
+    } catch (error) {
+        console.error('Error updating auditor file status:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+app.post('/api/auditor-files/:fileId/active', async (req, res) => {
+    return updateAuditorFileActiveHandler(req, res);
 });
 
 // Download all objective evidence files for an audit (zip)
@@ -1499,8 +1758,7 @@ app.post('/api/request-auditor-access', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Division lead email not found.' });
         }
 
-        const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
-        const approveLink = `${appBaseUrl}/admin?myid=${encodeURIComponent(requester.myid || '')}`;
+        const approveLink = buildAppRouteUrl(req, `/admin?myid=${encodeURIComponent(requester.myid || '')}`);
         const { subject, body } = buildAuditorAccessRequestEmail({
             requestName: requester.rostername,
             requestMyId: requester.myid,
@@ -3154,7 +3412,6 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
 // Save/update audit
 app.post('/api/audits', async (req, res) => {
     const client = await pool.connect();
-    const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
     try {
         const audit = req.body;
         const existingScheduleId = audit.scheduleId;
@@ -3237,9 +3494,9 @@ app.post('/api/audits', async (req, res) => {
             const auditorMyIds = auditorResult.rows.map((row) => row.myid).filter(Boolean);
             const rosterRows = await getRosterRowsByMyIds(auditorMyIds);
 
-            const reviewLink = `${appBaseUrl}/audit/${scheduleIdToNotify}`;
-            const reviewAuditLink = `${appBaseUrl}/audit/${scheduleIdToNotify}`;
-            const planLink = `${appBaseUrl}/entry?type=planning&audit=${scheduleIdToNotify}`;
+            const reviewLink = buildAppRouteUrl(req, `/audit/${scheduleIdToNotify}`);
+            const reviewAuditLink = buildAppRouteUrl(req, `/audit/${scheduleIdToNotify}`);
+            const planLink = buildAppRouteUrl(req, `/entry?type=planning&audit=${scheduleIdToNotify}`);
 
             const emailFailures = [];
             for (const row of rosterRows) {
@@ -3396,8 +3653,8 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
             const rosterRows = await getRosterRowsByMyIds(auditorMyIds);
             auditorEmails = rosterRows.map((row) => row.email).filter(Boolean);
         }
-        const approverIds = audit.approver ? [audit.approver] : [];
-        const additionalApproverIds = normalizeStringArray(audit.additionalapprovers);
+        const approverIds = await resolveApproverIdentifiersToMyIds(pool, audit.approver ? [audit.approver] : []);
+        const additionalApproverIds = await resolveApproverIdentifiersToMyIds(pool, audit.additionalapprovers);
         let leadMyId = null;
         if (audit.leadauditorid) {
             const leadRosterResult = await pool.query(
@@ -3512,6 +3769,131 @@ app.post('/api/approvals/:scheduleId/approve', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
+    }
+});
+
+app.post('/api/approvals/:scheduleId/remind', async (req, res) => {
+    try {
+        const { scheduleId } = req.params;
+        const parsedScheduleId = parseInt(scheduleId, 10);
+        const userInfo = await getCurrentUserInfo(req);
+
+        if (!userInfo?.myid) {
+            return res.status(403).json({ success: false, error: 'Not authorized' });
+        }
+
+        const audit = await getAuditForAccessCheck(pool, parsedScheduleId);
+        if (!audit) {
+            return res.status(404).json({ success: false, error: 'Audit not found' });
+        }
+
+        if (!canAccessAudit({ audit, userInfo, report: false })) {
+            return res.status(403).json({ success: false, error: 'Not authorized to send approval reminders for this audit' });
+        }
+
+        if (!audit.locked || audit.approvedAt) {
+            return res.status(400).json({ success: false, error: 'Audit is not currently awaiting approval.' });
+        }
+
+        let leadMyId = null;
+        if (audit.leadAuditorId) {
+            const leadRosterResult = await pool.query(
+                `SELECT TOP 1 myid
+                 FROM auditors_r
+                 WHERE auditorid = $1`,
+                [audit.leadAuditorId]
+            );
+            leadMyId = leadRosterResult.rows[0]?.myid ?? null;
+        }
+
+        const approverIds = await resolveApproverIdentifiersToMyIds(pool, audit.approver ? [audit.approver] : []);
+        const additionalApproverIds = await resolveApproverIdentifiersToMyIds(pool, audit.additionalApprovers);
+        const requiredApproverIds = [...new Set([
+            ...approverIds,
+            ...(leadMyId ? [leadMyId] : []),
+            ...additionalApproverIds
+        ])];
+
+        if (requiredApproverIds.length === 0) {
+            return res.status(400).json({ success: false, error: 'No approvers are assigned to this audit.' });
+        }
+
+        const approvalsResult = await pool.query(
+            `SELECT approvermyid, approvedat
+             FROM approvals_r
+             WHERE scheduleid = $1`,
+            [parsedScheduleId]
+        );
+        const approvedIds = new Set(
+            approvalsResult.rows
+                .filter((row) => row.approvedat)
+                .map((row) => row.approvermyid)
+        );
+
+        const pendingApproverIds = requiredApproverIds.filter((approverId) => !approvedIds.has(approverId));
+        if (pendingApproverIds.length === 0) {
+            return res.json({
+                success: true,
+                sentCount: 0,
+                skippedCount: requiredApproverIds.length,
+                emailWarning: null,
+                message: 'All approvers have already approved this audit.'
+            });
+        }
+
+        const approvalLink = buildAppRouteUrl(req, `/approve/${parsedScheduleId}`);
+        const reviewLink = buildAppRouteUrl(req, `/audit/${parsedScheduleId}`);
+        const emailFailures = [];
+        let sentCount = 0;
+        let skippedCount = 0;
+
+        for (const approverId of pendingApproverIds) {
+            const approverResult = await rosterPool.query(
+                'SELECT rostername, email FROM roster_r WHERE myid = $1',
+                [approverId]
+            );
+            const approver = approverResult.rows[0];
+            if (!approver?.email) {
+                skippedCount += 1;
+                continue;
+            }
+
+            const { subject, body } = buildApprovalEmail({
+                approverName: approver.rostername,
+                auditTitle: audit.title,
+                scheduleId: parsedScheduleId,
+                approvalLink,
+                reviewLink,
+                reminder: true
+            });
+            const emailResult = await queueEmail(pool, {
+                toAddress: approver.email,
+                subject,
+                body
+            });
+            if (emailResult?.success === false) {
+                emailFailures.push(emailResult);
+            } else {
+                sentCount += 1;
+            }
+        }
+
+        const emailWarning = emailFailures.length > 0
+            ? `${emailFailures.length} approval reminder email${emailFailures.length === 1 ? '' : 's'} failed. Contact the approvers directly if needed.`
+            : null;
+
+        res.json({
+            success: true,
+            sentCount,
+            skippedCount,
+            emailWarning,
+            message: sentCount > 0
+                ? `Sent ${sentCount} approval reminder email${sentCount === 1 ? '' : 's'}.`
+                : 'No reminder emails were sent.'
+        });
+    } catch (error) {
+        console.error('Error sending approval reminders:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -3633,10 +4015,21 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         console.log('Received audit data:', audit);
         console.log('Received CARs data:', cars);
 
-        const appBaseUrl = process.env.APP_BASE_URL || 'http://localhost:5173';
-
         await client.query('BEGIN');
         const additionalApproversColumn = await getAuditAdditionalApproversColumn(client);
+        const resolvedApproverMyId = await resolveApproverIdentifierToMyId(client, audit.approver);
+        const resolvedAdditionalApproverIds = await resolveApproverIdentifiersToMyIds(client, audit.additionalApprovers);
+        const rawApproverIdentifiers = [...new Set([
+            ...normalizeIdentifierList(audit.approver ? [audit.approver] : []),
+            ...normalizeIdentifierList(audit.additionalApprovers)
+        ])];
+        const approverIdentifierMappings = [];
+        for (const identifier of rawApproverIdentifiers) {
+            const resolvedMyId = await resolveApproverIdentifierToMyId(client, identifier);
+            if (resolvedMyId && resolvedMyId !== identifier) {
+                approverIdentifierMappings.push({ identifier, resolvedMyId });
+            }
+        }
 
         // Update audit with nonconformities data
         const updateResult = await client.query(
@@ -3652,9 +4045,9 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             WHERE scheduleid = $7`,
             [
                 audit.auditorsTime,
-                audit.approver,
+                resolvedApproverMyId,
                 audit.leadAuditor,
-                JSON.stringify(audit.additionalApprovers || []),
+                JSON.stringify(resolvedAdditionalApproverIds),
                 audit.stage,
                 audit.locked ? 1 : 0,
                 audit.scheduleId
@@ -3680,13 +4073,10 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             leadMyId = leadRosterResult.rows[0]?.myid ?? null;
         }
 
-        const additionalApproverIds = Array.isArray(audit.additionalApprovers)
-            ? audit.additionalApprovers.filter(Boolean)
-            : [];
         const approvalMyIds = [...new Set([
-            ...(audit.approver ? [audit.approver] : []),
+            ...(resolvedApproverMyId ? [resolvedApproverMyId] : []),
             ...(leadMyId ? [leadMyId] : []),
-            ...additionalApproverIds
+            ...resolvedAdditionalApproverIds
         ])];
 
         if (audit.locked) {
@@ -3696,6 +4086,30 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
             );
 
             const emailFailures = [];
+            for (const { identifier, resolvedMyId } of approverIdentifierMappings) {
+                await client.query(
+                    `IF EXISTS (
+                        SELECT 1 FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2
+                    )
+                    BEGIN
+                        IF EXISTS (
+                            SELECT 1 FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $3
+                        )
+                        BEGIN
+                            DELETE FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2
+                        END
+                        ELSE
+                        BEGIN
+                            UPDATE approvals_r
+                            SET approvermyid = $3,
+                                updatedat = CURRENT_TIMESTAMP
+                            WHERE scheduleid = $1 AND approvermyid = $2
+                        END
+                    END`,
+                    [audit.scheduleId, identifier, resolvedMyId]
+                );
+            }
+
             for (const approverId of approvalMyIds) {
                 await client.query(
                     `IF EXISTS (
@@ -3716,8 +4130,8 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
                 );
                 const approver = approverResult.rows[0];
                 if (approver?.email) {
-                    const approvalLink = `${appBaseUrl}/approve/${audit.scheduleId}`;
-                    const reviewLink = `${appBaseUrl}/audit/${audit.scheduleId}`;
+                    const approvalLink = buildAppRouteUrl(req, `/approve/${audit.scheduleId}`);
+                    const reviewLink = buildAppRouteUrl(req, `/audit/${audit.scheduleId}`);
                     const { subject, body } = buildApprovalEmail({
                         approverName: approver.rostername,
                         auditTitle,

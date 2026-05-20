@@ -66,6 +66,7 @@ const Audit = () => {
     const [riskRatingsList, setRiskRatingsList] = React.useState([]);
     const [accessErrorShown, setAccessErrorShown] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState(null);
+    const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
 
     // Load all data from API on mount
     React.useEffect(() => {
@@ -534,10 +535,31 @@ const Audit = () => {
     const additionalApproverIds = Array.isArray(auditData?.additionalApprovers)
         ? auditData.additionalApprovers
         : [];
+    const currentUserProgramIds = normalizeIdArray(currentUser?.programIds).map(Number).filter(Number.isFinite);
+    const auditProgramIdsForPage = normalizeIdArray(auditData?.programIds).map(Number).filter(Number.isFinite);
+    const auditDivisionIdsForPage = normalizeIdArray(auditData?.divisionId).map(Number).filter(Number.isFinite);
     const isLeadAuditor = currentUser?.auditorId && auditData?.leadAuditorId === currentUser.auditorId;
+    const isAdditionalAuditor = Boolean(
+        currentUser?.auditorId
+        && additionalAuditorIdsForPage.map(Number).includes(Number(currentUser.auditorId))
+    );
     const isApprover = currentUser?.myId && auditData?.approver === currentUser.myId;
     const isAdditionalApprover = currentUser?.myId && additionalApproverIds.includes(currentUser.myId);
     const canApprove = isLeadAuditor || isApprover || isAdditionalApprover;
+    const isProgramAuditor = Boolean(
+        currentUser?.auditorId
+        && currentUserProgramIds.some((programId) => auditProgramIdsForPage.includes(programId))
+    );
+    const isDivisionAdmin = Boolean(
+        currentUser?.isAdmin
+        && currentUser?.divisionId
+        && auditDivisionIdsForPage.includes(Number(currentUser.divisionId))
+    );
+    const canNudgeApprovers = Boolean(
+        isLocked
+        && !isApproved
+        && (isLeadAuditor || isAdditionalAuditor || isProgramAuditor || isDivisionAdmin)
+    );
 
     React.useEffect(() => {
         let cancelled = false;
@@ -597,9 +619,9 @@ const Audit = () => {
             case 2:
                 return 'Conduct Audit';
             case 3:
-                return 'Nonconformaties';
+                return 'Nonconformities';
             case 4:
-                return 'Nonconformaties';
+                return 'Nonconformities';
             default:
                 return 'Unknown Stage';
         }
@@ -1548,6 +1570,40 @@ const Audit = () => {
         };
     };
 
+    const handleNudgeApprovers = async () => {
+        if (!auditData?.scheduleId || nudgingApprovers) {
+            return;
+        }
+
+        setNudgingApprovers(true);
+        try {
+            const response = await fetch(buildApiUrl(`approvals/${auditData.scheduleId}/remind`), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            const result = await response.json();
+            if (!response.ok || result.success === false) {
+                throw new Error(result.error || 'Failed to send approval reminders.');
+            }
+
+            if (result.sentCount > 0) {
+                toast.success(result.message || `Sent ${result.sentCount} approval reminder email${result.sentCount === 1 ? '' : 's'}.`);
+            } else {
+                toast.info(result.message || 'No reminder emails were sent.');
+            }
+
+            if (result.emailWarning) {
+                toast.error(result.emailWarning);
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to send approval reminders.');
+        } finally {
+            setNudgingApprovers(false);
+        }
+    };
+
     const handleDownloadObjectiveEvidence = () => {
         if (!auditData?.scheduleId) {
             toast.error('No audit selected.');
@@ -1666,9 +1722,9 @@ const Audit = () => {
                             </button>
                             <button
                                 className="action-btn"
-                                onClick={() => navigate(`/entry?type=nonconformaties&audit=${auditData.scheduleId}`)}
+                                onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
                             >
-                                Enter Nonconformaties
+                                Enter Nonconformities
                             </button>
                         </>
                     )}
@@ -1681,6 +1737,17 @@ const Audit = () => {
                         >
                             Approve Audit
                         </a>
+                    )}
+
+                    {canNudgeApprovers && (
+                        <button
+                            className="action-btn"
+                            onClick={handleNudgeApprovers}
+                            disabled={nudgingApprovers}
+                            style={{ backgroundColor: '#d97706' }}
+                        >
+                            {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
+                        </button>
                     )}
 
                     {isLocked && (

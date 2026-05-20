@@ -330,7 +330,7 @@ const ThirtySixtyNinety = () => {
         return 'Conduct Audit';
       case 3:
       case 4:
-        return 'Nonconformaties';
+        return 'Nonconformities';
       default:
         return 'Unknown';
     }
@@ -436,7 +436,7 @@ const ThirtySixtyNinety = () => {
   const stageColumns = [
     { key: 'stagePlanning', label: 'Planning' },
     { key: 'stageConduct', label: 'Conduct Audit' },
-    { key: 'stageNonconformities', label: 'Nonconformaties' },
+    { key: 'stageNonconformities', label: 'Nonconformities' },
     { key: 'stagePending', label: 'Pending Approval' },
     { key: 'stageApproved', label: 'Approved' },
     { key: 'stageHistorical', label: 'Historical' }
@@ -574,7 +574,7 @@ const ThirtySixtyNinety = () => {
               const group = groups.get(key);
               if (stageLabel === 'Planning') group.stagePlanning += 1;
               else if (stageLabel === 'Conduct Audit') group.stageConduct += 1;
-              else if (stageLabel === 'Nonconformaties') group.stageNonconformities += 1;
+              else if (stageLabel === 'Nonconformities') group.stageNonconformities += 1;
               else if (stageLabel === 'Pending Approval') group.stagePending += 1;
               else if (stageLabel === 'Approved') group.stageApproved += 1;
               else if (stageLabel === 'Historical') group.stageHistorical += 1;

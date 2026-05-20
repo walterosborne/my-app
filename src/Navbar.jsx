@@ -27,7 +27,7 @@ const Navbar = () => {
             { label: 'Audit Schedule', path: '/entry?type=schedule' },
             { label: 'Audit Plan', path: '/entry?type=planning' },
             { label: 'Conduct Audit', path: '/entry?type=results' },
-            { label: 'Nonconformities', path: '/entry?type=nonconformaties' }
+            { label: 'Nonconformities', path: '/entry?type=nonconformities' }
         ],
         'Audit Reports': [
             { label: 'Individual Audit Reports', path: '/audit' },

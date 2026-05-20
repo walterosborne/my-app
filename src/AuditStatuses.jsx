@@ -83,9 +83,9 @@ const AuditStatuses = () => {
       case 2:
         return 'Conduct Audit';
       case 3:
-        return 'Nonconformaties';
+        return 'Nonconformities';
       case 4:
-        return 'Nonconformaties';
+        return 'Nonconformities';
       default:
         return 'Unknown Stage';
     }

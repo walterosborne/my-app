@@ -5,7 +5,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import Schedule from './Schedule';
 import Planning from './Planning';
 import Results from './Results';
-import Nonconformaties from './Nonconformaties';
+import Nonconformities from './Nonconformaties';
 import { getAudits, getCurrentUser } from './assets/data/apiData';
 import './Entry.css';
 
@@ -144,7 +144,8 @@ const Entry = () => {
             case 'results':
                 return <Results selectedAuditId={resolvedAuditId} allAudits={audits} reloadAudits={reloadAudits} />;
             case 'nonconformaties':
-                return <Nonconformaties selectedAuditId={resolvedAuditId} allAudits={audits} reloadAudits={reloadAudits} />;
+            case 'nonconformities':
+                return <Nonconformities selectedAuditId={resolvedAuditId} allAudits={audits} reloadAudits={reloadAudits} />;
             default:
                 return (
                     <div className="entry-message">
@@ -172,11 +173,11 @@ const Entry = () => {
                                 Results Entry
                             </button>
                             <button
-                                onClick={() => handleNavigate('nonconformaties')}
+                                onClick={() => handleNavigate('nonconformities')}
                                 className="button"
                                 style={{ backgroundColor: '#0066cc', width: '200px' }}
                             >
-                                Nonconformaties Entry
+                                Nonconformities Entry
                             </button>
                         </div>
                     </div>

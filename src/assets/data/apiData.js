@@ -110,6 +110,30 @@ export async function getAuditorFiles(skipCache = false) {
     return await fetchData('auditor-files', skipCache);
 }
 
+export async function setAuditorFileActive(fileId, active) {
+    const response = await fetch(`${API_BASE}/auditor-files/${fileId}/active`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ active })
+    });
+    if (!response.ok) {
+        let errorMessage = 'Failed to update file status.';
+        try {
+            const errorData = await response.json();
+            if (errorData?.error) {
+                errorMessage = errorData.error;
+            }
+        } catch {
+            // ignore JSON parse errors
+        }
+        throw new Error(errorMessage);
+    }
+    delete cache['auditor-files'];
+    return await response.json();
+}
+
 export async function uploadAuditorFile(file) {
     const formData = new FormData();
     formData.append('file', file);

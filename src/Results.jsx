@@ -33,6 +33,7 @@ import {
   getCurrentUser,
   getEveryTimeQuestions,
   getAuditorFiles,
+  setAuditorFileActive,
   uploadAuditorFile,
   getAuditorFileDownloadUrl,
   getRosterByIds,
@@ -200,11 +201,15 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [auditLocked, setAuditLocked] = useState(false);
   const [nonconformances, setNonconformances] = useState([]);
   const [auditorFiles, setAuditorFiles] = useState([]);
+  const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
+  const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [archivingFileId, setArchivingFileId] = useState(null);
   const fileInputRef = useRef(null);
   const lastSelectedScheduleRef = useRef(null);
   const readOnlyToastRef = useRef(null);
+  const submitIntentRef = useRef('save');
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isUploadTooLarge = Boolean(uploadFile && uploadFile.size > MAX_UPLOAD_BYTES);
   const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
@@ -305,14 +310,52 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return rows.sort((a, b) => Number(a.id) - Number(b.id));
   }, [nonconformances, getQuestionTypeLabel, getFindingTypeLabel]);
 
+  const isAuditorFileActive = useCallback((file) => {
+    const value = file?.active;
+    if (value === null || value === undefined || value === '') {
+      return true;
+    }
+    return value === true || value === 1 || value === '1';
+  }, []);
+
+  const isAuditorFileArchived = useCallback((file) => {
+    return !isAuditorFileActive(file);
+  }, [isAuditorFileActive]);
+
+  const visibleAuditorFiles = useMemo(() => {
+    return showArchivedAuditorFiles
+      ? auditorFiles
+      : auditorFiles.filter((file) => !isAuditorFileArchived(file));
+  }, [auditorFiles, showArchivedAuditorFiles, isAuditorFileArchived]);
+
+  const getAuditorFileOptionLabel = useCallback((file) => {
+    if (!file) return '';
+    return isAuditorFileArchived(file)
+      ? `${file.fileName} (archived)`
+      : file.fileName;
+  }, [isAuditorFileArchived]);
+
   const fileOptions = useMemo(() => {
-    return [...auditorFiles]
+    return [...visibleAuditorFiles]
       .sort((a, b) => (a.fileName || '').localeCompare(b.fileName || ''))
       .map((file) => ({
         value: file.fileId,
-        label: file.fileName
+        label: getAuditorFileOptionLabel(file)
       }));
-  }, [auditorFiles]);
+  }, [visibleAuditorFiles, getAuditorFileOptionLabel]);
+
+  const allAuditorFileOptionsById = useMemo(() => {
+    const optionsById = new Map();
+    [...auditorFiles]
+      .sort((a, b) => (a.fileName || '').localeCompare(b.fileName || ''))
+      .forEach((file) => {
+        optionsById.set(String(file.fileId), {
+          value: file.fileId,
+          label: getAuditorFileOptionLabel(file)
+        });
+      });
+    return optionsById;
+  }, [auditorFiles, getAuditorFileOptionLabel]);
 
   const refreshAuditorFiles = useCallback(async () => {
     try {
@@ -322,6 +365,25 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       console.error('Error loading auditor files:', error);
     }
   }, []);
+
+  const handleToggleAuditorFileArchived = useCallback(async (file) => {
+    if (isViewOnly) {
+      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      return;
+    }
+
+    const nextActive = !isAuditorFileActive(file);
+    setArchivingFileId(file.fileId);
+    try {
+      await setAuditorFileActive(file.fileId, nextActive);
+      await refreshAuditorFiles();
+      toast.success(nextActive ? 'File restored.' : 'File archived.');
+    } catch (error) {
+      toast.error(error.message || 'Failed to update file status.');
+    } finally {
+      setArchivingFileId(null);
+    }
+  }, [isAuditorFileActive, isViewOnly, refreshAuditorFiles, selectedAudit?.scheduleId]);
 
   const mergeRosterOptions = useCallback((people = []) => {
     const options = people
@@ -389,6 +451,18 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   };
 
+  const handleUploadFileSelection = useCallback((event) => {
+    const selectedFile = event.target.files?.[0] || null;
+    setUploadFile(selectedFile);
+
+    if (selectedFile && !isViewOnly) {
+      toast.info('File selected. Hit "Save to my Files" to finish adding it to your saved files.', {
+        progressStyle: { backgroundColor: '#2196f3' },
+        style: { borderLeft: '4px solid #2196f3' }
+      });
+    }
+  }, [isViewOnly]);
+
   const normalizeFileIds = useCallback((value) => {
     if (Array.isArray(value)) return value;
     if (typeof value === 'string') {
@@ -401,6 +475,18 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
     return [];
   }, []);
+
+  const getObjectiveEvidenceOptions = useCallback((selectedIds) => {
+    const mergedOptions = new Map(fileOptions.map((option) => [String(option.value), option]));
+    normalizeFileIds(selectedIds).forEach((fileId) => {
+      const archivedSelectedOption = allAuditorFileOptionsById.get(String(fileId));
+      if (archivedSelectedOption) {
+        mergedOptions.set(String(archivedSelectedOption.value), archivedSelectedOption);
+      }
+    });
+
+    return [...mergedOptions.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [allAuditorFileOptionsById, fileOptions, normalizeFileIds]);
 
   // Load all lookup data from API on mount
   useEffect(() => {
@@ -717,6 +803,43 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return grouped;
   }, [standardTextsForAudit]);
 
+  useEffect(() => {
+    const nextSectionDefaults = {};
+    const nextSubsectionDefaults = {};
+
+    Object.entries(standardTextsByStandard).forEach(([standardIdValue, sections]) => {
+      const standardId = Number(standardIdValue);
+      Object.entries(sections).forEach(([sectionNumValue, questions]) => {
+        const sectionNum = Number(sectionNumValue);
+        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = true;
+
+        questions.forEach((question) => {
+          nextSubsectionDefaults[`subsection_${standardId}_${sectionNum}_${question.subsection}`] = true;
+        });
+      });
+    });
+
+    setCollapsedSections((current) => {
+      const next = { ...current };
+      Object.entries(nextSectionDefaults).forEach(([key, value]) => {
+        if (!(key in next)) {
+          next[key] = value;
+        }
+      });
+      return next;
+    });
+
+    setCollapsedSubsections((current) => {
+      const next = { ...current };
+      Object.entries(nextSubsectionDefaults).forEach(([key, value]) => {
+        if (!(key in next)) {
+          next[key] = value;
+        }
+      });
+      return next;
+    });
+  }, [standardTextsByStandard]);
+
   const auditDate = watch('auditDate');
   const expectedStartDate = selectedAudit?.expectedStartDate
     ? formatDateForInput(selectedAudit.expectedStartDate)
@@ -745,6 +868,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
       setDeletedStandardQuestions({});
+      setCollapsedSections({});
+      setCollapsedSubsections({});
       reset(values);
     } else {
       clearAuditQuestionUiState();
@@ -1121,6 +1246,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         if (reloadAudits) {
           await reloadAudits();
         }
+
+        if (submitIntentRef.current === 'proceed') {
+          navigate(`/entry?type=nonconformities&audit=${selectedAudit.scheduleId}`);
+        }
       } else {
         throw new Error(result.error || 'Failed to save nonconformances');
       }
@@ -1133,10 +1262,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         { message: error.message }
       )
     }
+    finally {
+      submitIntentRef.current = 'save';
+    }
 
   }
 
   function onValidationError(validationErrors) {
+    submitIntentRef.current = 'save';
     const errorArray = Object.values(validationErrors)
       .map((error) => error?.message)
       .filter(Boolean);
@@ -1312,100 +1445,151 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
             </Box>
             <div className='section'>
-              <label className='sectiontitle'>My Objective Evidence</label>
-              <p className="admin-editing-label">Your files can be used in any of your audits, and an audit's files can be downloaded by all associated auditors on the audit's report page.</p>
-              <div className="admin-edit-table-wrapper" style={{ width: '100%' }}>
-                <div className="admin-edit-table-scroll">
-                  <table className="admin-edit-table objective-evidence-table" style={{ width: '100%', tableLayout: 'fixed', textAlign: 'left' }}>
-                    <colgroup>
-                      <col style={{ width: '45%' }} />
-                      <col style={{ width: '35%' }} />
-                      <col style={{ width: '20%' }} />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th className="objective-evidence-header">File Name</th>
-                        <th className="objective-evidence-header">File Type</th>
-                        <th className="objective-evidence-header objective-evidence-header--center"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {auditorFiles.length === 0 ? (
-                        <tr>
-                          <td colSpan={3} style={{ textAlign: 'center', padding: '12px' }}>
-                            No files uploaded yet.
-                          </td>
-                        </tr>
-                      ) : (
-                        auditorFiles.map((file) => (
-                          <tr key={file.fileId}>
-                            <td style={{ textAlign: 'left' }}>{file.fileName}</td>
-                            <td style={{ textAlign: 'left' }}>{file.mimeType || 'Unknown'}</td>
-                            <td style={{ textAlign: 'center' }}>
-                              <a
-                                href={getAuditorFileDownloadUrl(file.fileId)}
-                                onClick={handleObjectiveEvidenceDownload}
-                                className="button"
-                                style={{
-                                  backgroundColor: '#1976d2',
-                                  color: 'white',
-                                  padding: '6px 12px',
-                                  textDecoration: 'none',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  minWidth: '88px'
-                                }}
-                              >
-                                Download
-                              </a>
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              <div className='sectionrow' style={{ marginTop: '12px', alignItems: 'center' }}>
-                <div className="fieldboxhalf">
-                  {!uploadFile && <label>Upload File</label>}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    disabled={isViewOnly}
-                    onChange={(event) => setUploadFile(event.target.files?.[0] || null)}
-                    className="textfield"
-                  />
-                </div>
-                <div className="fieldboxhalf" style={{ display: 'flex', alignItems: 'center' }}>
-                  {uploadFile && !isUploadTooLarge && !isViewOnly && (
-                    <button
-                      type="button"
-                      className="button"
-                      onClick={handleFileUpload}
-                      disabled={uploadingFile}
-                      style={{ backgroundColor: '#1976d2', width: '100%' }}
-                    >
-                      {uploadingFile ? 'Uploading...' : 'Save to my Files'}
-                    </button>
-                  )}
-                </div>
-              </div>
-              {uploadFile && isUploadTooLarge && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <div
-                  className="section"
+                  onClick={() => setObjectiveEvidenceCollapsed((current) => !current)}
                   style={{
-                    backgroundColor: '#ffebee',
-                    border: '1px solid #f44336',
-                    borderRadius: '4px',
-                    marginTop: '12px'
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
                   }}
                 >
-                  <p style={{ color: '#d32f2f', margin: 0, fontWeight: 'bold' }}>
-                    File exceeds the 50MB limit. Please choose a smaller file.
-                  </p>
+                  <span style={{ fontSize: '18px' }}>
+                    {objectiveEvidenceCollapsed ? '▶' : '▼'}
+                  </span>
+                  <label className='sectiontitle' style={{ margin: 0, cursor: 'pointer' }}>My Objective Evidence</label>
                 </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
+                  <label className="admin-include-archived">
+                    <input
+                      type="checkbox"
+                      checked={showArchivedAuditorFiles}
+                      onChange={(event) => setShowArchivedAuditorFiles(event.target.checked)}
+                    />
+                    Show archived files?
+                  </label>
+                </div>
+              </div>
+              {!objectiveEvidenceCollapsed && (
+                <>
+                  <p className="admin-editing-label">Your files can be used in any of your audits, and an audit's files can be downloaded by all associated auditors on the audit's report page.</p>
+                  <div className="admin-edit-table-wrapper" style={{ width: '100%' }}>
+                    <div className="admin-edit-table-scroll">
+                      <table className="admin-edit-table objective-evidence-table" style={{ width: '100%', tableLayout: 'fixed', textAlign: 'left' }}>
+                        <colgroup>
+                          <col style={{ width: '42%' }} />
+                          <col style={{ width: '28%' }} />
+                          <col style={{ width: '30%' }} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th className="objective-evidence-header">File Name</th>
+                            <th className="objective-evidence-header">File Type</th>
+                            <th className="objective-evidence-header"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleAuditorFiles.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} style={{ textAlign: 'center', padding: '12px' }}>
+                                {auditorFiles.length === 0
+                                  ? 'No files uploaded yet.'
+                                  : 'No active files to show. Turn on "Show archived files?" to view archived files.'}
+                              </td>
+                            </tr>
+                          ) : (
+                            visibleAuditorFiles.map((file) => {
+                              const isArchived = isAuditorFileArchived(file);
+                              const isArchivingThisFile = archivingFileId === file.fileId;
+                              return (
+                                <tr key={file.fileId} className={isArchived ? 'archived' : ''}>
+                                  <td style={{ textAlign: 'left' }}>{file.fileName}</td>
+                                  <td style={{ textAlign: 'left' }}>{file.mimeType || 'Unknown'}</td>
+                                  <td style={{ textAlign: 'right' }}>
+                                    <div style={{ display: 'inline-flex', gap: '8px', flexWrap: 'nowrap', justifyContent: 'flex-end', whiteSpace: 'nowrap' }}>
+                                      <a
+                                        href={getAuditorFileDownloadUrl(file.fileId)}
+                                        onClick={handleObjectiveEvidenceDownload}
+                                        className="button"
+                                        style={{
+                                          backgroundColor: '#1976d2',
+                                          color: 'white',
+                                          padding: '6px 12px',
+                                          textDecoration: 'none',
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          minWidth: '88px'
+                                        }}
+                                      >
+                                        Download
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="button"
+                                        disabled={isArchivingThisFile || isViewOnly}
+                                        onClick={() => handleToggleAuditorFileArchived(file)}
+                                        style={{
+                                          backgroundColor: isArchived ? '#2e7d32' : '#ed6c02',
+                                          color: 'white',
+                                          padding: '6px 12px',
+                                          minWidth: '88px'
+                                        }}
+                                      >
+                                        {isArchivingThisFile ? 'Saving...' : (isArchived ? 'Restore' : 'Archive')}
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div className='sectionrow' style={{ marginTop: '12px', alignItems: 'center' }}>
+                    <div className="fieldboxhalf">
+                      {!uploadFile && <label>Upload File</label>}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        disabled={isViewOnly}
+                        onChange={handleUploadFileSelection}
+                        className="textfield"
+                      />
+                    </div>
+                    <div className="fieldboxhalf" style={{ display: 'flex', alignItems: 'center' }}>
+                      {uploadFile && !isUploadTooLarge && !isViewOnly && (
+                        <button
+                          type="button"
+                          className="button"
+                          onClick={handleFileUpload}
+                          disabled={uploadingFile}
+                          style={{ backgroundColor: '#1976d2', width: '100%' }}
+                        >
+                          {uploadingFile ? 'Uploading...' : 'Save to my Files'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {uploadFile && isUploadTooLarge && (
+                    <div
+                      className="section"
+                      style={{
+                        backgroundColor: '#ffebee',
+                        border: '1px solid #f44336',
+                        borderRadius: '4px',
+                        marginTop: '12px'
+                      }}
+                    >
+                      <p style={{ color: '#d32f2f', margin: 0, fontWeight: 'bold' }}>
+                        File exceeds the 50MB limit. Please choose a smaller file.
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {schedule && (auditLocked ?
@@ -1456,7 +1640,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   )}
                   <div style={readOnlyStyle}>
                   <div className="admin-edit-table-wrapper" style={{ marginTop: '12px' }}>
-                    <p className="admin-editing-label">Existing Findings and Nonconformaties</p>
+                    <p className="admin-editing-label">Existing Findings and Nonconformities</p>
                     <div className="admin-edit-table-scroll">
                       <table className="admin-edit-table">
                         <thead>
@@ -1846,17 +2030,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 <Controller
                                   name={`peqFiles${index}`}
                                   control={control}
-                                  render={({ field }) => (
-                                    <Select
-                                      isClearable
-                                      isMulti
-                                      options={fileOptions}
-                                      styles={customStyles}
-                                      placeholder="Select files"
-                                      value={field.value ? fileOptions.filter(f => field.value.includes(f.value)) : []}
-                                      onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                    />
-                                  )}
+                                  render={({ field }) => {
+                                    const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
+                                    const selectedFileIds = normalizeFileIds(field.value);
+                                    return (
+                                      <Select
+                                        isClearable
+                                        isMulti
+                                        options={objectiveEvidenceOptions}
+                                        styles={customStyles}
+                                        placeholder="Select files"
+                                        value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
+                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                      />
+                                    );
+                                  }}
                                 />
                               </div>
                             </div>
@@ -2008,17 +2196,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Controller
                               name={`etqFiles${index}`}
                               control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  isMulti
-                                  options={fileOptions}
-                                  styles={customStyles}
-                                  placeholder="Select files"
-                                  value={field.value ? fileOptions.filter(f => field.value.includes(f.value)) : []}
-                                  onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                />
-                              )}
+                              render={({ field }) => {
+                                const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
+                                const selectedFileIds = normalizeFileIds(field.value);
+                                return (
+                                  <Select
+                                    isClearable
+                                    isMulti
+                                    options={objectiveEvidenceOptions}
+                                    styles={customStyles}
+                                    placeholder="Select files"
+                                    value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
+                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                  />
+                                );
+                              }}
                             />
                           </div>
                         </div>
@@ -2303,17 +2495,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                         <Controller
                                                           name={`standardAdditionalFiles_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
                                                           control={control}
-                                                          render={({ field }) => (
-                                                            <Select
-                                                              isClearable
-                                                              isMulti
-                                                              options={fileOptions}
-                                                              styles={customStyles}
-                                                              placeholder="Select files"
-                                                              value={field.value ? fileOptions.filter(f => field.value.includes(f.value)) : []}
-                                                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                            />
-                                                          )}
+                                                          render={({ field }) => {
+                                                            const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
+                                                            const selectedFileIds = normalizeFileIds(field.value);
+                                                            return (
+                                                              <Select
+                                                                isClearable
+                                                                isMulti
+                                                                options={objectiveEvidenceOptions}
+                                                                styles={customStyles}
+                                                                placeholder="Select files"
+                                                                value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
+                                                                onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                                              />
+                                                            );
+                                                          }}
                                                         />
                                                       </div>
                                                     </div>
@@ -2374,21 +2570,25 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             }}>
               {showNonconformatiesButton && (
                 <button
-                  type="button"
-                  onClick={() => navigate(`/entry?type=nonconformaties&audit=${selectedAudit.scheduleId}`)}
+                  type="submit"
+                  form='results-form'
+                  onClick={() => {
+                    submitIntentRef.current = 'proceed';
+                  }}
+                  disabled={isSubmitting}
                   style={{
                     backgroundColor: '#2196f3',
                     color: 'white',
                     border: 'none',
                     padding: '12px 24px',
                     fontSize: '16px',
-                    cursor: 'pointer',
+                    cursor: isSubmitting ? 'not-allowed' : 'pointer',
                     borderRadius: '50px',
                     fontWeight: 'bold',
                     boxShadow: '0 4px 8px rgba(0,0,0,0.2)'
                   }}
                 >
-                  Proceed to Nonconformaties
+                  {isSubmitting ? 'Saving...' : 'Save and Proceed'}
                 </button>
               )}
               <button
@@ -2411,6 +2611,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
               <button
                 type='submit'
                 form='results-form'
+                onClick={() => {
+                  submitIntentRef.current = 'save';
+                }}
                 disabled={isSubmitting}
                 style={{
                   backgroundColor: '#4CAF50',

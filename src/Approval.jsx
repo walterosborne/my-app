@@ -55,6 +55,13 @@ const Approval = () => {
         }
     };
 
+    const handleReject = () => {
+        if (!rejectionMailto || submittingApproval) {
+            return;
+        }
+        window.open(rejectionMailto, '_blank', 'noopener,noreferrer');
+    };
+
     if (loading) {
         return (
             <div className="audit-page">
@@ -81,7 +88,7 @@ const Approval = () => {
     const alreadyApprovedByUser = Boolean(approvalInfo?.currentApproval?.approvedat);
     const auditorEmails = approvalInfo?.auditorEmails || [];
     const rejectionMailto = auditorEmails.length
-        ? `mailto:${auditorEmails.join(',')}?subject=${encodeURIComponent(`Audit ${scheduleId} Rejection`)}&body=${encodeURIComponent('I am a listed approver and I am rejecting the audit because ')}`
+        ? `mailto:${auditorEmails.join(';')}?subject=${encodeURIComponent(`Audit ${scheduleId} Rejection`)}&body=${encodeURIComponent('I am a listed approver and I am rejecting the audit because ')}`
         : '';
 
     return (
@@ -92,6 +99,7 @@ const Approval = () => {
                         You are not listed as an approver for this audit.
                         <div style={{ marginTop: '1rem' }}>
                             <button
+                                type="button"
                                 className="button"
                                 onClick={() => navigate('/')}
                                 style={{ backgroundColor: '#0066cc', width: '200px' }}
@@ -112,6 +120,7 @@ const Approval = () => {
                         </p>
                         <div style={{ display: 'flex', gap: '12px', marginTop: '1.5rem', flexWrap: 'wrap' }}>
                             <button
+                                type="button"
                                 className="button"
                                 onClick={() => navigate(`/audit/${scheduleId}`)}
                                 style={{ backgroundColor: '#0066cc', width: '220px' }}
@@ -119,6 +128,7 @@ const Approval = () => {
                                 Review Audit
                             </button>
                             <button
+                                type="button"
                                 className="button"
                                 onClick={handleApprove}
                                 disabled={isApproved || alreadyApprovedByUser || submittingApproval}
@@ -127,9 +137,10 @@ const Approval = () => {
                                 {alreadyApprovedByUser ? 'Approval Already Submitted' : submittingApproval ? 'Submitting Approval...' : 'Approve Audit'}
                             </button>
                             <button
+                                type="button"
                                 className="button"
-                                onClick={() => rejectionMailto && window.open(rejectionMailto, '_blank', 'noopener,noreferrer')}
-                                disabled={!rejectionMailto}
+                                onClick={handleReject}
+                                disabled={!rejectionMailto || submittingApproval}
                                 style={{ backgroundColor: rejectionMailto ? '#c62828' : 'grey', width: '220px' }}
                             >
                                 Reject Audit

@@ -166,7 +166,7 @@ const Home = () => {
                         </button>
                         <button
                             className="step-button"
-                            onClick={() => navigate('/entry?type=nonconformaties')}
+                            onClick={() => navigate('/entry?type=nonconformities')}
                         >
                             Step 4: Nonconformities
                         </button>

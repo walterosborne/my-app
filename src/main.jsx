@@ -16,7 +16,7 @@ import EmailOutbox from './EmailOutbox.jsx'
 import Schedule from './Schedule.jsx'
 import Planning from './Planning.jsx'
 import Results from './Results.jsx'
-import Nonconformaties from './Nonconformaties.jsx'
+import Nonconformities from './Nonconformaties.jsx'
 import Calendar from './Calendar.jsx'
 import AdminMenu from './AdminMenu.jsx'
 import FOE from './FOE.jsx'
@@ -87,7 +87,7 @@ const getEntryTitle = (searchParams) => {
   if (type === 'schedule') return 'Schedule Entry';
   if (type === 'planning') return 'Audit Planning';
   if (type === 'results') return 'Conduct Audit';
-  if (type === 'nonconformaties') return 'Nonconformaties';
+  if (type === 'nonconformaties' || type === 'nonconformities') return 'Nonconformities';
   return 'Audit Entry';
 };
 
@@ -136,7 +136,8 @@ const getPageTitle = (location) => {
     case '/results':
       return 'Conduct Audit';
     case '/nonconformaties':
-      return 'Nonconformaties';
+    case '/nonconformities':
+      return 'Nonconformities';
     case '/calendar':
       return 'Calendar';
     case '/metrics':
@@ -219,7 +220,8 @@ createRoot(document.getElementById('root')).render(
           <Route path="/schedule" element={<Schedule />} />
           <Route path="/planning" element={<Planning />} />
           <Route path="/results" element={<Results />} />
-          <Route path="/nonconformaties" element={<Nonconformaties />} />
+          <Route path="/nonconformaties" element={<Nonconformities />} />
+          <Route path="/nonconformities" element={<Nonconformities />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/metrics" element={<Metrics />} />
           <Route path="/risk-analysis" element={<RiskAnalysis />} />

@@ -11,6 +11,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import { grey } from '@mui/material/colors';
 import { buildRosterOption, customStyles } from './Utilities.jsx';
+import { useNavigate } from 'react-router-dom';
 import {
   buildApiUrl,
   getPrograms,
@@ -36,6 +37,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   const [userInfo, setUserInfo] = useState(null);
   const readOnlyToastRef = useRef(null);
+  const navigate = useNavigate();
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -423,6 +425,29 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       }));
   }, [severitiesList]);
 
+  const nonconformitySeverityOptions = useMemo(() => {
+    return severityOptions.reduce((options, option) => {
+      const normalizedLabel = String(option.label || '').trim().toLowerCase();
+      if (normalizedLabel.includes('major')) {
+        options.push({ ...option, label: 'Major' });
+      } else if (normalizedLabel.includes('minor')) {
+        options.push({ ...option, label: 'Minor' });
+      }
+      return options;
+    }, []);
+  }, [severityOptions]);
+
+  const allowedNonconformitySeverityValues = useMemo(() => {
+    return new Set(nonconformitySeverityOptions.map((option) => String(option.value)));
+  }, [nonconformitySeverityOptions]);
+
+  const normalizeNonconformitySeverityValue = useMemo(() => (value) => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    return allowedNonconformitySeverityValues.has(String(value)) ? value : null;
+  }, [allowedNonconformitySeverityValues]);
+
   // Generate options from API data
   const leadAuditorOptions = useMemo(() => {
     return [...auditorsList]
@@ -458,7 +483,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           // Populate nonconformance form fields
           ncData.forEach(nc => {
             if (nc.details) setValue(`ncDetails${nc.ncId}`, nc.details);
-            if (nc.severity) setValue(`ncSeverity${nc.ncId}`, nc.severity);
+            setValue(`ncSeverity${nc.ncId}`, normalizeNonconformitySeverityValue(nc.severity));
             if (nc.AIN) setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN);
           });
 
@@ -555,7 +580,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       const ncUpdates = nonconformances.map(nc => ({
         ncId: nc.ncId,
         details: data[`ncDetails${nc.ncId}`] || '',
-        severity: data[`ncSeverity${nc.ncId}`] || null,
+        severity: normalizeNonconformitySeverityValue(data[`ncSeverity${nc.ncId}`]),
         actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
       }));
 
@@ -611,6 +636,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           const carId = car.carid ?? idx;
           setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
         });
+
+        if (lockedValue) {
+          navigate(`/audit/${selectedAudit.scheduleId}`);
+        }
       } else {
         throw new Error(result.error || 'Failed to save data');
       }
@@ -707,7 +736,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       // Restore nonconformance fields
       nonconformances.forEach(nc => {
         setValue(`ncDetails${nc.ncId}`, nc.details || '');
-        setValue(`ncSeverity${nc.ncId}`, nc.severity || null);
+        setValue(`ncSeverity${nc.ncId}`, normalizeNonconformitySeverityValue(nc.severity));
         setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN || '');
       });
     } else {
@@ -725,7 +754,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     if (stage < 3) {
       const scheduleId = loadedAuditData.scheduleId ?? loadedAuditData.scheduleid ?? 'Unknown';
       return {
-        title: `Audit ${scheduleId} is not ready for Nonconformaties yet.`,
+        title: `Audit ${scheduleId} is not ready for Nonconformities yet.`,
         note: 'Please complete ' + (stage === 1 ? 'Planning' : stage === 2 ? 'Conduct Audit' : 'previous steps') + ' before entering findings.'
       };
     }
@@ -733,13 +762,13 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   })();
 
   if (loading) {
-    return <div className="entry-message">Loading nonconformaties data...</div>;
+    return <div className="entry-message">Loading nonconformities data...</div>;
   }
 
   return (
     <>
       <div style={{ width: '100%', textAlign: 'left' }}>
-        <h1>Enter Nonconformaties</h1>
+        <h1>Enter Nonconformities</h1>
         {userInfo?.name && (
           <h2 style={{ marginTop: '3px' }}>
             Welcome {userInfo.name}.{' '}
@@ -844,7 +873,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                 </>
               ) : schedule ? (
                 <>
-                  <h2 style={{ marginTop: '5px' }}>Currently Entering Nonconformaties for Schedule: {schedule.scheduleId}</h2>
+                  <h2 style={{ marginTop: '5px' }}>Currently Entering Nonconformities for Schedule: {schedule.scheduleId}</h2>
                   {isViewOnly && (
                     <p style={{ marginTop: '6px', color: '#666' }}>
                       You are not assigned as an auditor on this audit. Fields are view-only.
@@ -855,7 +884,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                     <label className='sectiontitle'>Overview</label>
                     <div className='sectionrow'>
                       <div className="fieldboxwhole">
-                        <label>Auditor's Time</label>
+                        <label>Auditor's Time to Complete Audit (hours)</label>
                         <input
                           type="number"
                           {...register("auditorsTime", {
@@ -911,10 +940,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 render={({ field }) => (
                                   <Select
                                     isClearable
-                                    options={severityOptions}
+                                    options={nonconformitySeverityOptions}
                                     styles={customStyles}
                                     placeholder="Severity"
-                                    value={severityOptions.find(s => s.value === field.value) || null}
+                                    value={nonconformitySeverityOptions.find(s => s.value === field.value) || null}
                                     onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                                   />
                                 )}
@@ -966,10 +995,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 render={({ field }) => (
                                   <Select
                                     isClearable
-                                    options={severityOptions}
+                                    options={nonconformitySeverityOptions}
                                     styles={customStyles}
                                     placeholder="Severity"
-                                    value={severityOptions.find(s => s.value === field.value) || null}
+                                    value={nonconformitySeverityOptions.find(s => s.value === field.value) || null}
                                     onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                                   />
                                 )}
@@ -1027,10 +1056,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                     render={({ field }) => (
                                       <Select
                                         isClearable
-                                        options={severityOptions}
+                                        options={nonconformitySeverityOptions}
                                         styles={customStyles}
                                         placeholder="Severity"
-                                        value={severityOptions.find(s => s.value === field.value) || null}
+                                        value={nonconformitySeverityOptions.find(s => s.value === field.value) || null}
                                         onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                                       />
                                     )}
