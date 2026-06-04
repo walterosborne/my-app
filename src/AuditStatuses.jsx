@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Entry.css';
 import './AuditStatuses.css';
-import { normalizeDisplayLabel } from './Utilities.jsx';
 import { getAuditsAll, getAuditors, getCurrentUser, getPrograms, getSites } from './assets/data/apiData';
 
 const getSiteLabel = (site) => {
@@ -54,14 +53,14 @@ const AuditStatuses = () => {
   const formatSingle = (id, lookupList, idKey, nameKey) => {
     if (!id) return '';
     const item = lookupList.find((entry) => entry[idKey] === id);
-    return normalizeDisplayLabel(item ? item[nameKey] : id);
+    return item ? item[nameKey] : id;
   };
 
   const formatArray = (ids, lookupList, idKey, nameKey, separator = ', ') => {
     if (!ids || ids.length === 0) return '';
     return ids.map((id) => {
       const item = lookupList.find((entry) => entry[idKey] === id);
-      return normalizeDisplayLabel(item ? item[nameKey] : id);
+      return item ? item[nameKey] : id;
     }).join(separator);
   };
 

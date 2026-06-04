@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import './App.css'
 import { grey } from '@mui/material/colors';
-import { customStyles, formatDateForInput, normalizeDisplayLabel, parseCalendarDate } from './Utilities.jsx';
+import { customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
 import {
   buildApiUrl,
   getPrograms,
@@ -100,7 +100,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const getProgramNames = (programIds) => {
     return programIds.map(programId => {
       const program = programsList.find(p => p.programId === programId);
-      return normalizeDisplayLabel(program ? program.programName : programId);
+      return program ? program.programName : programId;
     }).join(', ');
   };
 
@@ -117,7 +117,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     return ids
       .map(id => {
         const division = divisionsList.find(d => d.divisionId === id);
-        return normalizeDisplayLabel(division ? division.divisionName : id);
+        return division ? division.divisionName : id;
       })
       .join('; ');
   };
@@ -196,7 +196,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     return ids
       .map(id => {
         const func = functionsList.find(f => f.functionId === id);
-        return normalizeDisplayLabel(func ? func.functionName : id);
+        return func ? func.functionName : id;
       })
       .join('; ');
   };

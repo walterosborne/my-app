@@ -10,7 +10,7 @@ import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import { grey } from '@mui/material/colors';
-import { buildRosterOption, customStyles, normalizeDisplayLabel } from './Utilities.jsx';
+import { buildRosterOption, customStyles } from './Utilities.jsx';
 import { useNavigate } from 'react-router-dom';
 import {
   buildApiUrl,
@@ -141,7 +141,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const getProgramNames = (programIds) => {
     return programIds.map(programId => {
       const program = programsList.find(p => p.programId === programId);
-      return normalizeDisplayLabel(program ? program.programName : programId);
+      return program ? program.programName : programId;
     }).join(', ');
   };
 
@@ -158,7 +158,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return ids
       .map(id => {
         const division = divisionsList.find(d => d.divisionId === id);
-        return normalizeDisplayLabel(division ? division.divisionName : id);
+        return division ? division.divisionName : id;
       })
       .join('; ');
   };
@@ -237,7 +237,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return ids
       .map(id => {
         const func = functionsList.find(f => f.functionId === id);
-        return normalizeDisplayLabel(func ? func.functionName : id);
+        return func ? func.functionName : id;
       })
       .join('; ');
   };

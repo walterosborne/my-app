@@ -31,7 +31,7 @@ import {
     getRiskRatings
 } from './assets/data/apiData';
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
-import { formatDateForDisplay, formatRosterLabel, getDateParts, normalizeDisplayLabel } from './Utilities.jsx';
+import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
 const Audit = () => {
     const { id } = useParams();
@@ -132,7 +132,7 @@ const Audit = () => {
     const getProgramNames = (programIds) => {
         return programIds.map(programId => {
             const program = programsList.find(p => p.programId === programId);
-            return normalizeDisplayLabel(program ? program.programName : programId);
+            return program ? program.programName : programId;
         }).join(', ');
     };
 
@@ -149,7 +149,7 @@ const Audit = () => {
         return ids
             .map(id => {
                 const division = divisionsList.find(d => d.divisionId === id);
-                return normalizeDisplayLabel(division ? division.divisionName : id);
+                return division ? division.divisionName : id;
             })
             .join('; ');
     };
@@ -228,7 +228,7 @@ const Audit = () => {
         return ids
             .map(id => {
                 const func = functionsList.find(f => f.functionId === id);
-                return normalizeDisplayLabel(func ? func.functionName : id);
+                return func ? func.functionName : id;
             })
             .join('; ');
     };
