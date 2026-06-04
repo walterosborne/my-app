@@ -950,7 +950,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                               />
                             </div>
                             <div className="fieldboxhalf">
-                              <label>Action Item Number</label>
+                              <label>Corrective Action Record Number</label>
                               <input
                                 type="text"
                                 {...register(`ncActionItemNumber${nc.NCID}`)}
@@ -1005,7 +1005,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                               />
                             </div>
                             <div className="fieldboxhalf">
-                              <label>Action Item Number</label>
+                              <label>Corrective Action Record Number</label>
                               <input
                                 type="text"
                                 {...register(`ncActionItemNumber${nc.NCID}`)}
@@ -1066,7 +1066,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                   />
                                 </div>
                                 <div className="fieldboxhalf">
-                                  <label>Action Item Number</label>
+                                  <label>Corrective Action Record Number</label>
                                   <input
                                     type="text"
                                     {...register(`ncActionItemNumber${nc.NCID}`)}

@@ -210,6 +210,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const lastSelectedScheduleRef = useRef(null);
   const readOnlyToastRef = useRef(null);
   const submitIntentRef = useRef('save');
+  const skipNextFormResetRef = useRef(0);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const isUploadTooLarge = Boolean(uploadFile && uploadFile.size > MAX_UPLOAD_BYTES);
   const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
@@ -856,6 +857,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       return;
     }
     if (schedule && selectedAudit) {
+      if (skipNextFormResetRef.current > 0) {
+        skipNextFormResetRef.current -= 1;
+        return;
+      }
       const scheduleId = Number(selectedAudit.scheduleId);
       const auditNCs = nonconformances.filter(nc => Number(nc.scheduleId) === scheduleId);
       const {
@@ -1045,6 +1050,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         const currentStage = selectedAudit?.stage ?? 0;
         return Math.max(currentStage, fallbackStage);
       };
+      const nextStage = computeStage(3);
 
       // Map finding type strings to integers for database
       const findingTypeMap = {
@@ -1209,7 +1215,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           programManager: data.programManager,
           maLeadManager: data.maLeadManager,
           delayCause: isDelayed ? (data.delayCause || null) : null,
-          stage: computeStage(3),
+          stage: nextStage,
           targetStage: 3
         })
       });
@@ -1235,19 +1241,38 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const result = await response.json();
 
       if (result.success) {
-        toast.success('Results submitted!');
+        const isProceeding = submitIntentRef.current === 'proceed';
+        toast.success(isProceeding ? 'Results saved!' : 'Results saved.');
+        skipNextFormResetRef.current = 2;
 
-        // Reload nonconformances from database to get fresh data
-        const ncResponse = await fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`));
-        const freshNCs = await ncResponse.json();
-        setNonconformances(freshNCs);
+        setSelectedAudit((current) => {
+          if (!current || Number(current.scheduleId) !== scheduleId) {
+            return current;
+          }
 
-        // Reload audit data if reloadAudits function is available
-        if (reloadAudits) {
-          await reloadAudits();
-        }
+          return {
+            ...current,
+            overview: data.overview,
+            cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
+            standardIds: data.standards || [],
+            programIds: data.programs || [],
+            intervieweeIds: data.interviewees || [],
+            startDate: data.auditDate || null,
+            evaluator: data.evaluator,
+            relatedItems: data.relatedItems,
+            programManager: data.programManager,
+            maLeadManager: data.maLeadManager,
+            delayCause: isDelayed ? (data.delayCause || null) : null,
+            stage: nextStage
+          };
+        });
 
-        if (submitIntentRef.current === 'proceed') {
+        setNonconformances(allNCs);
+
+        if (isProceeding) {
+          if (reloadAudits) {
+            await reloadAudits();
+          }
           navigate(`/entry?type=nonconformities&audit=${selectedAudit.scheduleId}`);
         }
       } else {

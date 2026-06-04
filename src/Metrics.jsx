@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createRoot } from 'react-dom/client';
 import Select from 'react-select';
 import { toast } from 'react-toastify';
+import * as XLSX from 'xlsx';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart, MarkElement } from '@mui/x-charts/LineChart';
 import {
@@ -16,7 +16,6 @@ import {
 import { ChartsLabelMark } from '@mui/x-charts/ChartsLabel';
 import Typography from '@mui/material/Typography';
 import { getValueToPositionMapper, useXScale, useYScale } from '@mui/x-charts/hooks';
-import { toPng } from 'html-to-image';
 import 'react-toastify/dist/ReactToastify.css';
 import './Entry.css';
 import './Metrics.css';
@@ -1220,229 +1219,54 @@ const Metrics = () => {
     return { labels: formattedMonths, series };
   }, [filteredAudits, monthlyMetrics, nonconformanceBySchedule, timelineGranularity, dateField]);
 
-  const EXPORT_IMAGE_WIDTH = 1600;
-  const EXPORT_IMAGE_HEIGHT = 900;
-
-  const inlineSvgStyles = (source, target) => {
-    if (!source || !target) return;
-    const computed = window.getComputedStyle(source);
-    const styleText = Array.from(computed)
-      .map((prop) => `${prop}:${computed.getPropertyValue(prop)};`)
-      .join('');
-    if (styleText) {
-      target.setAttribute('style', styleText);
-    }
-    const sourceChildren = source.children || [];
-    const targetChildren = target.children || [];
-    for (let i = 0; i < sourceChildren.length; i += 1) {
-      if (targetChildren[i]) {
-        inlineSvgStyles(sourceChildren[i], targetChildren[i]);
-      }
-    }
+  const sanitizeWorksheetName = (value = 'Metrics') => {
+    const cleaned = String(value || 'Metrics')
+      .replace(/[\\/*?:[\]]/g, ' ')
+      .trim();
+    return (cleaned || 'Metrics').slice(0, 31);
   };
 
-  const waitForSvg = async (container, timeoutMs = 2500) => {
-    const start = performance.now();
-    while (performance.now() - start < timeoutMs) {
-      const svg = container?.querySelector?.('svg');
-      if (svg) {
-        return svg;
-      }
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-    }
-    return null;
-  };
+  const buildMetricExportRows = ({ labels = [], series = [], labelKey = 'Label', totals = null }) => {
+    return labels.map((label, index) => {
+      const row = { [labelKey]: label };
 
-  const exportSvgToPng = async (svg, filenameBase, width = EXPORT_IMAGE_WIDTH, height = EXPORT_IMAGE_HEIGHT) => {
-    if (!svg) return false;
-
-    const clone = svg.cloneNode(true);
-    inlineSvgStyles(svg, clone);
-
-    const existingViewBox = clone.getAttribute('viewBox');
-    if (!existingViewBox) {
-      try {
-        const bbox = svg.getBBox();
-        clone.setAttribute('viewBox', `${bbox.x} ${bbox.y} ${bbox.width} ${bbox.height}`);
-      } catch (error) {
-        clone.setAttribute('viewBox', `0 0 ${width} ${height}`);
-      }
-    }
-
-    clone.setAttribute('width', `${width}`);
-    clone.setAttribute('height', `${height}`);
-    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
-    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
-
-    const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    background.setAttribute('x', '0');
-    background.setAttribute('y', '0');
-    background.setAttribute('width', '100%');
-    background.setAttribute('height', '100%');
-    background.setAttribute('fill', '#ffffff');
-    clone.insertBefore(background, clone.firstChild);
-
-    const svgString = new XMLSerializer().serializeToString(clone);
-    const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-
-    try {
-      await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-          try {
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              reject(new Error('Canvas context unavailable.'));
-              return;
-            }
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, width, height);
-            ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob((pngBlob) => {
-              if (!pngBlob) {
-                reject(new Error('Failed to render PNG blob.'));
-                return;
-              }
-              const pngUrl = URL.createObjectURL(pngBlob);
-              const link = document.createElement('a');
-              link.href = pngUrl;
-              link.download = `${filenameBase}.png`;
-              document.body.appendChild(link);
-              link.click();
-              link.remove();
-              URL.revokeObjectURL(pngUrl);
-              resolve();
-            }, 'image/png');
-          } catch (error) {
-            reject(error);
-          }
-        };
-        img.onerror = () => reject(new Error('Failed to load SVG export image.'));
-        img.src = url;
+      series.forEach((entry, seriesIndex) => {
+        const columnName = entry?.label || entry?.id || `Series ${seriesIndex + 1}`;
+        row[columnName] = Number(entry?.data?.[index]) || 0;
       });
-      return true;
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-  };
 
-  const exportChartFallback = async (wrapperRef, filenameBase) => {
-    const wrapper = wrapperRef?.current;
-    if (!wrapper) return false;
-    try {
-      const dataUrl = await toPng(wrapper, {
-        cacheBust: true,
-        backgroundColor: '#ffffff',
-        pixelRatio: 2
-      });
-      const link = document.createElement('a');
-      link.href = dataUrl;
-      link.download = `${filenameBase}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      return true;
-    } catch (error) {
-      console.warn('html-to-image export failed, falling back to SVG:', error);
-    }
-    const svg = wrapper.querySelector('svg');
-    return exportSvgToPng(svg, filenameBase);
-  };
-
-  const exportChartWithRender = async (renderChart, filenameBase) => {
-    if (!renderChart) return false;
-    const container = document.createElement('div');
-    container.style.width = `${EXPORT_IMAGE_WIDTH}px`;
-    container.style.height = `${EXPORT_IMAGE_HEIGHT}px`;
-    container.style.background = '#ffffff';
-    container.style.position = 'fixed';
-    container.style.left = '-10000px';
-    container.style.top = '0';
-    container.style.zIndex = '-1';
-    container.style.overflow = 'hidden';
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    root.render(renderChart(EXPORT_IMAGE_WIDTH, EXPORT_IMAGE_HEIGHT));
-    try {
-      const svg = await waitForSvg(container);
-      if (!svg) {
-        throw new Error('Rendered chart SVG not found.');
+      if (Array.isArray(totals)) {
+        row.Total = Number(totals[index]) || 0;
       }
-      return await exportSvgToPng(svg, filenameBase);
-    } catch (error) {
-      console.warn('Chart export render failed:', error);
-      return false;
-    } finally {
-      root.unmount();
-      container.remove();
-    }
+
+      return row;
+    });
   };
 
-  const handleExport = async (apiRef, wrapperRef, filenameBase, renderChart) => {
-    const toastId = toast.info('Now exporting metric image...', {
+  const handleExport = ({ filenameBase, sheetName, labelKey, labels, series, totals = null }) => {
+    const rows = buildMetricExportRows({ labels, series, labelKey, totals });
+
+    if (rows.length === 0) {
+      toast.info('No metric data is currently displayed to export.', exportToastOptions);
+      return;
+    }
+
+    const toastId = toast.info('Now exporting metric data...', {
       ...exportToastOptions,
       autoClose: false,
       closeButton: false
     });
-    const api = apiRef?.current;
+
     try {
-      if (api?.exportAsImage) {
-        api.exportAsImage();
-        toast.update(toastId, {
-          render: 'Now exporting metric image...',
-          type: 'info',
-          progressStyle: exportToastOptions.progressStyle,
-          style: exportToastOptions.style,
-          autoClose: 2000,
-          closeButton: true
-        });
-        return;
-      }
-      if (api?.exportAsPrint) {
-        api.exportAsPrint();
-        toast.update(toastId, {
-          render: 'Now exporting metric image...',
-          type: 'info',
-          progressStyle: exportToastOptions.progressStyle,
-          style: exportToastOptions.style,
-          autoClose: 2000,
-          closeButton: true
-        });
-        return;
-      }
-      const rendered = await exportChartWithRender(renderChart, filenameBase);
-      if (rendered) {
-        toast.update(toastId, {
-          render: 'Now exporting metric image...',
-          type: 'info',
-          progressStyle: exportToastOptions.progressStyle,
-          style: exportToastOptions.style,
-          autoClose: 2000,
-          closeButton: true
-        });
-        return;
-      }
-      const fallbackWorked = await exportChartFallback(wrapperRef, filenameBase);
-      if (fallbackWorked) {
-        toast.update(toastId, {
-          render: 'Now exporting metric image...',
-          type: 'info',
-          progressStyle: exportToastOptions.progressStyle,
-          style: exportToastOptions.style,
-          autoClose: 2000,
-          closeButton: true
-        });
-        return;
-      }
-      console.warn('Chart export is not available with the current MUI X Charts build.');
+      const workbook = XLSX.utils.book_new();
+      const sheet = XLSX.utils.json_to_sheet(rows);
+      XLSX.utils.book_append_sheet(workbook, sheet, sanitizeWorksheetName(sheetName));
+      XLSX.writeFile(workbook, `${filenameBase}.xlsx`);
+
       toast.update(toastId, {
-        render: 'Metric export failed.',
-        type: 'error',
-        autoClose: 4000,
+        render: 'Metric data exported.',
+        type: 'success',
+        autoClose: 2000,
         closeButton: true
       });
     } catch (error) {
@@ -1576,100 +1400,6 @@ const Metrics = () => {
       </g>
     );
   };
-
-  const renderStageChart = (width, height) => (
-    <BarChart
-      xAxis={[{ scaleType: 'band', data: stageChartData.labels }]}
-      yAxis={buildTightBarYAxis(stageChartData.series)}
-      series={stageChartData.series}
-      slots={{ tooltip: MetricsTooltip }}
-      slotProps={{
-        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
-        tooltip: { trigger: 'axis' }
-      }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    >
-      <StageTotalsOverlay labels={stageChartData.labels} totals={stageChartData.totals} />
-    </BarChart>
-  );
-
-  const renderDelayChart = (width, height) => (
-    <BarChart
-      xAxis={[{ scaleType: 'band', data: delayChartData.labels }]}
-      yAxis={buildTightBarYAxis(delayChartData.series)}
-      series={delayChartData.series}
-      slots={{ tooltip: MetricsTooltip }}
-      slotProps={{
-        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
-        tooltip: { trigger: 'axis' }
-      }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    />
-  );
-
-  const renderMonthlyChart = (width, height) => (
-    <LineChart
-      xAxis={[{ scaleType: 'point', data: monthlyChartData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
-      series={monthlyChartData.series}
-      slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
-      slotProps={{ tooltip: { trigger: 'axis' } }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    />
-  );
-
-  const renderSeverityChart = (width, height) => (
-    <LineChart
-      xAxis={[{ scaleType: 'point', data: severityTrendData.labels }]}
-      yAxis={[{ tickMinStep: 1 }]}
-      series={severityTrendData.series}
-      slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
-      slotProps={{ tooltip: { trigger: 'axis' } }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    />
-  );
-
-  const renderFindingsChart = (width, height) => (
-    <BarChart
-      xAxis={[{ scaleType: 'band', data: findingsChartData.labels }]}
-      yAxis={buildTightBarYAxis(findingsChartData.series)}
-      series={findingsChartData.series}
-      slots={{ tooltip: MetricsTooltip }}
-      slotProps={{
-        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
-        tooltip: { trigger: 'axis' }
-      }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    >
-      <StageTotalsOverlay labels={findingsChartData.labels} totals={findingsChartData.totals} />
-    </BarChart>
-  );
-
-  const renderFindingsClauseChart = (width, height) => (
-    <BarChart
-      xAxis={[{ scaleType: 'band', data: findingsByClauseData.labels }]}
-      yAxis={buildTightBarYAxis(findingsByClauseData.series)}
-      series={findingsByClauseData.series}
-      slots={{ tooltip: MetricsTooltip }}
-      slotProps={{
-        barLabel: { style: { fontSize: 12, fontWeight: 600 } },
-        tooltip: { trigger: 'axis' }
-      }}
-      width={width}
-      height={height}
-      margin={{ top: 40, bottom: 50, left: 60, right: 20 }}
-    />
-  );
 
   const showStageMetric = activeTab === 'All' || activeTab === 'PCAB';
   const showDelayMetric = activeTab === 'All' || activeTab === 'Other';
@@ -1884,7 +1614,14 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(stageChartApiRef, stageChartWrapperRef, 'audits-by-stage', renderStageChart)}
+                        onClick={() => handleExport({
+                          filenameBase: 'audits-by-stage',
+                          sheetName: `Audits by ${stageCategoryOption.label}`,
+                          labelKey: stageCategoryOption.label,
+                          labels: stageChartData.labels,
+                          series: stageChartData.series,
+                          totals: stageChartData.totals
+                        })}
                       >
                         Export
                       </button>
@@ -1946,7 +1683,13 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(delayChartApiRef, delayChartWrapperRef, 'delay-causes', renderDelayChart)}
+                        onClick={() => handleExport({
+                          filenameBase: 'delay-causes',
+                          sheetName: 'Delay Causes',
+                          labelKey: 'Delay Cause',
+                          labels: delayChartData.labels,
+                          series: delayChartData.series
+                        })}
                       >
                         Export
                       </button>
@@ -1975,7 +1718,13 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(monthlyChartApiRef, monthlyChartWrapperRef, 'audits-by-month', renderMonthlyChart)}
+                        onClick={() => handleExport({
+                          filenameBase: 'audits-over-time',
+                          sheetName: 'Audits Over Time',
+                          labelKey: 'Period',
+                          labels: monthlyChartData.labels,
+                          series: monthlyChartData.series
+                        })}
                       >
                         Export
                       </button>
@@ -2031,7 +1780,13 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(severityChartApiRef, severityChartWrapperRef, 'finding-severities', renderSeverityChart)}
+                        onClick={() => handleExport({
+                          filenameBase: 'finding-severities',
+                          sheetName: 'Finding Severities',
+                          labelKey: 'Period',
+                          labels: severityTrendData.labels,
+                          series: severityTrendData.series
+                        })}
                       >
                         Export
                       </button>
@@ -2074,7 +1829,14 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(findingsChartApiRef, findingsChartWrapperRef, 'findings-by-function', renderFindingsChart)}
+                        onClick={() => handleExport({
+                          filenameBase: 'findings-by-function',
+                          sheetName: 'Findings by Function',
+                          labelKey: 'Function',
+                          labels: findingsChartData.labels,
+                          series: findingsChartData.series,
+                          totals: findingsChartData.totals
+                        })}
                       >
                         Export
                       </button>
@@ -2120,12 +1882,15 @@ const Metrics = () => {
                       <button
                         type="button"
                         className="metrics-export-button"
-                        onClick={() => handleExport(
-                          findingsClauseChartApiRef,
-                          findingsClauseChartWrapperRef,
-                          'findings-by-clause',
-                          renderFindingsClauseChart
-                        )}
+                        onClick={() => handleExport({
+                          filenameBase: 'findings-by-clause',
+                          sheetName: findingsByClauseData.selectedStandardLabel
+                            ? `Clause ${findingsByClauseData.selectedStandardLabel}`
+                            : 'Findings by Clause',
+                          labelKey: 'Clause',
+                          labels: findingsByClauseData.labels,
+                          series: findingsByClauseData.series
+                        })}
                       >
                         Export
                       </button>

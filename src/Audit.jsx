@@ -258,6 +258,13 @@ const Audit = () => {
         return String(typeValue);
     };
 
+    const formatNcIdentifier = (value) => {
+        if (value === null || value === undefined || value === '') {
+            return '';
+        }
+        return `NCID - ${value}`;
+    };
+
     const standardFindingsSorted = React.useMemo(() => {
         const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
         return nonconformances
@@ -1115,11 +1122,11 @@ const Audit = () => {
         addSheet(wb, 'Results', resultsHeaders, [resultsValues]);
 
         // PEQs sheet
-        const peqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Action Item Number'];
+        const peqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const peqRows = nonconformances
             .filter((nc) => nc.type === 'PEQ')
             .map((nc) => [
-                nc.ncId,
+                formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
                 nc.question || '',
@@ -1135,11 +1142,11 @@ const Audit = () => {
         addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
         // ETQs sheet
-        const etqHeaders = ['NC ID', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Action Item Number'];
+        const etqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const etqRows = nonconformances
             .filter((nc) => nc.type === 'ETQ')
             .map((nc) => [
-                nc.ncId,
+                formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
                 nc.question || '',
@@ -1155,11 +1162,11 @@ const Audit = () => {
         addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
         // Standard-based questions sheet
-        const standardHeaders = ['NC ID', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Action Item Number'];
+        const standardHeaders = ['NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Corrective Action Record Number'];
         const standardRows = nonconformances
             .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
             .map((nc) => [
-                nc.ncId,
+                formatNcIdentifier(nc.ncId),
                 getStandardTypeLabel(nc.type),
                 nc.section ?? '',
                 nc.subsection ?? '',
@@ -1272,12 +1279,12 @@ const Audit = () => {
         const carLinesHtml = carLines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
 
         const counts = {
-            total: nonconformances.length,
             nonconformities: nonconformances.filter((nc) => nc.findingType === 1).length,
             ofis: nonconformances.filter((nc) => nc.findingType === 3).length,
             observations: nonconformances.filter((nc) => nc.findingType === 4).length,
             conformities: nonconformances.filter((nc) => nc.findingType === 2).length
         };
+        counts.total = counts.nonconformities + counts.ofis + counts.observations;
 
         const summaryHtml = auditData.overview
             ? escapeHtml(auditData.overview)
@@ -1358,7 +1365,7 @@ const Audit = () => {
             return `
                 <div class="nc-card">
                     <div class="nc-card-header">
-                        <span class="nc-id">NC-${nc.ncId}</span>
+                        <span class="nc-id">NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
                     ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
@@ -1368,7 +1375,7 @@ const Audit = () => {
                     ${propRowsHtml}
                     ${(showNcDetailFallbacks || hasNcDetailContent) ? `
                     <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
-                    <div class="nc-field"><strong>Action Item Number:</strong> ${ainHtml}</div>
+                    <div class="nc-field"><strong>Corrective Action Record Number:</strong> ${ainHtml}</div>
                     ` : ''}
                 </div>
             `;
@@ -1551,10 +1558,10 @@ const Audit = () => {
         <strong>Overall Observations</strong>
         <p>${summaryHtml}</p>
       </div>
-      <div class="counts-grid">
+        <div class="counts-grid">
         <div class="counts-card">
           <div class="counts-number">${counts.total}</div>
-          <div class="counts-label">Total Findings</div>
+          <div class="counts-label">Total</div>
         </div>
         <div class="counts-card">
           <div class="counts-number">${counts.nonconformities}</div>
@@ -2101,8 +2108,10 @@ const Audit = () => {
                         <h2 className="section-title">Findings Summary</h2>
                         <div className="summary-grid">
                             <div className="summary-card">
-                                <div className="summary-number">{nonconformances.length}</div>
-                                <div className="summary-label">Total Findings</div>
+                                <div className="summary-number">
+                                    {nonconformances.filter((nc) => nc.findingType === 1 || nc.findingType === 3 || nc.findingType === 4).length}
+                                </div>
+                                <div className="summary-label">Total</div>
                             </div>
                             <div className="summary-card major-nc">
                                 <div className="summary-number">{nonconformances.filter(nc => nc.findingType === 1).length}</div>
@@ -2167,7 +2176,7 @@ const Audit = () => {
                                             )}
                                             {finding.findingType === 1 && (
                                                 <>
-                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
                                                     {finding.severity && (
                                                         <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
                                                             Severity: {getSeverityLabel(finding.severity)}
@@ -2211,7 +2220,7 @@ const Audit = () => {
                                                     </div>
 
                                                     <div className="finding-item">
-                                                        <strong>Action Item Number:</strong>
+                                                        <strong>Corrective Action Record Number:</strong>
                                                         <p>
                                                             {finding.AIN
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
@@ -2248,7 +2257,7 @@ const Audit = () => {
                                             )}
                                             {finding.findingType === 1 && (
                                                 <>
-                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
                                                     {finding.severity && (
                                                         <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
                                                             Severity: {getSeverityLabel(finding.severity)}
@@ -2292,7 +2301,7 @@ const Audit = () => {
                                                     </div>
 
                                                     <div className="finding-item">
-                                                        <strong>Action Item Number:</strong>
+                                                        <strong>Corrective Action Record Number:</strong>
                                                         <p>
                                                             {finding.AIN
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
@@ -2327,7 +2336,7 @@ const Audit = () => {
                                             )}
                                             {finding.findingType === 1 && (
                                                 <>
-                                                    <span className="finding-id">NCID: {finding.ncId}</span>
+                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
                                                     {standardLabel && (
                                                         <span className="finding-type">{standardLabel}</span>
                                                     )}
@@ -2381,7 +2390,7 @@ const Audit = () => {
                                                     </div>
 
                                                     <div className="finding-item">
-                                                        <strong>Action Item Number:</strong>
+                                                        <strong>Corrective Action Record Number:</strong>
                                                         <p>
                                                             {finding.AIN
                                                                 || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
