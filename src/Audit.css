@@ -168,6 +168,15 @@
     background-color: var(--color-danger-dark);
 }
 
+.action-btn.undo-submission-btn {
+    background-color: #facc15;
+    color: #111827;
+}
+
+.action-btn.undo-submission-btn:hover {
+    background-color: #eab308;
+}
+
 /* Section Styles */
 .audit-section {
     margin-bottom: 2rem;

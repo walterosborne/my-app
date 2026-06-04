@@ -200,10 +200,10 @@ const applyAuditSchemaToSql = (queryText, schemaName) => {
     });
 };
 
-const prepareSql = (queryText, { applyAuditSchema = false } = {}) => {
+const prepareSql = (queryText, { applyAuditSchema = false, schemaName = null } = {}) => {
     let sqlText = queryText;
     if (applyAuditSchema) {
-        sqlText = applyAuditSchemaToSql(sqlText, getCurrentAuditSchema());
+        sqlText = applyAuditSchemaToSql(sqlText, schemaName || getCurrentAuditSchema());
     }
     sqlText = applyReturningClause(sqlText);
     sqlText = sqlText.replace(/\$(\d+)/g, '@p$1');
@@ -243,6 +243,11 @@ const pool = {
         const poolConn = await sqlPoolPromise;
         const request = poolConn.request();
         return runQuery(request, queryText, params, { applyAuditSchema: true });
+    },
+    queryWithSchema: async (schemaName, queryText, params = []) => {
+        const poolConn = await sqlPoolPromise;
+        const request = poolConn.request();
+        return runQuery(request, queryText, params, { applyAuditSchema: true, schemaName });
     },
     connect: async () => {
         const poolConn = await sqlPoolPromise;
@@ -359,6 +364,11 @@ const getForwardedHost = (req) => {
 
 const getRequestEnvironmentHost = (req) => {
     return normalizeEnvironmentHost(getForwardedHost(req) || req.hostname || '');
+};
+
+const getAuditSchemaForRequest = (req) => {
+    const requestHost = getRequestEnvironmentHost(req);
+    return getCurrentRequestContext()?.auditSchema || getDatabaseSchemaForHost(requestHost);
 };
 
 const getForwardedProtocol = (req) => {
@@ -704,7 +714,7 @@ const getRosterRowsByMyIds = async (myIds = []) => {
     return result.rows;
 };
 
-const getCurrentUserInfo = async (req) => {
+const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
     const networkId = getNetworkIdFromRequest(req);
     if (!networkId) return null;
 
@@ -719,7 +729,8 @@ const getCurrentUserInfo = async (req) => {
         return null;
     }
 
-    const auditorResult = await pool.query(
+    const auditorResult = await pool.queryWithSchema(
+        auditSchema || getAuditSchemaForRequest(req),
         `SELECT TOP 1
             a.auditorid,
             a.divisionid,
@@ -746,8 +757,8 @@ const getCurrentUserInfo = async (req) => {
     };
 };
 
-const getCurrentAuditorId = async (req) => {
-    const userInfo = await getCurrentUserInfo(req);
+const getCurrentAuditorId = async (req, { auditSchema } = {}) => {
+    const userInfo = await getCurrentUserInfo(req, { auditSchema });
     return userInfo?.auditorid ?? null;
 };
 
@@ -1446,16 +1457,24 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
 });
 
 // Get files for current auditor
-let auditorFilesStatusColumnsPromise = null;
+const auditorFilesStatusColumnsPromiseBySchema = new Map();
 
-async function getAuditorFilesStatusColumns() {
-    if (!auditorFilesStatusColumnsPromise) {
-        auditorFilesStatusColumnsPromise = pool.query(
+async function getAuditorFilesStatusColumns(schemaName) {
+    const cacheKey = String(schemaName || getCurrentAuditSchema() || '');
+    if (!auditorFilesStatusColumnsPromiseBySchema.has(cacheKey)) {
+        auditorFilesStatusColumnsPromiseBySchema.set(cacheKey, (async () => {
+            const poolConn = await sqlPoolPromise;
+            const request = poolConn.request();
+            return runQuery(
+                request,
             `SELECT LOWER(COLUMN_NAME) AS column_name
              FROM INFORMATION_SCHEMA.COLUMNS
-             WHERE LOWER(TABLE_NAME) = LOWER('auditor_files_r')
-               AND LOWER(COLUMN_NAME) IN ('active', 'archived')`
-        )
+             WHERE LOWER(TABLE_SCHEMA) = LOWER($1)
+               AND LOWER(TABLE_NAME) = LOWER('auditor_files_r')
+               AND LOWER(COLUMN_NAME) IN ('active', 'archived')`,
+                [schemaName || getCurrentAuditSchema()]
+            );
+        })()
             .then((result) => {
                 const columnNames = new Set(result.rows.map((row) => row.column_name));
                 return {
@@ -1464,11 +1483,11 @@ async function getAuditorFilesStatusColumns() {
                 };
             })
             .catch((error) => {
-                auditorFilesStatusColumnsPromise = null;
+                auditorFilesStatusColumnsPromiseBySchema.delete(cacheKey);
                 throw error;
-            });
+            }));
     }
-    return auditorFilesStatusColumnsPromise;
+    return auditorFilesStatusColumnsPromiseBySchema.get(cacheKey);
 }
 
 function isTruthyStatusValue(value) {
@@ -1487,13 +1506,15 @@ function getAuditorFileActiveValue(row, statusColumns) {
 
 app.get('/api/auditor-files', async (req, res) => {
     try {
-        const auditorId = await getCurrentAuditorId(req);
+        const auditSchema = getAuditSchemaForRequest(req);
+        const auditorId = await getCurrentAuditorId(req, { auditSchema });
         if (!auditorId) {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
 
-        const statusColumns = await getAuditorFilesStatusColumns();
-        const result = await pool.query(
+        const statusColumns = await getAuditorFilesStatusColumns(auditSchema);
+        const result = await pool.queryWithSchema(
+            auditSchema,
             `SELECT fileId, fileName, mimeType, fileSize, createdAt${statusColumns.hasActiveColumn ? ', active' : ''}${statusColumns.hasArchivedColumn ? ', archived' : ''}
              FROM auditor_files_r
              WHERE auditorId = $1
@@ -1520,7 +1541,8 @@ app.get('/api/auditor-files', async (req, res) => {
 // Upload file for current auditor
 app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
     try {
-        const auditorId = await getCurrentAuditorId(req);
+        const auditSchema = getAuditSchemaForRequest(req);
+        const auditorId = await getCurrentAuditorId(req, { auditSchema });
         if (!auditorId) {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
@@ -1530,7 +1552,8 @@ app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
         }
 
         const fileName = sanitizeFilename(req.file.originalname);
-        const duplicateCheck = await pool.query(
+        const duplicateCheck = await pool.queryWithSchema(
+            auditSchema,
             `SELECT fileId FROM auditor_files_r WHERE auditorId = $1 AND fileName = $2`,
             [auditorId, fileName]
         );
@@ -1540,13 +1563,14 @@ app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
         }
 
         const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
-        const statusColumns = await getAuditorFilesStatusColumns();
+        const statusColumns = await getAuditorFilesStatusColumns(auditSchema);
         const statusInsertColumn = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
         const statusInsertPlaceholder = statusColumns.hasActiveColumn || statusColumns.hasArchivedColumn ? ', $7' : '';
         const statusReturning = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
         const statusInsertValue = statusColumns.hasActiveColumn ? [1] : (statusColumns.hasArchivedColumn ? [0] : []);
 
-        const insertResult = await pool.query(
+        const insertResult = await pool.queryWithSchema(
+            auditSchema,
             `INSERT INTO auditor_files_r (
                 auditorId, fileName, mimeType, fileSize, fileHash, fileData${statusInsertColumn}
              )
@@ -1581,13 +1605,15 @@ app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
 // Download file for current auditor
 app.get('/api/auditor-files/:fileId/download', async (req, res) => {
     try {
-        const auditorId = await getCurrentAuditorId(req);
+        const auditSchema = getAuditSchemaForRequest(req);
+        const auditorId = await getCurrentAuditorId(req, { auditSchema });
         if (!auditorId) {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
 
         const { fileId } = req.params;
-        const result = await pool.query(
+        const result = await pool.queryWithSchema(
+            auditSchema,
             `SELECT fileName, mimeType, fileData
              FROM auditor_files_r
              WHERE fileId = $1 AND auditorId = $2`,
@@ -1611,12 +1637,13 @@ app.get('/api/auditor-files/:fileId/download', async (req, res) => {
 
 async function updateAuditorFileActiveHandler(req, res) {
     try {
-        const auditorId = await getCurrentAuditorId(req);
+        const auditSchema = getAuditSchemaForRequest(req);
+        const auditorId = await getCurrentAuditorId(req, { auditSchema });
         if (!auditorId) {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
 
-        const statusColumns = await getAuditorFilesStatusColumns();
+        const statusColumns = await getAuditorFilesStatusColumns(auditSchema);
         if (!statusColumns.hasActiveColumn && !statusColumns.hasArchivedColumn) {
             return res.status(501).json({ success: false, error: 'File status is not configured on this server.' });
         }
@@ -1626,7 +1653,8 @@ async function updateAuditorFileActiveHandler(req, res) {
         const persistedStatusValue = statusColumns.hasActiveColumn ? activeValue : (activeValue ? 0 : 1);
         const statusAssignment = statusColumns.hasActiveColumn ? 'active = $1' : 'archived = $1';
         const statusReturning = `${statusColumns.hasActiveColumn ? ', active' : ''}${statusColumns.hasArchivedColumn ? ', archived' : ''}`;
-        const result = await pool.query(
+        const result = await pool.queryWithSchema(
+            auditSchema,
             `UPDATE auditor_files_r
              SET ${statusAssignment}
              WHERE fileId = $2 AND auditorId = $3

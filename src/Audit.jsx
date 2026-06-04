@@ -67,6 +67,7 @@ const Audit = () => {
     const [accessErrorShown, setAccessErrorShown] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState(null);
     const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
+    const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
 
     // Load all data from API on mount
     React.useEffect(() => {
@@ -571,6 +572,11 @@ const Audit = () => {
         isLocked
         && !isApproved
         && (isLeadAuditor || isAdditionalAuditor || isProgramAuditor || isDivisionAdmin)
+    );
+    const canUndoSubmission = Boolean(
+        isLocked
+        && !isApproved
+        && (isLeadAuditor || isAdditionalAuditor)
     );
 
     React.useEffect(() => {
@@ -1654,6 +1660,52 @@ const Audit = () => {
         }
     };
 
+    const handleUndoSubmission = async () => {
+        if (!auditData?.scheduleId || unlockingSubmission) {
+            return;
+        }
+
+        setUnlockingSubmission(true);
+        try {
+            const response = await fetch(buildApiUrl('unlock-audit'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    scheduleId: auditData.scheduleId
+                })
+            });
+
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to undo submission');
+            }
+
+            const refreshedAudits = await getAuditsReport(true);
+            setAudits(refreshedAudits);
+
+            try {
+                const approvalsResponse = await fetch(buildApiUrl(`approvals/${auditData.scheduleId}`));
+                if (!approvalsResponse.ok) {
+                    setApprovals([]);
+                } else {
+                    const approvalsData = await approvalsResponse.json();
+                    setApprovals(approvalsData.approvals || []);
+                }
+            } catch (approvalsError) {
+                console.error('Error refreshing approvals after undo submission:', approvalsError);
+                setApprovals([]);
+            }
+
+            toast.success('Submission undone successfully.');
+        } catch (error) {
+            toast.error(`Failed to undo submission: ${error.message}`);
+        } finally {
+            setUnlockingSubmission(false);
+        }
+    };
+
     const handleDownloadObjectiveEvidence = () => {
         if (!auditData?.scheduleId) {
             toast.error('No audit selected.');
@@ -1787,6 +1839,16 @@ const Audit = () => {
                         >
                             Approve Audit
                         </a>
+                    )}
+
+                    {canUndoSubmission && (
+                        <button
+                            className="action-btn undo-submission-btn"
+                            onClick={handleUndoSubmission}
+                            disabled={unlockingSubmission}
+                        >
+                            {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
+                        </button>
                     )}
 
                     {canNudgeApprovers && (
