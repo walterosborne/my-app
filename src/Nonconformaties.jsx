@@ -37,6 +37,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   const [userInfo, setUserInfo] = useState(null);
   const readOnlyToastRef = useRef(null);
+  const accessErrorToastRef = useRef(null);
   const navigate = useNavigate();
 
   // State for lookup data from API
@@ -292,6 +293,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const [loadedAuditData, setLoadedAuditData] = useState(null);
   const [loadedCARs, setLoadedCARs] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
+  const [accessBlock, setAccessBlock] = useState(null);
 
   useEffect(() => {
     if (!isViewOnly || !selectedAudit?.scheduleId) {
@@ -302,6 +304,27 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
     readOnlyToastRef.current = selectedAudit.scheduleId;
   }, [isViewOnly, selectedAudit]);
+
+  useEffect(() => {
+    const accessKey = accessBlock && schedule?.scheduleId
+      ? `${schedule.scheduleId}:${accessBlock.kind}`
+      : null;
+
+    if (!accessKey) {
+      accessErrorToastRef.current = null;
+      return;
+    }
+
+    if (accessErrorToastRef.current === accessKey) return;
+
+    if (accessBlock.kind === 'cui') {
+      toast.error('This audit is marked CUI. You are not CUI approved and cannot view it.');
+    } else {
+      toast.error(accessBlock.message || 'You do not have access to this audit.');
+    }
+
+    accessErrorToastRef.current = accessKey;
+  }, [accessBlock, schedule?.scheduleId]);
 
   // Find selected audit from URL or from user selection
   useEffect(() => {
@@ -464,24 +487,52 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         try {
           // First reset the form to clear all previous data
           reset();
+          setAccessBlock(null);
+          setLoadedAuditData(null);
+          setLoadedCARs([]);
+          setNonconformances([]);
 
           // Fetch audit data
           const auditResponse = await fetch(buildApiUrl(`audits/${schedule.scheduleId}`));
           const auditData = await auditResponse.json();
+          if (!auditResponse.ok) {
+            const isCuiDenied = auditResponse.status === 403 && auditData?.code === 'CUI_ACCESS_DENIED';
+            setAccessBlock({
+              kind: isCuiDenied ? 'cui' : 'forbidden',
+              message: auditData?.error || 'You do not have access to this audit.'
+            });
+            return;
+          }
           setLoadedAuditData(auditData);
 
           // Fetch CARs for this audit
           const carsResponse = await fetch(buildApiUrl(`cars/${schedule.scheduleId}`));
           const carsData = await carsResponse.json();
+          if (!carsResponse.ok) {
+            const isCuiDenied = carsResponse.status === 403 && carsData?.code === 'CUI_ACCESS_DENIED';
+            setAccessBlock({
+              kind: isCuiDenied ? 'cui' : 'forbidden',
+              message: carsData?.error || 'You do not have access to this audit.'
+            });
+            return;
+          }
           setLoadedCARs(carsData);
 
           // Fetch nonconformances for this audit
           const ncResponse = await fetch(buildApiUrl(`nonconformances/${schedule.scheduleId}`));
           const ncData = await ncResponse.json();
+          if (!ncResponse.ok) {
+            const isCuiDenied = ncResponse.status === 403 && ncData?.code === 'CUI_ACCESS_DENIED';
+            setAccessBlock({
+              kind: isCuiDenied ? 'cui' : 'forbidden',
+              message: ncData?.error || 'You do not have access to this audit.'
+            });
+            return;
+          }
           setNonconformances(ncData);
 
           // Populate nonconformance form fields
-          ncData.forEach(nc => {
+          (Array.isArray(ncData) ? ncData : []).forEach(nc => {
             if (nc.details) setValue(`ncDetails${nc.ncId}`, nc.details);
             setValue(`ncSeverity${nc.ncId}`, normalizeNonconformitySeverityValue(nc.severity));
             if (nc.AIN) setValue(`ncActionItemNumber${nc.ncId}`, nc.AIN);
@@ -507,7 +558,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           }
 
           // Populate CARs
-          if (carsData && carsData.length > 0) {
+          if (Array.isArray(carsData) && carsData.length > 0) {
             carsData.forEach((car, idx) => {
               const carId = car.carid ?? idx;
               setValue(`carEffective${carId}`, car.effective !== null && car.effective !== undefined ? String(car.effective) : '');
@@ -536,6 +587,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setLoadedAuditData(null);
         setLoadedCARs([]);
         setNonconformances([]);
+        setAccessBlock(null);
       }
     }
     loadAuditData();
@@ -833,7 +885,23 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               />
 
             </Box>
-            {schedule && loadedAuditData?.locked === 1 ?
+            {schedule && accessBlock ? (
+              <>
+                <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                  {accessBlock.kind === 'cui'
+                    ? 'This audit is marked CUI. You are not CUI approved and cannot view its details.'
+                    : (accessBlock.message || 'You do not have access to this audit.')}
+                </h2>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => navigate('/audit')}
+                  style={{ backgroundColor: '#0066cc', width: '220px' }}
+                >
+                  Return to My Audits
+                </button>
+              </>
+            ) : schedule && loadedAuditData?.locked === 1 ?
               (
                 <>
                   <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>

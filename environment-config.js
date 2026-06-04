@@ -7,7 +7,7 @@ export const KNOWN_DEVELOPMENT_HOSTS = Object.freeze([
 ]);
 
 export const PRODUCTION_SCHEMA = 'dbo';
-export const DEVELOPMENT_SCHEMA = '[NORTHGRUM\\N35589]';
+export const DEVELOPMENT_SCHEMA = 'NORTHGRUM\\N35589';
 
 export const normalizeEnvironmentHost = (value) => String(value || '')
     .split(',')[0]

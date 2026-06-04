@@ -190,13 +190,27 @@ const getCurrentAuditSchema = () => {
     return getCurrentRequestContext()?.auditSchema || PRODUCTION_SCHEMA;
 };
 
+const normalizeSchemaIdentifier = (schemaName) => String(schemaName || '')
+    .trim()
+    .replace(/^\[(.*)\]$/, '$1');
+
+const formatSchemaIdentifierForSql = (schemaName) => {
+    const normalizedSchemaName = normalizeSchemaIdentifier(schemaName);
+    if (!normalizedSchemaName) {
+        return '';
+    }
+
+    return `[${normalizedSchemaName.replace(/]/g, ']]')}]`;
+};
+
 const applyAuditSchemaToSql = (queryText, schemaName) => {
-    if (!schemaName) {
+    const sqlSchemaName = formatSchemaIdentifierForSql(schemaName);
+    if (!sqlSchemaName) {
         return queryText;
     }
 
     return queryText.replace(/(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm, (match, prefix, tableName) => {
-        return `${prefix}${schemaName}.${tableName}`;
+        return `${prefix}${sqlSchemaName}.${tableName}`;
     });
 };
 
@@ -730,7 +744,7 @@ const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
     }
 
     const auditorResult = await pool.queryWithSchema(
-        auditSchema || getAuditSchemaForRequest(req),
+        PRODUCTION_SCHEMA,
         `SELECT TOP 1
             a.auditorid,
             a.divisionid,
@@ -1460,7 +1474,8 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
 const auditorFilesStatusColumnsPromiseBySchema = new Map();
 
 async function getAuditorFilesStatusColumns(schemaName) {
-    const cacheKey = String(schemaName || getCurrentAuditSchema() || '');
+    const normalizedSchemaName = normalizeSchemaIdentifier(schemaName || getCurrentAuditSchema());
+    const cacheKey = String(normalizedSchemaName || '');
     if (!auditorFilesStatusColumnsPromiseBySchema.has(cacheKey)) {
         auditorFilesStatusColumnsPromiseBySchema.set(cacheKey, (async () => {
             const poolConn = await sqlPoolPromise;
@@ -1472,7 +1487,7 @@ async function getAuditorFilesStatusColumns(schemaName) {
              WHERE LOWER(TABLE_SCHEMA) = LOWER($1)
                AND LOWER(TABLE_NAME) = LOWER('auditor_files_r')
                AND LOWER(COLUMN_NAME) IN ('active', 'archived')`,
-                [schemaName || getCurrentAuditSchema()]
+                [normalizedSchemaName]
             );
         })()
             .then((result) => {
