@@ -33,6 +33,30 @@ body {
   -moz-osx-font-smoothing: grayscale; */
 }
 
+.environment-banner {
+  width: 100%;
+  min-height: 22px;
+  padding: 2px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #f7b267;
+  color: #4a1f00;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.environment-banner a {
+  color: #7a2000;
+  text-decoration: underline;
+}
+
+.environment-banner a:hover {
+  color: #571600;
+}
+
 /* a {
   font-weight: 500;
   color: #646cff;

@@ -710,11 +710,12 @@ const canViewAuditByProgram = ({ audit, userInfo }) => {
     return userProgramIds.length > 0 && auditProgramIds.some((programId) => userProgramIds.includes(programId));
 };
 
+const hasCuiAccess = ({ audit, userInfo }) => {
+    return Number(audit?.cui) !== 1 || Number(userInfo?.cuiapproved) === 1;
+};
+
 const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds = new Set() }) => {
     if (!userInfo) return false;
-    if (Number(audit?.cui) === 1 && Number(userInfo?.cuiapproved) !== 1) {
-        return false;
-    }
 
     const myId = userInfo.myid;
     const isAuditor = canEditAudit({ audit, userInfo });
@@ -776,9 +777,31 @@ pool.query('SELECT NOW()', (err, res) => {
 app.get('/api/nonconformances/:scheduleId', async (req, res) => {
     try {
         const { scheduleId } = req.params;
+        const auditId = parseInt(scheduleId, 10);
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(pool, auditId);
+        let approverScheduleIds = new Set();
+
+        if (userInfo?.myid) {
+            const approvalsResult = await pool.query(
+                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+                [auditId, userInfo.myid]
+            );
+            if (approvalsResult.rows.length > 0) {
+                approverScheduleIds.add(auditId);
+            }
+        }
+
+        if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+            return res.status(404).json({ success: false, error: 'Audit not found' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+        }
+
         const result = await pool.query(
             'SELECT * FROM nonconformances_r WHERE scheduleId = $1 ORDER BY ncId',
-            [parseInt(scheduleId)]
+            [auditId]
         );
 
         // Parse array fields back to arrays and convert column names to camelCase
@@ -1059,6 +1082,9 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
 
         if (!canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
             return res.status(404).json({ success: false, error: 'Audit not found' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
         }
 
         const ncResult = await pool.query(
@@ -3000,6 +3026,13 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
         if (!canAccessAudit({ audit, userInfo, report: isReport, approverScheduleIds })) {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({
+                success: false,
+                code: 'CUI_ACCESS_DENIED',
+                error: 'This audit is marked CUI. You are not approved to view it.'
+            });
+        }
 
         res.json({
             ...audit,
@@ -3106,6 +3139,10 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
             );
         }
 
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+        }
+
         const approvals = approvalsResult.rows;
         const currentApproval = approvals.find(a => a.approvermyid === userInfo.myid);
 
@@ -3195,6 +3232,9 @@ app.post('/api/approvals/:scheduleId/remind', async (req, res) => {
 
         if (!canAccessAudit({ audit, userInfo, report: false })) {
             return res.status(403).json({ success: false, error: 'Not authorized to send approval reminders for this audit' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
         }
 
         if (!audit.locked || audit.approvedAt) {
@@ -3301,9 +3341,31 @@ app.post('/api/approvals/:scheduleId/remind', async (req, res) => {
 app.get('/api/cars/:scheduleId', async (req, res) => {
     try {
         const { scheduleId } = req.params;
+        const auditId = parseInt(scheduleId, 10);
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(pool, auditId);
+        let approverScheduleIds = new Set();
+
+        if (userInfo?.myid) {
+            const approvalsResult = await pool.query(
+                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+                [auditId, userInfo.myid]
+            );
+            if (approvalsResult.rows.length > 0) {
+                approverScheduleIds.add(auditId);
+            }
+        }
+
+        if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+            return res.status(404).json({ success: false, error: 'Audit not found' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+        }
+
         const result = await pool.query(
             'SELECT * FROM cars_r WHERE scheduleid = $1 ORDER BY carid',
-            [parseInt(scheduleId)]
+            [auditId]
         );
 
         res.json(result.rows);

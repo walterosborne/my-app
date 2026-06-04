@@ -12,7 +12,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import './App.css'
 import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
-import { buildRosterOption, customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
+import { buildRosterOption, customStyles, formatDateForInput, normalizeDisplayLabel, parseCalendarDate } from './Utilities.jsx';
 import {
   buildApiUrl,
   getPrograms,
@@ -152,7 +152,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const getProgramNames = (programIds) => {
     return programIds.map(programId => {
       const program = programsList.find(p => p.programId === programId);
-      return program ? program.programName : programId;
+      return normalizeDisplayLabel(program ? program.programName : programId);
     }).join(', ');
   };
 
@@ -169,7 +169,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return ids
       .map(id => {
         const division = divisionsList.find(d => d.divisionId === id);
-        return division ? division.divisionName : id;
+        return normalizeDisplayLabel(division ? division.divisionName : id);
       })
       .join('; ');
   };

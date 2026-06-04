@@ -7,7 +7,7 @@ import { DataGrid } from '@mui/x-data-grid'
 import { toast } from 'react-toastify'
 import './App.css'
 import { grey } from '@mui/material/colors'
-import { customStyles } from './Utilities.jsx'
+import { customStyles, normalizeDisplayLabel } from './Utilities.jsx'
 import {
   buildApiUrl,
   getPrograms,
@@ -67,7 +67,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
   const getProgramNames = (programIds = []) => {
     return programIds.map((programId) => {
       const program = programsList.find((p) => p.programId === programId)
-      return program ? program.programName : programId
+      return normalizeDisplayLabel(program ? program.programName : programId)
     }).join(', ')
   }
 
@@ -83,7 +83,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
     return ids
       .map((id) => {
         const division = divisionsList.find((d) => d.divisionId === id)
-        return division ? division.divisionName : id
+        return normalizeDisplayLabel(division ? division.divisionName : id)
       })
       .join('; ')
   }

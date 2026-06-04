@@ -31,7 +31,7 @@ import {
     getRiskRatings
 } from './assets/data/apiData';
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
-import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
+import { formatDateForDisplay, formatRosterLabel, getDateParts, normalizeDisplayLabel } from './Utilities.jsx';
 
 const Audit = () => {
     const { id } = useParams();
@@ -132,7 +132,7 @@ const Audit = () => {
     const getProgramNames = (programIds) => {
         return programIds.map(programId => {
             const program = programsList.find(p => p.programId === programId);
-            return program ? program.programName : programId;
+            return normalizeDisplayLabel(program ? program.programName : programId);
         }).join(', ');
     };
 
@@ -149,7 +149,7 @@ const Audit = () => {
         return ids
             .map(id => {
                 const division = divisionsList.find(d => d.divisionId === id);
-                return division ? division.divisionName : id;
+                return normalizeDisplayLabel(division ? division.divisionName : id);
             })
             .join('; ');
     };
@@ -228,7 +228,7 @@ const Audit = () => {
         return ids
             .map(id => {
                 const func = functionsList.find(f => f.functionId === id);
-                return func ? func.functionName : id;
+                return normalizeDisplayLabel(func ? func.functionName : id);
             })
             .join('; ');
     };
@@ -527,6 +527,11 @@ const Audit = () => {
     const isApproved = Boolean(auditData?.approvedAt);
     const showNcDetailFallbacks = Boolean(isLocked || auditData?.submittedAt || stageValue >= 4);
     const auditNotFound = Boolean(id) && !auditData;
+    const isCuiAccessDenied = Boolean(
+        auditData
+        && Number(auditData?.cui) === 1
+        && Number(currentUser?.cuiApproved ?? currentUser?.cuiapproved ?? 0) !== 1
+    );
     const additionalAuditorIdsForPage = Array.isArray(auditData?.additionalAuditorIds)
         ? auditData.additionalAuditorIds
         : [];
@@ -741,6 +746,10 @@ const Audit = () => {
     // Load nonconformances for the selected audit
     React.useEffect(() => {
         async function loadNonconformances() {
+            if (isCuiAccessDenied) {
+                setNonconformances([]);
+                return;
+            }
             if (auditData?.scheduleId) {
                 try {
                     const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}`));
@@ -753,7 +762,7 @@ const Audit = () => {
             }
         }
         loadNonconformances();
-    }, [auditData?.scheduleId]);
+    }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     const hasObjectiveEvidence = React.useMemo(() => {
         return nonconformances.some((nc) => {
@@ -769,6 +778,10 @@ const Audit = () => {
 
     React.useEffect(() => {
         async function loadApprovals() {
+            if (isCuiAccessDenied) {
+                setApprovals([]);
+                return;
+            }
             if (!auditData?.scheduleId) {
                 setApprovals([]);
                 return;
@@ -787,11 +800,15 @@ const Audit = () => {
             }
         }
         loadApprovals();
-    }, [auditData?.scheduleId]);
+    }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     // Load CARs for the selected audit
     React.useEffect(() => {
         async function loadCars() {
+            if (isCuiAccessDenied) {
+                setCars([]);
+                return;
+            }
             if (auditData?.scheduleId) {
                 try {
                     const response = await fetch(buildApiUrl(`cars/${auditData.scheduleId}`));
@@ -804,16 +821,21 @@ const Audit = () => {
             }
         }
         loadCars();
-    }, [auditData?.scheduleId]);
+    }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     React.useEffect(() => {
         if (loading) return;
+        if (isCuiAccessDenied && !accessErrorShown) {
+            toast.error('This audit is marked CUI. You are not CUI approved and cannot view it.');
+            setAccessErrorShown(true);
+            return;
+        }
         if (!id) return;
         if (auditNotFound && !accessErrorShown) {
             toast.error('You either do not have access to this audit or it does not exist.');
             setAccessErrorShown(true);
         }
-    }, [auditNotFound, accessErrorShown, id, loading]);
+    }, [auditNotFound, accessErrorShown, id, isCuiAccessDenied, loading]);
 
     // Show loading state while data is being fetched
     if (loading) {
@@ -853,6 +875,27 @@ const Audit = () => {
                                     Return to My Audits
                                 </button>
                             )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (isCuiAccessDenied) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container">
+                    <div style={{ padding: '2rem', textAlign: 'center' }}>
+                        This audit is marked CUI. You are not CUI approved and cannot view its details.
+                        <div style={{ marginTop: '1rem' }}>
+                            <button
+                                className="button"
+                                onClick={() => navigate('/audit')}
+                                style={{ backgroundColor: '#0066cc', width: '220px' }}
+                            >
+                                Return to My Audits
+                            </button>
                         </div>
                     </div>
                 </div>

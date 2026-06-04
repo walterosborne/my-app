@@ -168,6 +168,19 @@ const formatRosterLabel = (entryOrName, maybeMyId) => {
     return name || myId;
 };
 
+const normalizeDisplayLabel = (value) => {
+    if (typeof value !== 'string') {
+        return value;
+    }
+
+    const normalized = value.trim().toUpperCase();
+    if (normalized === 'METRO WASHINGTON DC') {
+        return 'Transportation';
+    }
+
+    return value;
+};
+
 const buildRosterOption = (entry) => {
     const myId = entry?.myId ?? entry?.myid;
     if (!myId) return null;
@@ -186,5 +199,6 @@ export {
     formatDateForDisplay,
     formatMonthValue,
     formatRosterLabel,
+    normalizeDisplayLabel,
     buildRosterOption
 };

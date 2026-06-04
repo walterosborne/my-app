@@ -31,6 +31,7 @@ import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
 import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
 import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
+import { getEnvironmentModeForHost, getProductionAppUrlForPath, normalizeEnvironmentHost } from '../environment-config.js'
 
 installIisAuthFetchShim();
 
@@ -190,10 +191,31 @@ const AppMetadata = () => {
   return null;
 };
 
+const AppEnvironmentBanner = () => {
+  const location = useLocation()
+  const currentHost = typeof window !== 'undefined'
+    ? normalizeEnvironmentHost(window.location.hostname)
+    : ''
+
+  if (getEnvironmentModeForHost(currentHost) === 'prod') {
+    return null
+  }
+
+  const productionHref = getProductionAppUrlForPath(location.pathname || '/', location.search || '')
+
+  return (
+    <div className="environment-banner">
+      <span>You are working in a development environment.</span>
+      <a href={productionHref}>Go to production</a>
+    </div>
+  )
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
       <AppMetadata />
+      <AppEnvironmentBanner />
       <AppBootstrapGate>
         <ToastContainer
           position="top-right"
