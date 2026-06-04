@@ -744,7 +744,7 @@ const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
     }
 
     const auditorResult = await pool.queryWithSchema(
-        PRODUCTION_SCHEMA,
+        auditSchema || getAuditSchemaForRequest(req),
         `SELECT TOP 1
             a.auditorid,
             a.divisionid,

@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const SitesSection = ({
     actionOptions,
@@ -75,45 +76,34 @@ const SitesSection = ({
         {isSiteEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a site to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Address</th>
-                                <th>City</th>
-                                <th>State</th>
-                                <th>Country</th>
-                                <th>Division</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleSites.map((site) => {
-                                const isSelected = editingSite?.siteId === site.siteId;
-                                const isArchived = (site.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={site.siteId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectSite(site)}
-                                    >
-                                        <td>{site.address}</td>
-                                        <td>{site.city || ''}</td>
-                                        <td>{site.state || ''}</td>
-                                        <td>{site.country || ''}</td>
-                                        <td>{getDivisionName(site.divisionId)}</td>
-                                        <td>{site.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleSites}
+                    columns={[
+                        { field: 'address', headerName: 'Address', flex: 1.5, minWidth: 220 },
+                        { field: 'city', headerName: 'City', flex: 1, minWidth: 140 },
+                        { field: 'state', headerName: 'State', flex: 0.8, minWidth: 120 },
+                        { field: 'country', headerName: 'Country', flex: 0.9, minWidth: 140 },
+                        {
+                            field: 'division',
+                            headerName: 'Division',
+                            flex: 1.1,
+                            minWidth: 180,
+                            sortable: false,
+                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.siteId}
+                    selectedRowId={editingSite?.siteId}
+                    onSelectRow={onSelectSite}
+                />
             </div>
         )}
         {isSiteEditMode && editingSite && (

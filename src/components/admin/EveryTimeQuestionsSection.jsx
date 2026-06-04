@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const EveryTimeQuestionsSection = ({
     actionOptions,
@@ -69,39 +70,31 @@ const EveryTimeQuestionsSection = ({
         {isEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a question to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Question</th>
-                                <th>Division</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleQuestions.map((question) => {
-                                const isSelected = editingQuestion?.etqId === question.etqId;
-                                const isArchived = (question.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={question.etqId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectQuestion(question)}
-                                    >
-                                        <td>{question.question}</td>
-                                        <td>{getDivisionName(question.divisionId)}</td>
-                                        <td>{question.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleQuestions}
+                    columns={[
+                        { field: 'question', headerName: 'Question', flex: 1.8, minWidth: 280 },
+                        {
+                            field: 'division',
+                            headerName: 'Division',
+                            flex: 1,
+                            minWidth: 180,
+                            sortable: false,
+                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.etqId}
+                    selectedRowId={editingQuestion?.etqId}
+                    onSelectRow={onSelectQuestion}
+                />
             </div>
         )}
         {isEditMode && editingQuestion && (

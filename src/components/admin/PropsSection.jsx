@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const PropsSection = ({
     actionOptions,
@@ -73,41 +74,39 @@ const PropsSection = ({
         {isPropEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a PrOP to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>PrOP</th>
-                                <th>Type</th>
-                                <th>Target</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleProps.map((prop) => {
-                                const isSelected = editingProp?.propId === prop.propId;
-                                const isArchived = (prop.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={prop.propId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectProp(prop)}
-                                    >
-                                        <td>{prop.PrOP}</td>
-                                        <td>{getPropTypeLabel(prop.propTypeId)}</td>
-                                        <td>{getPropTargetLabel(prop)}</td>
-                                        <td>{prop.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleProps}
+                    columns={[
+                        { field: 'PrOP', headerName: 'PrOP', flex: 1.2, minWidth: 200 },
+                        {
+                            field: 'propType',
+                            headerName: 'Type',
+                            flex: 1,
+                            minWidth: 160,
+                            sortable: false,
+                            renderCell: ({ row }) => getPropTypeLabel(row.propTypeId)
+                        },
+                        {
+                            field: 'propTarget',
+                            headerName: 'Target',
+                            flex: 1.4,
+                            minWidth: 220,
+                            sortable: false,
+                            renderCell: ({ row }) => getPropTargetLabel(row)
+                        },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.propId}
+                    selectedRowId={editingProp?.propId}
+                    onSelectRow={onSelectProp}
+                />
             </div>
         )}
         {isPropEditMode && editingProp && (

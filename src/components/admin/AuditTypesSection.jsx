@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const AuditTypesSection = ({
     actionOptions,
@@ -64,37 +65,23 @@ const AuditTypesSection = ({
         {isAuditTypeEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select an audit type to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Audit Type</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleAuditTypes.map((type) => {
-                                const isSelected = editingAuditType?.auditTypeId === type.auditTypeId;
-                                const isArchived = (type.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={type.auditTypeId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectAuditType(type)}
-                                    >
-                                        <td>{type.auditTypeName}</td>
-                                        <td>{type.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleAuditTypes}
+                    columns={[
+                        { field: 'auditTypeName', headerName: 'Audit Type', flex: 1.5, minWidth: 220 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 1,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.auditTypeId}
+                    selectedRowId={editingAuditType?.auditTypeId}
+                    onSelectRow={onSelectAuditType}
+                />
             </div>
         )}
         {isAuditTypeEditMode && editingAuditType && (

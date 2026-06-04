@@ -1,6 +1,7 @@
 import React from 'react';
 import Select from 'react-select';
 import { adminSelectStyles } from '../../Utilities.jsx';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const AuditorsSection = ({
     actionOptions,
@@ -88,91 +89,47 @@ const AuditorsSection = ({
         {isEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select an auditor to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>
-                                    <button
-                                        type="button"
-                                        className="admin-table-header"
-                                        onClick={() => onSort('myId')}
-                                    >
-                                        MyID
-                                        <span className="admin-sort-indicator">
-                                            {sortField === 'myId' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
-                                        </span>
-                                    </button>
-                                </th>
-                                <th>
-                                    <button
-                                        type="button"
-                                        className="admin-table-header"
-                                        onClick={() => onSort('firstName')}
-                                    >
-                                        First Name
-                                        <span className="admin-sort-indicator">
-                                            {sortField === 'firstName' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
-                                        </span>
-                                    </button>
-                                </th>
-                                <th>
-                                    <button
-                                        type="button"
-                                        className="admin-table-header"
-                                        onClick={() => onSort('lastName')}
-                                    >
-                                        Last Name
-                                        <span className="admin-sort-indicator">
-                                            {sortField === 'lastName' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
-                                        </span>
-                                    </button>
-                                </th>
-                                <th>
-                                    <button
-                                        type="button"
-                                        className="admin-table-header"
-                                        onClick={() => onSort('division')}
-                                    >
-                                        Division
-                                        <span className="admin-sort-indicator">
-                                            {sortField === 'division' ? (sortDirection === 'asc' ? '^' : 'v') : '-'}
-                                        </span>
-                                    </button>
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleAuditors.map((auditor) => {
-                                const first = auditor.firstName
-                                    ?? (auditor.auditorName || '').split(',')[1]?.trim()
-                                    ?? '';
-                                const last = auditor.lastName
-                                    ?? (auditor.auditorName || '').split(',')[0]?.trim()
-                                    ?? '';
-                                const isSelected = editingAuditor?.auditorId === auditor.auditorId;
-                                const isArchived = (auditor.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={auditor.auditorId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectAuditor(auditor)}
-                                    >
-                                        <td>{auditor.myId ?? auditor.myid}</td>
-                                        <td>{first}</td>
-                                        <td>{last}</td>
-                                        <td>{getDivisionName(auditor.divisionId)}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleAuditors}
+                    columns={[
+                        {
+                            field: 'myId',
+                            headerName: 'MyID',
+                            flex: 1,
+                            minWidth: 150,
+                            renderCell: ({ row }) => row.myId ?? row.myid ?? ''
+                        },
+                        {
+                            field: 'firstName',
+                            headerName: 'First Name',
+                            flex: 1,
+                            minWidth: 160,
+                            renderCell: ({ row }) => row.firstName
+                                ?? (row.auditorName || '').split(',')[1]?.trim()
+                                ?? ''
+                        },
+                        {
+                            field: 'lastName',
+                            headerName: 'Last Name',
+                            flex: 1,
+                            minWidth: 160,
+                            renderCell: ({ row }) => row.lastName
+                                ?? (row.auditorName || '').split(',')[0]?.trim()
+                                ?? ''
+                        },
+                        {
+                            field: 'division',
+                            headerName: 'Division',
+                            flex: 1.2,
+                            minWidth: 200,
+                            sortable: false,
+                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        }
+                    ]}
+                    getRowId={(row) => row.auditorId}
+                    selectedRowId={editingAuditor?.auditorId}
+                    onSelectRow={onSelectAuditor}
+                />
             </div>
         )}
         {isEditMode && editingAuditor && (

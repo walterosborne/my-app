@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const BusinessUnitsSection = ({
     actionOptions,
@@ -69,39 +70,31 @@ const BusinessUnitsSection = ({
         {isBusinessUnitEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a business unit to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Business Unit</th>
-                                <th>Division</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleBusinessUnits.map((unit) => {
-                                const isSelected = editingBusinessUnit?.businessUnitId === unit.businessUnitId;
-                                const isArchived = (unit.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={unit.businessUnitId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectBusinessUnit(unit)}
-                                    >
-                                        <td>{unit.businessUnitName}</td>
-                                        <td>{getDivisionName(unit.divisionId)}</td>
-                                        <td>{unit.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleBusinessUnits}
+                    columns={[
+                        { field: 'businessUnitName', headerName: 'Business Unit', flex: 1.4, minWidth: 220 },
+                        {
+                            field: 'division',
+                            headerName: 'Division',
+                            flex: 1.1,
+                            minWidth: 180,
+                            sortable: false,
+                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.businessUnitId}
+                    selectedRowId={editingBusinessUnit?.businessUnitId}
+                    onSelectRow={onSelectBusinessUnit}
+                />
             </div>
         )}
         {isBusinessUnitEditMode && editingBusinessUnit && (

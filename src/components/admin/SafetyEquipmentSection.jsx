@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const SafetyEquipmentSection = ({
     actionOptions,
@@ -64,37 +65,23 @@ const SafetyEquipmentSection = ({
         {isSafetyEquipmentEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select safety equipment to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Safety Equipment</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleSafetyEquipment.map((equipment) => {
-                                const isSelected = editingSafetyEquipment?.safetyEquipmentId === equipment.safetyEquipmentId;
-                                const isArchived = (equipment.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={equipment.safetyEquipmentId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectSafetyEquipment(equipment)}
-                                    >
-                                        <td>{equipment.safetyEquipmentName}</td>
-                                        <td>{equipment.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleSafetyEquipment}
+                    columns={[
+                        { field: 'safetyEquipmentName', headerName: 'Safety Equipment', flex: 1.5, minWidth: 240 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 1,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.safetyEquipmentId}
+                    selectedRowId={editingSafetyEquipment?.safetyEquipmentId}
+                    onSelectRow={onSelectSafetyEquipment}
+                />
             </div>
         )}
         {isSafetyEquipmentEditMode && editingSafetyEquipment && (

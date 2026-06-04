@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const DelayCausesSection = ({
     actionOptions,
@@ -64,37 +65,23 @@ const DelayCausesSection = ({
         {isDelayCauseEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a delay cause to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Delay Cause</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleDelayCauses.map((cause) => {
-                                const isSelected = editingDelayCause?.causeId === cause.causeId;
-                                const isArchived = (cause.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={cause.causeId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectDelayCause(cause)}
-                                    >
-                                        <td>{cause.cause}</td>
-                                        <td>{cause.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleDelayCauses}
+                    columns={[
+                        { field: 'cause', headerName: 'Delay Cause', flex: 1.5, minWidth: 240 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 1,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.causeId}
+                    selectedRowId={editingDelayCause?.causeId}
+                    onSelectRow={onSelectDelayCause}
+                />
             </div>
         )}
         {isDelayCauseEditMode && editingDelayCause && (

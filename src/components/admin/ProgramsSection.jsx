@@ -1,6 +1,7 @@
 import React from 'react';
 import Select from 'react-select';
 import { adminSelectStyles } from '../../Utilities.jsx';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const ProgramsSection = ({
     actionOptions,
@@ -74,39 +75,31 @@ const ProgramsSection = ({
         {isProgramEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a program to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Program</th>
-                                <th>Division</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visiblePrograms.map((program) => {
-                                const isSelected = editingProgram?.programId === program.programId;
-                                const isArchived = (program.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={program.programId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectProgram(program)}
-                                    >
-                                        <td>{program.programName}</td>
-                                        <td>{getDivisionName(program.divisionId)}</td>
-                                        <td>{program.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visiblePrograms}
+                    columns={[
+                        { field: 'programName', headerName: 'Program', flex: 1.4, minWidth: 220 },
+                        {
+                            field: 'division',
+                            headerName: 'Division',
+                            flex: 1.1,
+                            minWidth: 180,
+                            sortable: false,
+                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.programId}
+                    selectedRowId={editingProgram?.programId}
+                    onSelectRow={onSelectProgram}
+                />
             </div>
         )}
         {isProgramEditMode && editingProgram && (

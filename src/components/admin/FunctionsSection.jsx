@@ -1,4 +1,5 @@
 import React from 'react';
+import AdminSelectionGrid from './AdminSelectionGrid';
 
 const FunctionsSection = ({
     actionOptions,
@@ -64,37 +65,23 @@ const FunctionsSection = ({
         {isEditMode && (
             <div className="admin-edit-table-wrapper">
                 <p className="admin-editing-label">Select a function to edit</p>
-                <div className="admin-edit-table-scroll">
-                    <table className="admin-edit-table">
-                        <thead>
-                            <tr>
-                                <th>Function</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {visibleFunctions.map((fn) => {
-                                const isSelected = editingFunction?.functionId === fn.functionId;
-                                const isArchived = (fn.active ?? 1) === 0;
-                                return (
-                                    <tr
-                                        key={fn.functionId}
-                                        className={[
-                                            isSelected ? 'selected' : '',
-                                            isArchived ? 'archived' : ''
-                                        ]
-                                            .filter(Boolean)
-                                            .join(' ')}
-                                        onClick={() => onSelectFunction(fn)}
-                                    >
-                                        <td>{fn.functionName}</td>
-                                        <td>{fn.active === 1 ? 'Active' : 'Archived'}</td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                </div>
+                <AdminSelectionGrid
+                    rows={visibleFunctions}
+                    columns={[
+                        { field: 'functionName', headerName: 'Function', flex: 1.5, minWidth: 240 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 1,
+                            minWidth: 140,
+                            sortable: false,
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
+                    ]}
+                    getRowId={(row) => row.functionId}
+                    selectedRowId={editingFunction?.functionId}
+                    onSelectRow={onSelectFunction}
+                />
             </div>
         )}
         {isEditMode && editingFunction && (
