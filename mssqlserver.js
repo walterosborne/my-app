@@ -377,6 +377,17 @@ const getForwardedHost = (req) => {
 };
 
 const getRequestEnvironmentHost = (req) => {
+    const headerOrigin = getUrlOriginFromHeader(getHeaderValue(req, 'Origin'))
+        || getUrlOriginFromHeader(getHeaderValue(req, 'Referer'));
+
+    if (headerOrigin) {
+        try {
+            return normalizeEnvironmentHost(new URL(headerOrigin).host);
+        } catch {
+            // Fall through to forwarded host detection.
+        }
+    }
+
     return normalizeEnvironmentHost(getForwardedHost(req) || req.hostname || '');
 };
 
