@@ -1,14 +1,24 @@
 import express from 'express';
-import sql from 'mssql';
 import cors from 'cors';
 import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { createRequire } from 'node:module';
 import smtpConfig from './smtpConfig.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
+
+const require = createRequire(import.meta.url);
+let sql;
+
+try {
+    sql = require('mssql/msnodesqlv8');
+} catch (error) {
+    console.error('[NGAT MSSQL] Failed to load mssql/msnodesqlv8. Install the msnodesqlv8 package on the server before starting mssqlserver.js.', error);
+    throw error;
+}
 
 const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
@@ -20,8 +30,7 @@ console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditdb: Boolean(process.env.auditdb),
     server: Boolean(process.env.server),
     database: Boolean(process.env.database),
-    user: Boolean(process.env.user),
-    password: Boolean(process.env.password),
+    sqlAuthMode: 'windows-trusted',
     APP_BASE_URL: Boolean(process.env.APP_BASE_URL),
     NODE_ENV: process.env.NODE_ENV || ''
 });
@@ -30,26 +39,29 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const sqlConfig = {
-    server: process.env.auditserver || '',
-    database: process.env.auditdb || '',
-    user: process.env.user || '',
-    password: process.env.password || '',
+const createTrustedSqlConfig = ({ server, database }) => ({
+    server: server || '',
+    database: database || '',
+    driver: 'msnodesqlv8',
     options: {
         encrypt: true,
-        trustServerCertificate: true
+        trustServerCertificate: true,
+        trustedConnection: true
     }
+});
+
+const sqlConfig = {
+    ...createTrustedSqlConfig({
+        server: process.env.auditserver,
+        database: process.env.auditdb
+    })
 };
 
 const rosterConfig = {
-    server: process.env.server || '',
-    database: process.env.database || '',
-    user: process.env.user || '',
-    password: process.env.password || '',
-    options: {
-        encrypt: true,
-        trustServerCertificate: true
-    }
+    ...createTrustedSqlConfig({
+        server: process.env.server,
+        database: process.env.database
+    })
 };
 const sqlPool = new sql.ConnectionPool(sqlConfig);
 const sqlPoolPromise = sqlPool.connect();
@@ -57,7 +69,7 @@ const rosterSqlPool = new sql.ConnectionPool(rosterConfig);
 const rosterPoolPromise = rosterSqlPool.connect();
 
 const buildDbState = (config) => ({
-    configured: Boolean(config.server && config.database && config.user && config.password),
+    configured: Boolean(config.server && config.database),
     connected: false,
     lastSuccessAt: null,
     lastError: null
@@ -1392,8 +1404,7 @@ app.get(['/api/healthz'], async (_req, res) => {
             auditdb: Boolean(process.env.auditdb),
             server: Boolean(process.env.server),
             database: Boolean(process.env.database),
-            user: Boolean(process.env.user),
-            password: Boolean(process.env.password)
+            sqlAuthMode: 'windows-trusted'
         }
     };
 

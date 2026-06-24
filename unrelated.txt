@@ -1,0 +1,33 @@
+FROM docker-ng-releases.northgrum.com/redhat/ubi9/python-312:9.5-1743509868
+
+USER root
+
+WORKDIR /app
+
+COPY nexus.repo /etc/yum.repos.d/
+COPY microsoft-proxy.repo /etc/yum.repos.d/
+
+RUN rm -f /etc/yum.repos.d/ubi.repo /etc/yum.repos.d/redhat.repo
+
+RUN yum remove -y unixODBC-utf16 unixODBC-utf16-devel || true
+
+RUN ACCEPT_EULA=Y yum install -y \
+      msodbcsql18 \
+      unixODBC \
+      unixODBC-devel && \
+    yum clean all && \
+    rm -rf /var/cache/yum
+
+COPY requirements.txt .
+COPY pip.conf .
+COPY NG-Certificate-Chain.cer .
+
+ENV PIP_CONFIG_FILE=/app/pip.conf
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+EXPOSE 8501
+
+CMD ["streamlit", "run", "entry.py", "--server.port=8501", "--server.address=0.0.0.0"]
