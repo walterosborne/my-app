@@ -196,6 +196,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [deletedStandardQuestions, setDeletedStandardQuestions] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [collapsedSubsections, setCollapsedSubsections] = useState({});
+  const [collapsedEveryTimeQuestions, setCollapsedEveryTimeQuestions] = useState({});
   const [expandedTexts, setExpandedTexts] = useState({});
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
@@ -203,16 +204,18 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [auditorFiles, setAuditorFiles] = useState([]);
   const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
   const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(false);
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [archivingFileId, setArchivingFileId] = useState(null);
   const fileInputRef = useRef(null);
   const lastSelectedScheduleRef = useRef(null);
   const readOnlyToastRef = useRef(null);
+  const uploadErrorToastIdRef = useRef('auditor-file-upload-error');
   const submitIntentRef = useRef('save');
   const skipNextFormResetRef = useRef(0);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-  const isUploadTooLarge = Boolean(uploadFile && uploadFile.size > MAX_UPLOAD_BYTES);
+  const oversizedUploadFiles = uploadFiles.filter((file) => file.size > MAX_UPLOAD_BYTES);
+  const isUploadTooLarge = oversizedUploadFiles.length > 0;
   const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
@@ -424,40 +427,88 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
-    if (!uploadFile) {
-      toast.error('Please select a file to upload.');
+    if (uploadFiles.length === 0) {
+      toast.error('Please select at least one file to upload.');
       return;
     }
-    const duplicateName = auditorFiles.some(
-      (file) => file.fileName?.toLowerCase() === uploadFile.name.toLowerCase()
+    const selectedNameCounts = uploadFiles.reduce((counts, file) => {
+      const normalizedName = String(file?.name || '').trim().toLowerCase();
+      if (normalizedName) {
+        counts.set(normalizedName, (counts.get(normalizedName) || 0) + 1);
+      }
+      return counts;
+    }, new Map());
+    const duplicateSelectedNames = [...selectedNameCounts.entries()]
+      .filter(([, count]) => count > 1)
+      .map(([name]) => name);
+    if (duplicateSelectedNames.length > 0) {
+      toast.error(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
+      return;
+    }
+    const existingFileNames = new Set(
+      auditorFiles.map((file) => String(file.fileName || '').trim().toLowerCase()).filter(Boolean)
     );
-    if (duplicateName) {
-      toast.error('A file with that name already exists.');
+    const duplicateExistingNames = uploadFiles
+      .map((file) => file.name)
+      .filter((name) => existingFileNames.has(String(name || '').trim().toLowerCase()));
+    if (duplicateExistingNames.length > 0) {
+      toast.error(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
+      return;
+    }
+    if (isUploadTooLarge) {
+      const oversizedNames = oversizedUploadFiles.map((file) => file.name);
+      const oversizedMessage = oversizedNames.length === 1
+        ? `"${oversizedNames[0]}" exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.`
+        : `${oversizedNames.length} selected files exceed the NGAT upload limit. Please choose files smaller than 50MB and try again.`;
+      toast.error(oversizedMessage, {
+        autoClose: false,
+        closeOnClick: true,
+        closeButton: true,
+        draggable: false,
+        toastId: uploadErrorToastIdRef.current,
+        progressStyle: { backgroundColor: '#d32f2f' },
+        style: { borderLeft: '4px solid #d32f2f' }
+      });
       return;
     }
 
     setUploadingFile(true);
     try {
-      await uploadAuditorFile(uploadFile);
-      toast.success('File uploaded.');
-      setUploadFile(null);
+      const savedFiles = await uploadAuditorFile(uploadFiles);
+      const uploadedCount = Array.isArray(savedFiles) ? savedFiles.length : 1;
+      toast.success(uploadedCount === 1 ? '1 file uploaded.' : `${uploadedCount} files uploaded.`);
+      setUploadFiles([]);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
       await refreshAuditorFiles();
     } catch (error) {
-      toast.error(error.message || 'Failed to upload file.');
+      if (error?.persistToast) {
+        toast.error(error.message || 'Failed to upload file.', {
+          autoClose: false,
+          closeOnClick: true,
+          closeButton: true,
+          draggable: false,
+          toastId: uploadErrorToastIdRef.current,
+          progressStyle: { backgroundColor: '#d32f2f' },
+          style: { borderLeft: '4px solid #d32f2f' }
+        });
+      } else {
+        toast.error(error.message || 'Failed to upload file.');
+      }
     } finally {
       setUploadingFile(false);
     }
   };
 
   const handleUploadFileSelection = useCallback((event) => {
-    const selectedFile = event.target.files?.[0] || null;
-    setUploadFile(selectedFile);
+    const selectedFiles = Array.from(event.target.files || []);
+    setUploadFiles(selectedFiles);
 
-    if (selectedFile && !isViewOnly) {
-      toast.info('File selected. Hit "Save to my Files" to finish adding it to your saved files.', {
+    if (selectedFiles.length > 0 && !isViewOnly) {
+      const fileLabel = selectedFiles.length === 1 ? 'file' : 'files';
+      const pronoun = selectedFiles.length === 1 ? 'it' : 'them';
+      toast.info(`${selectedFiles.length} ${fileLabel} selected. Hit "Save to my Files" to finish adding ${pronoun} to your saved files.`, {
         progressStyle: { backgroundColor: '#2196f3' },
         style: { borderLeft: '4px solid #2196f3' }
       });
@@ -475,6 +526,38 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
     }
     return [];
+  }, []);
+
+  const hasFieldValue = useCallback((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+  }, []);
+
+  const hasSavedFindingMetadata = useCallback((nc) => {
+    if (!nc) return false;
+    return hasFieldValue(nc.findingType)
+      || hasFieldValue(nc.response)
+      || hasFieldValue(nc.auditorComment)
+      || hasFieldValue(nc.qma)
+      || hasFieldValue(nc.sector)
+      || hasFieldValue(nc.division)
+      || hasFieldValue(nc.other)
+      || normalizeFileIds(nc.files).length > 0;
+  }, [hasFieldValue, normalizeFileIds]);
+
+  const hasSavedEveryTimeQuestionContent = useCallback((nc) => {
+    return hasSavedFindingMetadata(nc);
+  }, [hasSavedFindingMetadata]);
+
+  const hasSavedStandardQuestionContent = useCallback((nc) => {
+    if (!nc) return false;
+    return hasFieldValue(nc.question) || hasSavedFindingMetadata(nc);
+  }, [hasFieldValue, hasSavedFindingMetadata]);
+
+  const getEveryTimeQuestionCollapseKey = useCallback((question, index) => {
+    return `etq_${question?.etqId ?? index}`;
   }, []);
 
   const getObjectiveEvidenceOptions = useCallback((selectedIds) => {
@@ -665,6 +748,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     setDeletedStandardQuestions({});
     setCollapsedSections({});
     setCollapsedSubsections({});
+    setCollapsedEveryTimeQuestions({});
     setExpandedTexts({});
   }, []);
 
@@ -804,6 +888,51 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return grouped;
   }, [standardTextsForAudit]);
 
+  const buildAuditQuestionCollapseDefaults = useCallback((audit, auditNCs, etqQuestions, groupedStandardTexts) => {
+    const sectionDefaults = {};
+    const subsectionDefaults = {};
+    const everyTimeQuestionDefaults = {};
+    const scheduleId = Number(audit?.scheduleId);
+    const scheduleNCs = auditNCs.filter((nc) => Number(nc.scheduleId) === scheduleId);
+
+    Object.entries(groupedStandardTexts).forEach(([standardIdValue, sections]) => {
+      const standardId = Number(standardIdValue);
+      Object.entries(sections).forEach(([sectionNumValue, questions]) => {
+        const sectionNum = Number(sectionNumValue);
+        const sectionKey = `section_${standardId}_${sectionNum}`;
+        let sectionHasSavedContent = false;
+
+        questions.forEach((question) => {
+          const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
+          const subsectionHasSavedContent = scheduleNCs.some((nc) =>
+            Number(nc.type) === standardId
+            && Number(nc.section) === sectionNum
+            && Number(nc.subsection) === Number(question.subsection)
+            && hasSavedStandardQuestionContent(nc)
+          );
+
+          subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
+          if (subsectionHasSavedContent) {
+            sectionHasSavedContent = true;
+          }
+        });
+
+        sectionDefaults[sectionKey] = !sectionHasSavedContent;
+      });
+    });
+
+    (etqQuestions || []).forEach((question, index) => {
+      const etqNc = scheduleNCs.find((nc) => nc.type === 'ETQ' && nc.question === question.question);
+      everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(question, index)] = !hasSavedEveryTimeQuestionContent(etqNc);
+    });
+
+    return {
+      sectionDefaults,
+      subsectionDefaults,
+      everyTimeQuestionDefaults
+    };
+  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent]);
+
   useEffect(() => {
     const nextSectionDefaults = {};
     const nextSubsectionDefaults = {};
@@ -841,6 +970,19 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     });
   }, [standardTextsByStandard]);
 
+  useEffect(() => {
+    setCollapsedEveryTimeQuestions((current) => {
+      const next = { ...current };
+      filteredEveryTimeQuestions.forEach((question, index) => {
+        const key = getEveryTimeQuestionCollapseKey(question, index);
+        if (!(key in next)) {
+          next[key] = true;
+        }
+      });
+      return next;
+    });
+  }, [filteredEveryTimeQuestions, getEveryTimeQuestionCollapseKey]);
+
   const auditDate = watch('auditDate');
   const expectedStartDate = selectedAudit?.expectedStartDate
     ? formatDateForInput(selectedAudit.expectedStartDate)
@@ -868,19 +1010,25 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         combinedPeqs,
         standardAdditionalTemp
       } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
+      const {
+        sectionDefaults,
+        subsectionDefaults,
+        everyTimeQuestionDefaults
+      } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, standardTextsByStandard);
 
       setNewPEQs(combinedPeqs.length);
       setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
       setDeletedStandardQuestions({});
-      setCollapsedSections({});
-      setCollapsedSubsections({});
+      setCollapsedSections(sectionDefaults);
+      setCollapsedSubsections(subsectionDefaults);
+      setCollapsedEveryTimeQuestions(everyTimeQuestionDefaults);
       reset(values);
     } else {
       clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, clearAuditQuestionUiState]);
+  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, standardTextsByStandard]);
 
   useEffect(() => {
     if (!isDelayed) {
@@ -1576,17 +1724,25 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   </div>
                   <div className='sectionrow' style={{ marginTop: '12px', alignItems: 'center' }}>
                     <div className="fieldboxhalf">
-                      {!uploadFile && <label>Upload File</label>}
+                      {uploadFiles.length === 0 && <label>Upload Files</label>}
                       <input
                         ref={fileInputRef}
                         type="file"
-                        disabled={isViewOnly}
+                        multiple
+                        disabled={isViewOnly || uploadingFile}
                         onChange={handleUploadFileSelection}
                         className="textfield"
                       />
+                      {uploadFiles.length > 0 && (
+                        <p style={{ marginTop: '8px', marginBottom: 0, fontSize: '14px', color: '#555' }}>
+                          {uploadFiles.length === 1
+                            ? `Selected: ${uploadFiles[0].name}`
+                            : `${uploadFiles.length} files selected`}
+                        </p>
+                      )}
                     </div>
                     <div className="fieldboxhalf" style={{ display: 'flex', alignItems: 'center' }}>
-                      {uploadFile && !isUploadTooLarge && !isViewOnly && (
+                      {uploadFiles.length > 0 && !isUploadTooLarge && !isViewOnly && (
                         <button
                           type="button"
                           className="button"
@@ -1594,12 +1750,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           disabled={uploadingFile}
                           style={{ backgroundColor: '#1976d2', width: '100%' }}
                         >
-                          {uploadingFile ? 'Uploading...' : 'Save to my Files'}
+                          {uploadingFile
+                            ? 'Uploading...'
+                            : (uploadFiles.length === 1 ? 'Save 1 File to My Files' : `Save ${uploadFiles.length} Files to My Files`)}
                         </button>
                       )}
                     </div>
                   </div>
-                  {uploadFile && isUploadTooLarge && (
+                  {uploadFiles.length > 0 && isUploadTooLarge && (
                     <div
                       className="section"
                       style={{
@@ -1610,7 +1768,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       }}
                     >
                       <p style={{ color: '#d32f2f', margin: 0, fontWeight: 'bold' }}>
-                        File exceeds the 50MB limit. Please choose a smaller file.
+                        {oversizedUploadFiles.length === 1
+                          ? `${oversizedUploadFiles[0].name} exceeds the 50MB limit. Please choose a smaller file.`
+                          : `${oversizedUploadFiles.length} selected files exceed the 50MB limit. Please choose smaller files.`}
                       </p>
                     </div>
                   )}
@@ -2083,164 +2243,194 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   </div>
                   <div className='section'>
                     <label className='sectiontitle'>Every Time Questions</label>
-                    {filteredEveryTimeQuestions.map((question, index) => (
-                      <div className='peq' key={index}>
-                        <div className="fieldboxwhole">
-                          <label>Every Time Question {index + 1}</label>
-                          <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: '15px' }}>{question.question}</label>
-                        </div>
-                        <div className="fieldboxwhole">
-                          <label>Finding Type</label>
-                          <Controller
-                            name={`etqFindingType${index}`}
-                            control={control}
-                            render={({ field }) => (
-                              <ToggleButtonGroup
-                                {...field}
-                                exclusive
-                                onChange={(event, newValue) => {
-                                  if (newValue !== null) {
-                                    field.onChange(newValue);
-                                  }
-                                }}
-                                aria-label="finding type"
-                              >
-                                <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                  Nonconformity
-                                </ToggleButton>
-                                <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                  Conformity
-                                </ToggleButton>
-                                <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                  OFI
-                                </ToggleButton>
-                                <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                  OBS
-                                </ToggleButton>
-                              </ToggleButtonGroup>
-                            )}
-                          />
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxhalf">
-                            <label>Auditor Comment</label>
-                            <textarea
-                              {...register(`etqAuditorComment${index}`)}
-                              style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                              id={`etqAuditorComment${index}`}
-                              className='textfield'
-                            />
+                    {filteredEveryTimeQuestions.map((question, index) => {
+                      const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
+                      const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
+
+                      return (
+                        <div className='peq' key={etqCollapseKey}>
+                          <div
+                            onClick={() => setCollapsedEveryTimeQuestions((prev) => ({ ...prev, [etqCollapseKey]: !prev[etqCollapseKey] }))}
+                            style={{
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '8px',
+                              padding: '8px',
+                              backgroundColor: '#f5f5f5',
+                              borderRadius: '4px',
+                              marginBottom: isEtqCollapsed ? 0 : '12px'
+                            }}
+                          >
+                            <span style={{ fontSize: '14px', marginTop: '2px' }}>
+                              {isEtqCollapsed ? '▶' : '▼'}
+                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              <label style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
+                                Every Time Question {index + 1}
+                              </label>
+                              <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: 0, cursor: 'pointer' }}>
+                                {question.question}
+                              </label>
+                            </div>
                           </div>
-                          <div className="fieldboxhalf">
-                            <label>Auditee Response</label>
-                            <textarea
-                              {...register(`etqAuditeeResponse${index}`)}
-                              style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                              id={`etqAuditeeResponse${index}`}
-                              className='textfield'
-                            />
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxquarter">
-                            <label>PrOP - Corporate</label>
-                            <Controller
-                              name={`etqPrOPCorporate${index}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  isMulti
-                                  options={corporatePrOPOptions}
-                                  styles={customStyles}
-                                  placeholder="Corporate"
-                                  value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                  onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                          {!isEtqCollapsed && (
+                            <>
+                              <div className="fieldboxwhole">
+                                <label>Finding Type</label>
+                                <Controller
+                                  name={`etqFindingType${index}`}
+                                  control={control}
+                                  render={({ field }) => (
+                                    <ToggleButtonGroup
+                                      {...field}
+                                      exclusive
+                                      onChange={(event, newValue) => {
+                                        if (newValue !== null) {
+                                          field.onChange(newValue);
+                                        }
+                                      }}
+                                      aria-label="finding type"
+                                    >
+                                      <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
+                                        Nonconformity
+                                      </ToggleButton>
+                                      <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
+                                        Conformity
+                                      </ToggleButton>
+                                      <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
+                                        OFI
+                                      </ToggleButton>
+                                      <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
+                                        OBS
+                                      </ToggleButton>
+                                    </ToggleButtonGroup>
+                                  )}
                                 />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxquarter">
-                            <label>PrOP - Sector</label>
-                            <Controller
-                              name={`etqPrOPSector${index}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  isMulti
-                                  options={sectorPrOPOptions}
-                                  styles={customStyles}
-                                  placeholder="Sector"
-                                  value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                  onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxquarter">
-                            <label>PrOP - Division</label>
-                            <Controller
-                              name={`etqPrOPDivision${index}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  isMulti
-                                  options={divisionPrOPOptions}
-                                  styles={customStyles}
-                                  placeholder="Division"
-                                  value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                  onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                />
-                              )}
-                            />
-                          </div>
-                          <div className="fieldboxquarter">
-                            <label>PrOP - Other</label>
-                            <Controller
-                              name={`etqPrOPOther${index}`}
-                              control={control}
-                              render={({ field }) => (
-                                <Select
-                                  isClearable
-                                  isMulti
-                                  options={otherPrOPOptions}
-                                  styles={customStyles}
-                                  placeholder="Other"
-                                  value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                  onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                />
-                              )}
-                            />
-                          </div>
-                        </div>
-                        <div className='sectionrow'>
-                          <div className="fieldboxwhole">
-                            <label>Objective Evidence</label>
-                            <Controller
-                              name={`etqFiles${index}`}
-                              control={control}
-                              render={({ field }) => {
-                                const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                const selectedFileIds = normalizeFileIds(field.value);
-                                return (
-                                  <Select
-                                    isClearable
-                                    isMulti
-                                    options={objectiveEvidenceOptions}
-                                    styles={customStyles}
-                                    placeholder="Select files"
-                                    value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                              </div>
+                              <div className='sectionrow'>
+                                <div className="fieldboxhalf">
+                                  <label>Auditor Comment</label>
+                                  <textarea
+                                    {...register(`etqAuditorComment${index}`)}
+                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                    id={`etqAuditorComment${index}`}
+                                    className='textfield'
                                   />
-                                );
-                              }}
-                            />
-                          </div>
+                                </div>
+                                <div className="fieldboxhalf">
+                                  <label>Auditee Response</label>
+                                  <textarea
+                                    {...register(`etqAuditeeResponse${index}`)}
+                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                    id={`etqAuditeeResponse${index}`}
+                                    className='textfield'
+                                  />
+                                </div>
+                              </div>
+                              <div className='sectionrow'>
+                                <div className="fieldboxquarter">
+                                  <label>PrOP - Corporate</label>
+                                  <Controller
+                                    name={`etqPrOPCorporate${index}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select
+                                        isClearable
+                                        isMulti
+                                        options={corporatePrOPOptions}
+                                        styles={customStyles}
+                                        placeholder="Corporate"
+                                        value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                                <div className="fieldboxquarter">
+                                  <label>PrOP - Sector</label>
+                                  <Controller
+                                    name={`etqPrOPSector${index}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select
+                                        isClearable
+                                        isMulti
+                                        options={sectorPrOPOptions}
+                                        styles={customStyles}
+                                        placeholder="Sector"
+                                        value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                                <div className="fieldboxquarter">
+                                  <label>PrOP - Division</label>
+                                  <Controller
+                                    name={`etqPrOPDivision${index}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select
+                                        isClearable
+                                        isMulti
+                                        options={divisionPrOPOptions}
+                                        styles={customStyles}
+                                        placeholder="Division"
+                                        value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                                <div className="fieldboxquarter">
+                                  <label>PrOP - Other</label>
+                                  <Controller
+                                    name={`etqPrOPOther${index}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <Select
+                                        isClearable
+                                        isMulti
+                                        options={otherPrOPOptions}
+                                        styles={customStyles}
+                                        placeholder="Other"
+                                        value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                      />
+                                    )}
+                                  />
+                                </div>
+                              </div>
+                              <div className='sectionrow'>
+                                <div className="fieldboxwhole">
+                                  <label>Objective Evidence</label>
+                                  <Controller
+                                    name={`etqFiles${index}`}
+                                    control={control}
+                                    render={({ field }) => {
+                                      const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
+                                      const selectedFileIds = normalizeFileIds(field.value);
+                                      return (
+                                        <Select
+                                          isClearable
+                                          isMulti
+                                          options={objectiveEvidenceOptions}
+                                          styles={customStyles}
+                                          placeholder="Select files"
+                                          value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
+                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                        />
+                                      );
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className='section'>
                     {Object.keys(standardTextsByStandard).length === 0 ? (

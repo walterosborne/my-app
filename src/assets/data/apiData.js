@@ -134,24 +134,59 @@ export async function setAuditorFileActive(fileId, active) {
     return await response.json();
 }
 
-export async function uploadAuditorFile(file) {
+export async function uploadAuditorFile(fileInput) {
+    const files = (Array.isArray(fileInput) ? fileInput : [fileInput]).filter(Boolean);
     const formData = new FormData();
-    formData.append('file', file);
-    const response = await fetch(`${API_BASE}/auditor-files`, {
-        method: 'POST',
-        body: formData
+    files.forEach((file) => {
+        formData.append(files.length === 1 ? 'file' : 'files', file);
     });
+    let response;
+    try {
+        response = await fetch(`${API_BASE}/auditor-files`, {
+            method: 'POST',
+            body: formData
+        });
+    } catch (error) {
+        if (error instanceof TypeError && /Failed to fetch/i.test(error.message || '')) {
+            const enhancedError = new Error(
+                "NGAT couldn't upload this file. NGAT can't access non-local locations yet, including SharePoint, OneDrive, and other shared-drive locations. Save the file to a folder on your computer, then try again."
+            );
+            enhancedError.persistToast = true;
+            throw enhancedError;
+        }
+        throw error;
+    }
     if (!response.ok) {
         let errorMessage = 'Failed to upload file.';
         try {
-            const errorData = await response.json();
-            if (errorData?.error) {
-                errorMessage = errorData.error;
+            const errorText = await response.text();
+            if (errorText) {
+                try {
+                    const errorData = JSON.parse(errorText);
+                    if (errorData?.error) {
+                        errorMessage = errorData.error;
+                    }
+                } catch {
+                    if (!/<[a-z][\s\S]*>/i.test(errorText)) {
+                        errorMessage = errorText;
+                    }
+                }
             }
         } catch {
-            // ignore JSON parse errors
+            // ignore response body parsing errors
         }
-        throw new Error(errorMessage);
+        if (errorMessage === 'Failed to upload file.') {
+            if (response.status === 413) {
+                errorMessage = 'File exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.';
+            } else {
+                errorMessage = `Failed to upload file (HTTP ${response.status}).`;
+            }
+        }
+        const uploadError = new Error(errorMessage);
+        if (response.status === 413) {
+            uploadError.persistToast = true;
+        }
+        throw uploadError;
     }
     delete cache['auditor-files'];
     return await response.json();

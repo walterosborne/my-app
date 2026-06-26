@@ -309,10 +309,45 @@ const rosterPool = {
     }
 };
 
+const AUDITOR_FILE_UPLOAD_MAX_FILES = 25;
+
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 50 * 1024 * 1024 }
+    limits: {
+        fileSize: 50 * 1024 * 1024,
+        files: AUDITOR_FILE_UPLOAD_MAX_FILES
+    }
 });
+
+const runAuditorFileUpload = (req, res) => new Promise((resolve, reject) => {
+    upload.fields([
+        { name: 'file', maxCount: AUDITOR_FILE_UPLOAD_MAX_FILES },
+        { name: 'files', maxCount: AUDITOR_FILE_UPLOAD_MAX_FILES }
+    ])(req, res, (error) => {
+        if (error) {
+            reject(error);
+            return;
+        }
+        resolve();
+    });
+});
+
+const getAuditorUploadFilesFromRequest = (req) => {
+    const uploadedFiles = [];
+    if (req?.file) {
+        uploadedFiles.push(req.file);
+    }
+    if (Array.isArray(req?.files)) {
+        uploadedFiles.push(...req.files);
+    } else if (req?.files && typeof req.files === 'object') {
+        Object.values(req.files).forEach((entry) => {
+            if (Array.isArray(entry)) {
+                uploadedFiles.push(...entry);
+            }
+        });
+    }
+    return uploadedFiles.filter(Boolean);
+};
 
 const {
     host: SMTP_HOST,
@@ -389,6 +424,62 @@ const getRequestEnvironmentHost = (req) => {
     }
 
     return normalizeEnvironmentHost(getForwardedHost(req) || req.hostname || '');
+};
+
+const buildAuditorFileUploadDiagnostics = (req, { auditSchema = null, auditorId = null } = {}) => {
+    const uploadedFiles = getAuditorUploadFilesFromRequest(req);
+    return {
+    requestHost: getRequestEnvironmentHost(req),
+    environmentMode: getCurrentRequestContext()?.environmentMode || getEnvironmentModeForHost(getRequestEnvironmentHost(req)),
+    auditSchema,
+    auditorId,
+    method: req.method,
+    originalUrl: req.originalUrl,
+    protocol: req.protocol,
+    secure: req.secure,
+    hostname: req.hostname,
+    ip: req.ip,
+    contentType: req.get('content-type') || null,
+    contentLength: req.get('content-length') || null,
+    userAgent: req.get('user-agent') || null,
+    fileCount: uploadedFiles.length,
+    fileNames: uploadedFiles.map((file) => file.originalname || null),
+    fileSizes: uploadedFiles.map((file) => file.size || null),
+    mimeTypes: uploadedFiles.map((file) => file.mimetype || null)
+};
+};
+
+const serializeUploadError = (error) => ({
+    name: error?.name || 'Error',
+    message: error?.message || 'Unknown error',
+    code: error?.code || null,
+    field: error?.field || null,
+    stack: error?.stack || null
+});
+
+const getAuditorFileUploadFailureResponse = (error) => {
+    if (!(error instanceof multer.MulterError)) {
+        return null;
+    }
+
+    if (error.code === 'LIMIT_FILE_SIZE') {
+        return {
+            status: 413,
+            error: 'File exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.'
+        };
+    }
+
+    if (error.code === 'LIMIT_FILE_COUNT') {
+        return {
+            status: 400,
+            error: `Too many files were selected. Upload up to ${AUDITOR_FILE_UPLOAD_MAX_FILES} files at a time.`
+        };
+    }
+
+    return {
+        status: 400,
+        error: 'NGAT could not process that upload request.'
+    };
 };
 
 const getAuditSchemaForRequest = (req) => {
@@ -1609,65 +1700,119 @@ app.get('/api/auditor-files', async (req, res) => {
 });
 
 // Upload file for current auditor
-app.post('/api/auditor-files', upload.single('file'), async (req, res) => {
+app.post('/api/auditor-files', async (req, res) => {
+    const auditSchema = getAuditSchemaForRequest(req);
+    let auditorId = null;
+    let transactionClient = null;
     try {
-        const auditSchema = getAuditSchemaForRequest(req);
-        const auditorId = await getCurrentAuditorId(req, { auditSchema });
+        auditorId = await getCurrentAuditorId(req, { auditSchema });
         if (!auditorId) {
             return res.status(403).json({ success: false, error: 'User is not an auditor.' });
         }
 
-        if (!req.file) {
+        await runAuditorFileUpload(req, res);
+
+        const uploadedFiles = getAuditorUploadFilesFromRequest(req);
+        if (uploadedFiles.length === 0) {
             return res.status(400).json({ success: false, error: 'No file uploaded.' });
         }
 
-        const fileName = sanitizeFilename(req.file.originalname);
+        const sanitizedFiles = uploadedFiles.map((file) => ({
+            fileName: sanitizeFilename(file.originalname),
+            mimeType: file.mimetype,
+            fileSize: file.size,
+            fileHash: crypto.createHash('sha256').update(file.buffer).digest('hex'),
+            fileData: file.buffer
+        }));
+        const selectedNameCounts = sanitizedFiles.reduce((counts, file) => {
+            const normalizedName = String(file.fileName || '').trim().toLowerCase();
+            if (normalizedName) {
+                counts.set(normalizedName, (counts.get(normalizedName) || 0) + 1);
+            }
+            return counts;
+        }, new Map());
+        const duplicateSelectedNames = [...selectedNameCounts.entries()]
+            .filter(([, count]) => count > 1)
+            .map(([name]) => name);
+        if (duplicateSelectedNames.length > 0) {
+            return res.status(409).json({
+                success: false,
+                error: `Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`
+            });
+        }
+
+        const selectedFileNames = sanitizedFiles.map((file) => file.fileName);
+        const duplicatePlaceholders = selectedFileNames.map((_, index) => `$${index + 2}`).join(', ');
         const duplicateCheck = await pool.queryWithSchema(
             auditSchema,
-            `SELECT fileId FROM auditor_files_r WHERE auditorId = $1 AND fileName = $2`,
-            [auditorId, fileName]
+            `SELECT fileId, fileName
+             FROM auditor_files_r
+             WHERE auditorId = $1 AND fileName IN (${duplicatePlaceholders})`,
+            [auditorId, ...selectedFileNames]
         );
 
         if (duplicateCheck.rowCount > 0) {
-            return res.status(409).json({ success: false, error: 'A file with that name already exists.' });
+            return res.status(409).json({
+                success: false,
+                error: `A file with that name already exists: ${duplicateCheck.rows.map((row) => row.filename).join(', ')}.`
+            });
         }
 
-        const fileHash = crypto.createHash('sha256').update(req.file.buffer).digest('hex');
         const statusColumns = await getAuditorFilesStatusColumns(auditSchema);
         const statusInsertColumn = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
         const statusInsertPlaceholder = statusColumns.hasActiveColumn || statusColumns.hasArchivedColumn ? ', $7' : '';
         const statusReturning = statusColumns.hasActiveColumn ? ', active' : (statusColumns.hasArchivedColumn ? ', archived' : '');
         const statusInsertValue = statusColumns.hasActiveColumn ? [1] : (statusColumns.hasArchivedColumn ? [0] : []);
+        transactionClient = await pool.connect();
+        await transactionClient.query('BEGIN');
 
-        const insertResult = await pool.queryWithSchema(
-            auditSchema,
-            `INSERT INTO auditor_files_r (
-                auditorId, fileName, mimeType, fileSize, fileHash, fileData${statusInsertColumn}
-             )
-             VALUES ($1, $2, $3, $4, $5, $6${statusInsertPlaceholder})
-             RETURNING fileId, fileName, mimeType, fileSize, createdAt${statusReturning}`,
-            [
-                auditorId,
-                fileName,
-                req.file.mimetype,
-                req.file.size,
-                fileHash,
-                req.file.buffer,
-                ...statusInsertValue
-            ]
-        );
+        const savedFiles = [];
+        for (const file of sanitizedFiles) {
+            const insertResult = await transactionClient.query(
+                `INSERT INTO auditor_files_r (
+                    auditorId, fileName, mimeType, fileSize, fileHash, fileData${statusInsertColumn}
+                 )
+                 VALUES ($1, $2, $3, $4, $5, $6${statusInsertPlaceholder})
+                 RETURNING fileId, fileName, mimeType, fileSize, createdAt${statusReturning}`,
+                [
+                    auditorId,
+                    file.fileName,
+                    file.mimeType,
+                    file.fileSize,
+                    file.fileHash,
+                    file.fileData,
+                    ...statusInsertValue
+                ]
+            );
+            const saved = insertResult.rows[0];
+            savedFiles.push({
+                fileId: saved.fileid,
+                fileName: saved.filename,
+                mimeType: saved.mimetype,
+                fileSize: saved.filesize,
+                createdAt: saved.createdat,
+                active: getAuditorFileActiveValue(saved, statusColumns) ? 1 : 0
+            });
+        }
 
-        const saved = insertResult.rows[0];
-        res.json({
-            fileId: saved.fileid,
-            fileName: saved.filename,
-            mimeType: saved.mimetype,
-            fileSize: saved.filesize,
-            createdAt: saved.createdat,
-            active: getAuditorFileActiveValue(saved, statusColumns) ? 1 : 0
-        });
+        await transactionClient.query('COMMIT');
+        transactionClient.release();
+        transactionClient = null;
+
+        res.json(savedFiles);
     } catch (error) {
-        console.error('Error uploading auditor file:', error);
+        if (transactionClient) {
+            await rollbackTransaction(transactionClient, 'auditor file upload');
+            transactionClient.release();
+        }
+        console.error('Error uploading auditor file:', {
+            diagnostics: buildAuditorFileUploadDiagnostics(req, { auditSchema, auditorId }),
+            error: serializeUploadError(error)
+        });
+        const uploadFailureResponse = getAuditorFileUploadFailureResponse(error);
+        if (uploadFailureResponse) {
+            return res.status(uploadFailureResponse.status).json({ success: false, error: uploadFailureResponse.error });
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 });

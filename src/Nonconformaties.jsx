@@ -402,8 +402,54 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       Type: getQuestionTypeLabel(nc.type),
       Section: nc.section,
       Subsection: nc.subsection,
-      Severity: 'N/A'
+      Severity: 'N/A',
+      PreviousResponse: nc.response || '',
+      PreviousAuditorComment: nc.auditorComment || ''
     }));
+
+  const hasPreviousStepContext = (nc) => {
+    return Boolean(
+      String(nc?.PreviousResponse || '').trim()
+      || String(nc?.PreviousAuditorComment || '').trim()
+    );
+  };
+
+  const renderPreviousStepContext = (nc) => {
+    if (!hasPreviousStepContext(nc)) {
+      return null;
+    }
+
+    return (
+      <details
+        style={{
+          width: '100%',
+          marginBottom: '12px',
+          fontSize: '12px',
+          color: '#555',
+          backgroundColor: '#f7f7f7',
+          border: '1px solid #ddd',
+          borderRadius: '4px',
+          padding: '8px 10px'
+        }}
+      >
+        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#444' }}>
+          Previous Step Context
+        </summary>
+        <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {String(nc?.PreviousResponse || '').trim() && (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              <strong>Auditee Response:</strong> {nc.PreviousResponse}
+            </div>
+          )}
+          {String(nc?.PreviousAuditorComment || '').trim() && (
+            <div style={{ whiteSpace: 'pre-wrap' }}>
+              <strong>Auditor Comment:</strong> {nc.PreviousAuditorComment}
+            </div>
+          )}
+        </div>
+      </details>
+    );
+  };
 
   const standardBasedGroups = useMemo(() => {
     const standardNcs = nonconformaties
@@ -990,6 +1036,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                           </div>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
+                              {renderPreviousStepContext(nc)}
                               <label>Details</label>
                               <textarea
                                 {...register(`ncDetails${nc.NCID}`)}
@@ -1045,6 +1092,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                           </div>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
+                              {renderPreviousStepContext(nc)}
                               <label>Details</label>
                               <textarea
                                 {...register(`ncDetails${nc.NCID}`)}
@@ -1106,6 +1154,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                               </div>
                               <div className='sectionrow'>
                                 <div className="fieldboxwhole">
+                                  {renderPreviousStepContext(nc)}
                                   <label>Details</label>
                                   <textarea
                                     {...register(`ncDetails${nc.NCID}`)}
