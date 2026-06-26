@@ -33,8 +33,8 @@ app.use(express.json());
 const sqlConfig = {
     server: process.env.auditserver || '',
     database: process.env.auditdb || '',
-    user: process.env.user || '',
-    password: process.env.password || '',
+    user: process.env.audituser || '',
+    password: process.env.auditpassword || '',
     options: {
         encrypt: true,
         trustServerCertificate: true
@@ -1537,7 +1537,7 @@ async function getAuditorFilesStatusColumns(schemaName) {
             const request = poolConn.request();
             return runQuery(
                 request,
-            `SELECT LOWER(COLUMN_NAME) AS column_name
+                `SELECT LOWER(COLUMN_NAME) AS column_name
              FROM INFORMATION_SCHEMA.COLUMNS
              WHERE LOWER(TABLE_SCHEMA) = LOWER($1)
                AND LOWER(TABLE_NAME) = LOWER('auditor_files_r')

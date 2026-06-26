@@ -27,7 +27,6 @@ const backendEnvNames = [
   'password',
   'NODE_ENV'
 ];
-
 const startedAt = Date.now();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const info = (message) => {

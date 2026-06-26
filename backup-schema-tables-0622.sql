@@ -7,13 +7,13 @@ Important:
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
 - It will fail and roll back if any target backup table already exists.
 
-This script is currently set to `NORTHGRUM\N35589`.
+This script is currently set to `dev`.
 */
 
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @SchemaName sysname = N'NORTHGRUM\N35589';
+DECLARE @SchemaName sysname = N'dev';
 DECLARE @BackupSuffix nvarchar(32) = N'_backup_0622';
 
 IF NOT EXISTS (

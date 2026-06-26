@@ -1,13 +1,16 @@
 export const PRODUCTION_HOST = 'ngat.ds.northgrum.com';
 export const PRODUCTION_APP_ORIGIN = `https://${PRODUCTION_HOST}`;
+export const STAGING_HOST = 'ngat-temp-stg.ds.northgrum.com';
+export const DEVELOPMENT_HOST = 'ngat-temp-dev.ds.northgrum.com';
 
 export const KNOWN_DEVELOPMENT_HOSTS = Object.freeze([
-    'ngat-temp-dev.ds.northgrum.com',
-    'ngat-temp-stg.ds.northgrum.com'
+    DEVELOPMENT_HOST,
+    STAGING_HOST
 ]);
 
 export const PRODUCTION_SCHEMA = 'dbo';
-export const DEVELOPMENT_SCHEMA = 'NORTHGRUM\\N35589';
+export const STAGING_SCHEMA = 'stag';
+export const DEVELOPMENT_SCHEMA = 'dev';
 
 export const normalizeEnvironmentHost = (value) => String(value || '')
     .split(',')[0]
@@ -17,13 +20,24 @@ export const normalizeEnvironmentHost = (value) => String(value || '')
 
 export const getEnvironmentModeForHost = (host) => {
     const normalizedHost = normalizeEnvironmentHost(host);
-    return normalizedHost === PRODUCTION_HOST ? 'prod' : 'dev';
+    if (normalizedHost === PRODUCTION_HOST) {
+        return 'prod';
+    }
+    if (normalizedHost === STAGING_HOST) {
+        return 'stg';
+    }
+    return 'dev';
 };
 
 export const getDatabaseSchemaForHost = (host) => {
-    return getEnvironmentModeForHost(host) === 'prod'
-        ? PRODUCTION_SCHEMA
-        : DEVELOPMENT_SCHEMA;
+    const environmentMode = getEnvironmentModeForHost(host);
+    if (environmentMode === 'prod') {
+        return PRODUCTION_SCHEMA;
+    }
+    if (environmentMode === 'stg') {
+        return STAGING_SCHEMA;
+    }
+    return DEVELOPMENT_SCHEMA;
 };
 
 export const isDevelopmentEnvironmentHost = (host) => {

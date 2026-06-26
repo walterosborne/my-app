@@ -1,11 +1,11 @@
 /*
-Overwrites dbo tables with data from matching tables in [NORTHGRUM\N35589].
+Overwrites dbo tables with data from matching tables in [dev].
 
 Scope safeguards:
-- Only touches tables that exist in BOTH dbo and [NORTHGRUM\N35589].
+- Only touches tables that exist in BOTH dbo and [dev].
 - Excludes tables whose names contain `_backup_`.
 - Does not create, drop, or rename any tables.
-- Does not touch tables that exist only in dbo or only in [NORTHGRUM\N35589].
+- Does not touch tables that exist only in dbo or only in [dev].
 
 Implementation notes:
 - This copies data only. It does not recreate schema objects.
@@ -17,7 +17,7 @@ Implementation notes:
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
-DECLARE @SourceSchema sysname = N'NORTHGRUM\N35589';
+DECLARE @SourceSchema sysname = N'dev';
 DECLARE @TargetSchema sysname = N'dbo';
 
 IF NOT EXISTS (

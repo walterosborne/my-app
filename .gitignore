@@ -78,3 +78,5 @@ smtpConfig.js
 # Local pipeline YAML references
 /yams/
 /yams/**
+
+server.js
