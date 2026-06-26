@@ -5,7 +5,7 @@ with the suffix `_backup_0622`.
 Important:
 - This copies columns and data via SELECT INTO.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
-- It will fail and roll back if any target backup table already exists.
+- It will overwrite any existing target backup table by dropping it first.
 
 This script is currently set to `dev`.
 */
@@ -92,7 +92,14 @@ BEGIN TRY
               AND t.name = @TargetTable
         )
         BEGIN
-            THROW 50002, 'A backup table already exists in the target schema. Remove or rename it before rerunning.', 1;
+            SET @Sql =
+                N'DROP TABLE '
+                + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TargetTable)
+                + N';';
+
+            EXEC sys.sp_executesql @Sql;
+
+            PRINT N'Dropped existing ' + QUOTENAME(@SchemaName) + N'.' + QUOTENAME(@TargetTable);
         END;
 
         SET @Sql =
