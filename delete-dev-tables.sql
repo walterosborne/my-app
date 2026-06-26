@@ -26,7 +26,7 @@ BEGIN
 END;
 
 SELECT
-    @DropList = STRING_AGG(QUOTENAME(s.name) + N'.' + QUOTENAME(t.name), N', ')
+    @DropList = STRING_AGG(CAST(QUOTENAME(s.name) + N'.' + QUOTENAME(t.name) AS nvarchar(max)), N', ')
 FROM sys.tables AS t
 INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
