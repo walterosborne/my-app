@@ -68,6 +68,7 @@ const Audit = () => {
     const [currentUser, setCurrentUser] = React.useState(null);
     const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
     const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
+    const [downloadingObjectiveEvidence, setDownloadingObjectiveEvidence] = React.useState(false);
 
     // Load all data from API on mount
     React.useEffect(() => {
@@ -1706,13 +1707,51 @@ const Audit = () => {
         }
     };
 
-    const handleDownloadObjectiveEvidence = () => {
+    const handleDownloadObjectiveEvidence = async () => {
         if (!auditData?.scheduleId) {
             toast.error('No audit selected.');
             return;
         }
-        const downloadUrl = buildApiUrl(`audits/${auditData.scheduleId}/objective-evidence.zip`);
-        window.location.href = downloadUrl;
+        setDownloadingObjectiveEvidence(true);
+        try {
+            const downloadUrl = buildApiUrl(`audits/${auditData.scheduleId}/objective-evidence.zip`);
+            const response = await fetch(downloadUrl);
+
+            if (!response.ok) {
+                let errorMessage = 'Failed to download objective evidence.';
+                try {
+                    const contentType = response.headers.get('content-type') || '';
+                    if (contentType.includes('application/json')) {
+                        const errorData = await response.json();
+                        if (errorData?.error) {
+                            errorMessage = errorData.error;
+                        }
+                    } else {
+                        const errorText = await response.text();
+                        if (errorText && !/<[a-z][\s\S]*>/i.test(errorText)) {
+                            errorMessage = errorText;
+                        }
+                    }
+                } catch {
+                    // ignore response parsing errors
+                }
+                throw new Error(errorMessage);
+            }
+
+            const blob = await response.blob();
+            const objectUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `audit-${auditData.scheduleId}-objective-evidence.zip`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            toast.error(error.message || 'Failed to download objective evidence.');
+        } finally {
+            setDownloadingObjectiveEvidence(false);
+        }
     };
 
     const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
@@ -2199,6 +2238,7 @@ const Audit = () => {
                     <button
                         type="button"
                         onClick={handleDownloadObjectiveEvidence}
+                        disabled={downloadingObjectiveEvidence}
                         style={{
                             width: '100%',
                             backgroundColor: '#1976d2',
@@ -2208,11 +2248,12 @@ const Audit = () => {
                             padding: '12px 16px',
                             fontSize: '16px',
                             fontWeight: 600,
-                            cursor: 'pointer',
+                            cursor: downloadingObjectiveEvidence ? 'default' : 'pointer',
+                            opacity: downloadingObjectiveEvidence ? 0.75 : 1,
                             marginBottom: '36px'
                         }}
                     >
-                        Download Objective Evidence (ZIP)
+                        {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
                     </button>
                 )}
 

@@ -1908,13 +1908,15 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
     try {
         const { scheduleId } = req.params;
         const auditId = parseInt(scheduleId, 10);
-        const userInfo = await getCurrentUserInfo(req);
+        const auditSchema = getAuditSchemaForRequest(req);
+        const userInfo = await getCurrentUserInfo(req, { auditSchema });
 
         if (!userInfo || Number.isNaN(auditId)) {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
 
-        const auditResult = await pool.query(
+        const auditResult = await pool.queryWithSchema(
+            auditSchema,
             `SELECT *, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
             [auditId]
         );
@@ -1925,7 +1927,8 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         const audit = parseAuditRow(auditResult.rows[0]);
         let approverScheduleIds = new Set();
         if (userInfo.myid) {
-            const approvalsResult = await pool.query(
+            const approvalsResult = await pool.queryWithSchema(
+                auditSchema,
                 'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
                 [auditId, userInfo.myid]
             );
@@ -1941,7 +1944,8 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
             return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
         }
 
-        const ncResult = await pool.query(
+        const ncResult = await pool.queryWithSchema(
+            auditSchema,
             'SELECT files FROM nonconformances_r WHERE scheduleId = $1',
             [auditId]
         );
@@ -1962,7 +1966,8 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         }
 
         const fileIdPlaceholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
-        const filesResult = await pool.query(
+        const filesResult = await pool.queryWithSchema(
+            auditSchema,
             `SELECT fileId, fileName, mimeType, fileData
              FROM auditor_files_r
              WHERE fileId IN (${fileIdPlaceholders})`,
