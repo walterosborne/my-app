@@ -6,6 +6,8 @@ Important:
 - This copies columns and data via SELECT INTO.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
 - It will overwrite any existing target backup table by dropping it first.
+- It only backs up source tables whose names end in `_r`.
+- It excludes source tables whose names contain `_backup`.
 
 This script is currently set to `dev`.
 */
@@ -32,10 +34,11 @@ IF NOT EXISTS (
     INNER JOIN sys.schemas AS s
         ON s.schema_id = t.schema_id
     WHERE s.name = @SchemaName
+      AND t.name LIKE N'%[_]r'
       AND t.name NOT LIKE N'%[_]backup%'
 )
 BEGIN
-    THROW 50001, 'No eligible non-backup user tables were found in the source schema.', 1;
+    THROW 50001, 'No eligible non-backup `_r` tables were found in the source schema.', 1;
 END;
 
 DECLARE @Work TABLE (
@@ -52,6 +55,7 @@ FROM sys.tables AS t
 INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
 WHERE s.name = @SchemaName
+  AND t.name LIKE N'%[_]r'
   AND t.name NOT LIKE N'%[_]backup%'
 ORDER BY t.name;
 
