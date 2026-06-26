@@ -489,6 +489,14 @@ const Metrics = () => {
     }];
   };
 
+  const formatIntegerMetricValue = (value) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return '';
+    }
+    return `${Math.round(numericValue)}`;
+  };
+
   const nonconformanceBySchedule = useMemo(() => {
     return nonconformances.reduce((acc, nc) => {
       const scheduleId = Number(nc.scheduleId ?? nc.scheduleid);
@@ -1214,7 +1222,7 @@ const Metrics = () => {
       color: colorPalette[idx % colorPalette.length],
       curve: 'linear',
       showMark: true,
-      valueFormatter: (value) => (value ? `${value}` : null)
+      valueFormatter: (value) => (Number(value) > 0 ? formatIntegerMetricValue(value) : null)
     }));
 
     const formattedMonths = keys.map((key) => {
@@ -1403,7 +1411,7 @@ const Metrics = () => {
             fontSize="10"
             fill="#1f2937"
           >
-            {value}
+            {formatIntegerMetricValue(value)}
           </text>
         ) : null}
       </g>
@@ -1746,7 +1754,10 @@ const Metrics = () => {
                       <LineChart
                         apiRef={monthlyChartApiRef}
                         xAxis={[{ scaleType: 'point', data: monthlyChartData.labels }]}
-                        yAxis={[{ tickMinStep: 1 }]}
+                        yAxis={[{
+                          tickMinStep: 1,
+                          valueFormatter: (value) => formatIntegerMetricValue(value)
+                        }]}
                         series={monthlyChartData.series}
                         slots={{ tooltip: MetricsTooltip, mark: LabeledMark }}
                         slotProps={{ tooltip: { trigger: 'axis' } }}
