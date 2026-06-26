@@ -15,6 +15,7 @@ SET XACT_ABORT ON;
 
 DECLARE @SchemaName sysname = N'dev';
 DECLARE @BackupSuffix nvarchar(32) = N'_backup_0622';
+DECLARE @UnsafeDboTargetList nvarchar(max);
 
 IF NOT EXISTS (
     SELECT 1
@@ -51,6 +52,18 @@ INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
 WHERE s.name = @SchemaName
 ORDER BY t.name;
+
+SELECT
+    @UnsafeDboTargetList = STRING_AGG(CAST(QUOTENAME(target_table) AS nvarchar(max)), N', ')
+FROM @Work
+WHERE @SchemaName = N'dbo'
+  AND target_table NOT LIKE N'%[_]backup%';
+
+IF @UnsafeDboTargetList IS NOT NULL AND LTRIM(RTRIM(@UnsafeDboTargetList)) <> N''
+BEGIN
+    SELECT @UnsafeDboTargetList AS UnsafeDboTargetTables;
+    THROW 50003, 'Refusing to create non-backup tables in dbo. Only _backup targets are allowed in dbo.', 1;
+END;
 
 DECLARE
     @CurrentRow int = 1,

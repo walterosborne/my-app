@@ -19,6 +19,7 @@ SET XACT_ABORT ON;
 
 DECLARE @SourceSchema sysname = N'dev';
 DECLARE @TargetSchema sysname = N'dbo';
+DECLARE @UnsafeDboTargetList nvarchar(max);
 
 IF NOT EXISTS (
     SELECT 1
@@ -71,6 +72,18 @@ ORDER BY target_table.name;
 IF NOT EXISTS (SELECT 1 FROM @Work)
 BEGIN
     THROW 50012, 'No matching tables were found between source and target schemas.', 1;
+END;
+
+SELECT
+    @UnsafeDboTargetList = STRING_AGG(CAST(QUOTENAME(table_name) AS nvarchar(max)), N', ')
+FROM @Work
+WHERE @TargetSchema = N'dbo'
+  AND table_name NOT LIKE N'%[_]backup%';
+
+IF @UnsafeDboTargetList IS NOT NULL AND LTRIM(RTRIM(@UnsafeDboTargetList)) <> N''
+BEGIN
+    SELECT @UnsafeDboTargetList AS UnsafeDboTargetTables;
+    THROW 50014, 'Refusing to overwrite non-backup tables in dbo. Only _backup tables may be targeted in dbo.', 1;
 END;
 
 DECLARE

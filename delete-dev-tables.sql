@@ -16,6 +16,7 @@ DECLARE @SchemaName sysname = N'Dev';
 DECLARE @DropList nvarchar(max);
 DECLARE @InternalFkDropSql nvarchar(max);
 DECLARE @ExternalReferenceList nvarchar(max);
+DECLARE @UnsafeDboDropList nvarchar(max);
 DECLARE @Sql nvarchar(max);
 
 IF NOT EXISTS (
@@ -37,6 +38,21 @@ WHERE s.name = @SchemaName;
 IF @DropList IS NULL OR LTRIM(RTRIM(@DropList)) = N''
 BEGIN
     THROW 50031, 'No user tables were found in the target schema.', 1;
+END;
+
+SELECT
+    @UnsafeDboDropList = STRING_AGG(CAST(QUOTENAME(t.name) AS nvarchar(max)), N', ')
+FROM sys.tables AS t
+INNER JOIN sys.schemas AS s
+    ON s.schema_id = t.schema_id
+WHERE s.name = @SchemaName
+  AND s.name = N'dbo'
+  AND t.name NOT LIKE N'%[_]backup%';
+
+IF @UnsafeDboDropList IS NOT NULL AND LTRIM(RTRIM(@UnsafeDboDropList)) <> N''
+BEGIN
+    SELECT @UnsafeDboDropList AS UnsafeDboDropTables;
+    THROW 50033, 'Refusing to drop non-backup tables in dbo. Only _backup tables may be removed from dbo with this script.', 1;
 END;
 
 SELECT
