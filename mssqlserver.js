@@ -1,24 +1,14 @@
 import express from 'express';
+import sql from 'mssql';
 import cors from 'cors';
 import multer from 'multer';
 import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { createRequire } from 'node:module';
 import smtpConfig from './smtpConfig.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
-
-const require = createRequire(import.meta.url);
-let sql;
-
-try {
-    sql = require('mssql/msnodesqlv8');
-} catch (error) {
-    console.error('[NGAT MSSQL] Failed to load mssql/msnodesqlv8. Install the msnodesqlv8 package on the server before starting mssqlserver.js.', error);
-    throw error;
-}
 
 const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
@@ -30,7 +20,8 @@ console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditdb: Boolean(process.env.auditdb),
     server: Boolean(process.env.server),
     database: Boolean(process.env.database),
-    sqlAuthMode: 'windows-trusted',
+    user: Boolean(process.env.user),
+    password: Boolean(process.env.password),
     APP_BASE_URL: Boolean(process.env.APP_BASE_URL),
     NODE_ENV: process.env.NODE_ENV || ''
 });
@@ -39,29 +30,26 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const createTrustedSqlConfig = ({ server, database }) => ({
-    server: server || '',
-    database: database || '',
-    driver: 'msnodesqlv8',
+const sqlConfig = {
+    server: process.env.auditserver || '',
+    database: process.env.auditdb || '',
+    user: process.env.user || '',
+    password: process.env.password || '',
     options: {
         encrypt: true,
-        trustServerCertificate: true,
-        trustedConnection: true
+        trustServerCertificate: true
     }
-});
-
-const sqlConfig = {
-    ...createTrustedSqlConfig({
-        server: process.env.auditserver,
-        database: process.env.auditdb
-    })
 };
 
 const rosterConfig = {
-    ...createTrustedSqlConfig({
-        server: process.env.server,
-        database: process.env.database
-    })
+    server: process.env.server || '',
+    database: process.env.database || '',
+    user: process.env.user || '',
+    password: process.env.password || '',
+    options: {
+        encrypt: true,
+        trustServerCertificate: true
+    }
 };
 const sqlPool = new sql.ConnectionPool(sqlConfig);
 const sqlPoolPromise = sqlPool.connect();
@@ -69,7 +57,7 @@ const rosterSqlPool = new sql.ConnectionPool(rosterConfig);
 const rosterPoolPromise = rosterSqlPool.connect();
 
 const buildDbState = (config) => ({
-    configured: Boolean(config.server && config.database),
+    configured: Boolean(config.server && config.database && config.user && config.password),
     connected: false,
     lastSuccessAt: null,
     lastError: null
@@ -803,21 +791,22 @@ const sanitizeFilename = (name) => {
     return String(name || 'file').replace(/[/\\]/g, '_').replace(/"/g, '');
 };
 
-const sendSmtpEmail = async ({ toAddress, subject, body }) => {
+const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => {
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
         throw new Error('SMTP host not configured.');
     }
     await smtpTransport.sendMail({
         from: SMTP_FROM,
         to: toAddress,
+        cc: ccAddress || undefined,
         subject,
         html: body
     });
 };
 
-const queueEmail = async (_client, { toAddress, subject, body }) => {
+const queueEmail = async (_client, { toAddress, ccAddress = null, subject, body }) => {
     try {
-        await sendSmtpEmail({ toAddress, subject, body });
+        await sendSmtpEmail({ toAddress, ccAddress, subject, body });
         return { success: true };
     } catch (error) {
         console.error(`SMTP send failed for ${toAddress}:`, error);
@@ -990,6 +979,49 @@ const buildAuditorAccessRequestEmail = ({
             { href: mailtoLink, label: 'Request more information', backgroundColor: '#dc2626', textColor: '#ffffff' }
         ],
         footer: `You are receiving this email because you are listed as the division lead for ${safeDivision}.`
+    });
+
+    return { subject, body };
+};
+
+const buildImprovementSubmissionEmail = ({
+    requestName,
+    requestMyId,
+    requestEmail,
+    improvementType,
+    reason
+}) => {
+    const safeName = escapeHtml(requestName || 'Requester');
+    const safeMyId = escapeHtml(requestMyId || 'Unknown');
+    const safeEmail = escapeHtml(requestEmail || 'Not provided');
+    const safeType = escapeHtml(improvementType || 'Unspecified');
+    const safeReason = escapeHtml(reason || 'No details provided.');
+    const subject = `NGAT improvement submission - ${improvementType || 'Unspecified'} - ${requestName || 'User'} (${requestMyId || 'Unknown'})`;
+
+    const buttons = [];
+    if (requestEmail) {
+        const mailtoSubject = `Re: NGAT improvement submission (${requestMyId || 'Unknown'})`;
+        const mailtoLink = `mailto:${encodeURIComponent(requestEmail)}?subject=${encodeURIComponent(mailtoSubject)}`;
+        buttons.push({
+            href: mailtoLink,
+            label: 'Reply to requester',
+            backgroundColor: '#1d4ed8',
+            textColor: '#ffffff'
+        });
+    }
+
+    const body = buildEmailShell({
+        title: `${safeName} (${safeMyId}) submitted an NGAT improvement`,
+        subtitle: 'A new improvement submission is ready for review',
+        detailRows: [
+            { label: 'Requester name', value: safeName },
+            { label: 'Requester MyID', value: safeMyId },
+            { label: 'Requester email', value: safeEmail },
+            { label: 'Improvement type', value: safeType },
+            { label: 'Reasoning', value: safeReason }
+        ],
+        buttons,
+        footer: 'You are receiving this email because you are the configured recipient for NGAT improvement submissions.'
     });
 
     return { subject, body };
@@ -1404,7 +1436,8 @@ app.get(['/api/healthz'], async (_req, res) => {
             auditdb: Boolean(process.env.auditdb),
             server: Boolean(process.env.server),
             database: Boolean(process.env.database),
-            sqlAuthMode: 'windows-trusted'
+            user: Boolean(process.env.user),
+            password: Boolean(process.env.password)
         }
     };
 
@@ -1921,6 +1954,57 @@ app.post('/api/request-auditor-access', async (req, res) => {
         });
     } catch (error) {
         console.error('Error requesting auditor access:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/submit-improvement', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (!userInfo?.myid) {
+            return res.status(400).json({ success: false, error: 'User not found.' });
+        }
+
+        const { improvementType, reason } = req.body;
+        if (!improvementType || !String(improvementType).trim() || !reason || !String(reason).trim()) {
+            return res.status(400).json({ success: false, error: 'Improvement type and reasoning are required.' });
+        }
+
+        const rosterResult = await rosterPool.query(
+            'SELECT rostername, email, myid FROM roster_r WHERE myid = $1',
+            [userInfo.myid]
+        );
+        const requester = rosterResult.rows[0] || {};
+        const requesterName = requester.rostername || userInfo.rostername || userInfo.name;
+        const requesterMyId = requester.myid || userInfo.myid;
+        const requesterEmail = requester.email || userInfo.email || '';
+
+        const { subject, body } = buildImprovementSubmissionEmail({
+            requestName: requesterName,
+            requestMyId: requesterMyId,
+            requestEmail: requesterEmail,
+            improvementType: String(improvementType).trim(),
+            reason: String(reason).trim()
+        });
+
+        const emailResult = await queueEmail(client, {
+            toAddress: 'walter.osborne@ngc.com',
+            ccAddress: requesterEmail || null,
+            subject,
+            body
+        });
+
+        res.json({
+            success: true,
+            emailWarning: emailResult?.success === false
+                ? 'Request submitted, but the notification email failed. Contact Walter directly.'
+                : null
+        });
+    } catch (error) {
+        console.error('Error submitting improvement request:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();

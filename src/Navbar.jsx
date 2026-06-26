@@ -44,6 +44,7 @@ const Navbar = () => {
         ],
         'Help': [
             { label: 'Info/Support', path: '/info-support' },
+            { label: 'Submit Improvement', path: '/submit-improvement' },
             { label: 'Request Auditor Access', path: '/request-auditor-access' }
         ]
     };

@@ -104,11 +104,11 @@ const Metrics = () => {
   const [filters, setFilters] = useState({
     dateFrom: '',
     dateTo: '',
-    auditorId: null,
+    auditorIds: [],
     divisionIds: [],
-    intExtId: null,
-    siteId: null,
-    programId: null,
+    intExtIds: [],
+    siteIds: [],
+    programIds: [],
     functionIds: []
   });
 
@@ -622,10 +622,14 @@ const Metrics = () => {
       if (!includeHistorical && stageValue === -1) {
         return false;
       }
-      if (filters.auditorId) {
-        const auditorId = Number(filters.auditorId);
-        const additional = Array.isArray(audit.additionalAuditorIds) ? audit.additionalAuditorIds : [];
-        if (Number(audit.leadAuditorId) !== auditorId && !additional.map(Number).includes(auditorId)) {
+      if (filters.auditorIds.length > 0) {
+        const selectedAuditorIds = filters.auditorIds.map((id) => Number(id));
+        const auditAuditorIds = [
+          Number(audit.leadAuditorId),
+          ...(Array.isArray(audit.additionalAuditorIds) ? audit.additionalAuditorIds.map(Number) : [])
+        ];
+        const matchesAuditor = selectedAuditorIds.some((id) => auditAuditorIds.includes(id));
+        if (!matchesAuditor) {
           return false;
         }
       }
@@ -638,22 +642,27 @@ const Metrics = () => {
         }
       }
 
-      if (filters.siteId) {
-        const sites = Array.isArray(audit.siteIds) ? audit.siteIds : [];
-        if (!sites.map(Number).includes(Number(filters.siteId))) {
+      if (filters.siteIds.length > 0) {
+        const auditSiteIds = (Array.isArray(audit.siteIds) ? audit.siteIds : []).map(Number);
+        const matchesSite = filters.siteIds.some((id) => auditSiteIds.includes(Number(id)));
+        if (!matchesSite) {
           return false;
         }
       }
 
-      if (filters.programId) {
-        const programs = Array.isArray(audit.programIds) ? audit.programIds : [];
-        if (!programs.map(Number).includes(Number(filters.programId))) {
+      if (filters.programIds.length > 0) {
+        const auditProgramIds = (Array.isArray(audit.programIds) ? audit.programIds : []).map(Number);
+        const matchesProgram = filters.programIds.some((id) => auditProgramIds.includes(Number(id)));
+        if (!matchesProgram) {
           return false;
         }
       }
 
-      if (filters.intExtId && Number(audit.intExtId) !== Number(filters.intExtId)) {
-        return false;
+      if (filters.intExtIds.length > 0) {
+        const matchesIntExt = filters.intExtIds.some((id) => Number(audit.intExtId) === Number(id));
+        if (!matchesIntExt) {
+          return false;
+        }
       }
 
       if (filters.functionIds.length > 0) {
@@ -1410,10 +1419,10 @@ const Metrics = () => {
   const hasSeverityData = severityTrendData.series.length > 0 && severityTrendData.labels.length > 0;
   const hasFindingsByClauseData = findingsByClauseData.labels.length > 0;
 
-  const handleFilterChange = (key) => (selectedOption) => {
+  const handleMultiFilterChange = (key) => (selectedOptions) => {
     setFilters((prev) => ({
       ...prev,
-      [key]: selectedOption ? selectedOption.value : null
+      [key]: selectedOptions ? selectedOptions.map((option) => option.value) : []
     }));
   };
 
@@ -1508,12 +1517,13 @@ const Metrics = () => {
                 <div className="metrics-filter">
                   <label>Auditors</label>
                   <Select
-                    isClearable
+                    isMulti
+                    closeMenuOnSelect={false}
                     options={auditorOptions}
                     styles={customStyles}
-                    placeholder="Select Auditor"
-                    value={filters.auditorId ? auditorOptions.find((option) => option.value === filters.auditorId) : null}
-                    onChange={handleFilterChange('auditorId')}
+                    placeholder="Select Auditors"
+                    value={auditorOptions.filter((option) => filters.auditorIds.includes(option.value))}
+                    onChange={handleMultiFilterChange('auditorIds')}
                   />
                 </div>
                 <div className="metrics-filter">
@@ -1547,34 +1557,37 @@ const Metrics = () => {
                 <div className="metrics-filter">
                   <label>Internal / External</label>
                   <Select
-                    isClearable
+                    isMulti
+                    closeMenuOnSelect={false}
                     options={intExtOptions}
                     styles={customStyles}
-                    placeholder="Select Audit Type"
-                    value={filters.intExtId ? intExtOptions.find((option) => option.value === filters.intExtId) : null}
-                    onChange={handleFilterChange('intExtId')}
+                    placeholder="Select Audit Types"
+                    value={intExtOptions.filter((option) => filters.intExtIds.includes(option.value))}
+                    onChange={handleMultiFilterChange('intExtIds')}
                   />
                 </div>
                 <div className="metrics-filter">
                   <label>Program</label>
                   <Select
-                    isClearable
+                    isMulti
+                    closeMenuOnSelect={false}
                     options={programOptions}
                     styles={customStyles}
-                    placeholder="Select Program"
-                    value={filters.programId ? programOptions.find((option) => option.value === filters.programId) : null}
-                    onChange={handleFilterChange('programId')}
+                    placeholder="Select Programs"
+                    value={programOptions.filter((option) => filters.programIds.includes(option.value))}
+                    onChange={handleMultiFilterChange('programIds')}
                   />
                 </div>
                 <div className="metrics-filter">
                   <label>Sites</label>
                   <Select
-                    isClearable
+                    isMulti
+                    closeMenuOnSelect={false}
                     options={siteOptions}
                     styles={customStyles}
-                    placeholder="Select Site"
-                    value={filters.siteId ? siteOptions.find((option) => option.value === filters.siteId) : null}
-                    onChange={handleFilterChange('siteId')}
+                    placeholder="Select Sites"
+                    value={siteOptions.filter((option) => filters.siteIds.includes(option.value))}
+                    onChange={handleMultiFilterChange('siteIds')}
                   />
                 </div>
               </>

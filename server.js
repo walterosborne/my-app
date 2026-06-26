@@ -183,7 +183,7 @@ const sanitizeFilename = (name) => {
     return String(name || 'file').replace(/[/\\]/g, '_').replace(/"/g, '');
 };
 
-const sendSmtpEmail = async ({ toAddress, subject, body }) => {
+const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => {
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
         console.warn('SMTP host not configured. Skipping SMTP send.');
         return;
@@ -191,15 +191,16 @@ const sendSmtpEmail = async ({ toAddress, subject, body }) => {
     await smtpTransport.sendMail({
         from: SMTP_FROM,
         to: toAddress,
+        cc: ccAddress || undefined,
         subject,
         html: body
     });
 };
 
-const queueEmail = async (client, { toAddress, subject, body }) => {
+const queueEmail = async (client, { toAddress, ccAddress = null, subject, body }) => {
     try {
-        await sendSmtpEmail({ toAddress, subject, body });
-        return;
+        await sendSmtpEmail({ toAddress, ccAddress, subject, body });
+        return { success: true };
     } catch (error) {
         console.error('SMTP send failed:', error);
     }
@@ -208,6 +209,7 @@ const queueEmail = async (client, { toAddress, subject, body }) => {
          VALUES ($1, $2, $3)`,
         [toAddress, subject, body]
     );
+    return { success: true };
 };
 
 const buildEmailButton = ({ href, label, backgroundColor, textColor }) => `
@@ -371,6 +373,49 @@ const buildAuditorAccessRequestEmail = ({
             { href: mailtoLink, label: 'Request more information', backgroundColor: '#dc2626', textColor: '#ffffff' }
         ],
         footer: `You are receiving this email because you are listed as the division lead for ${safeDivision}.`
+    });
+
+    return { subject, body };
+};
+
+const buildImprovementSubmissionEmail = ({
+    requestName,
+    requestMyId,
+    requestEmail,
+    improvementType,
+    reason
+}) => {
+    const safeName = escapeHtml(requestName || 'Requester');
+    const safeMyId = escapeHtml(requestMyId || 'Unknown');
+    const safeEmail = escapeHtml(requestEmail || 'Not provided');
+    const safeType = escapeHtml(improvementType || 'Unspecified');
+    const safeReason = escapeHtml(reason || 'No details provided.');
+    const subject = `NGAT improvement submission - ${improvementType || 'Unspecified'} - ${requestName || 'User'} (${requestMyId || 'Unknown'})`;
+
+    const buttons = [];
+    if (requestEmail) {
+        const mailtoSubject = `Re: NGAT improvement submission (${requestMyId || 'Unknown'})`;
+        const mailtoLink = `mailto:${encodeURIComponent(requestEmail)}?subject=${encodeURIComponent(mailtoSubject)}`;
+        buttons.push({
+            href: mailtoLink,
+            label: 'Reply to requester',
+            backgroundColor: '#1d4ed8',
+            textColor: '#ffffff'
+        });
+    }
+
+    const body = buildEmailShell({
+        title: `${safeName} (${safeMyId}) submitted an NGAT improvement`,
+        subtitle: 'A new improvement submission is ready for review',
+        detailRows: [
+            { label: 'Requester name', value: safeName },
+            { label: 'Requester MyID', value: safeMyId },
+            { label: 'Requester email', value: safeEmail },
+            { label: 'Improvement type', value: safeType },
+            { label: 'Reasoning', value: safeReason }
+        ],
+        buttons,
+        footer: 'You are receiving this email because you are the configured recipient for NGAT improvement submissions.'
     });
 
     return { subject, body };
@@ -1240,6 +1285,57 @@ app.post('/api/request-auditor-access', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         console.error('Error requesting auditor access:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+app.post('/api/submit-improvement', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (!userInfo?.myid) {
+            return res.status(400).json({ success: false, error: 'User not found.' });
+        }
+
+        const { improvementType, reason } = req.body;
+        if (!improvementType || !String(improvementType).trim() || !reason || !String(reason).trim()) {
+            return res.status(400).json({ success: false, error: 'Improvement type and reasoning are required.' });
+        }
+
+        const rosterResult = await client.query(
+            'SELECT rostername, email, myid FROM roster_r WHERE myid = $1',
+            [userInfo.myid]
+        );
+        const requester = rosterResult.rows[0] || {};
+        const requesterName = requester.rostername || userInfo.rostername || userInfo.name;
+        const requesterMyId = requester.myid || userInfo.myid;
+        const requesterEmail = requester.email || userInfo.email || '';
+
+        const { subject, body } = buildImprovementSubmissionEmail({
+            requestName: requesterName,
+            requestMyId: requesterMyId,
+            requestEmail: requesterEmail,
+            improvementType: String(improvementType).trim(),
+            reason: String(reason).trim()
+        });
+
+        const emailResult = await queueEmail(client, {
+            toAddress: 'walter.osborne@ngc.com',
+            ccAddress: requesterEmail || null,
+            subject,
+            body
+        });
+
+        res.json({
+            success: true,
+            emailWarning: emailResult?.success === false
+                ? 'Request submitted, but the notification email failed. Contact Walter directly.'
+                : null
+        });
+    } catch (error) {
+        console.error('Error submitting improvement request:', error);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();

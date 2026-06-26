@@ -24,6 +24,7 @@ import InfoSupport from './InfoSupport.jsx'
 import AuditStatuses from './AuditStatuses.jsx'
 import AuditReports from './AuditReports.jsx'
 import RequestAuditorAccess from './RequestAuditorAccess.jsx'
+import ImprovementRequest from './ImprovementRequest.jsx'
 import TableTest from './TableTest.jsx'
 import Metrics from './Metrics.jsx'
 import RiskAnalysis from './RiskAnalysis.jsx'
@@ -155,6 +156,8 @@ const getPageTitle = (location) => {
       return 'Info and Support';
     case '/request-auditor-access':
       return 'Request Auditor Access';
+    case '/submit-improvement':
+      return 'Submit Improvement';
     case '/audit-statuses':
       return 'Audit Statuses';
     case '/admin':
@@ -252,6 +255,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/foe" element={<FOE />} />
           <Route path="/info-support" element={<InfoSupport />} />
           <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
+          <Route path="/submit-improvement" element={<ImprovementRequest />} />
           <Route path="/audit-statuses" element={<AuditStatuses />} />
           <Route path="/admin" element={<AdminMenu />} />
           <Route path="/tabletest" element={<TableTest />} />
