@@ -1,5 +1,5 @@
 /*
-Copies every user table from dbo into dev by creating the dev tables
+Copies every user table with `_r` in its name from dbo into dev by creating the dev tables
 with SELECT INTO.
 
 Important:
@@ -7,7 +7,8 @@ Important:
 - Target schema is currently set to `dev`.
 - This creates target tables and copies data in one step.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
-- It excludes tables whose names contain `_backup_`.
+- It only includes tables whose names contain `_r`.
+- It excludes tables whose names contain `_backup`.
 - It will fail and roll back if any target table already exists in the target schema.
 - It requires the target schema itself to already exist.
 */
@@ -42,10 +43,11 @@ IF NOT EXISTS (
     INNER JOIN sys.schemas AS s
         ON s.schema_id = t.schema_id
     WHERE s.name = @SourceSchema
-      AND t.name NOT LIKE '%[_]backup[_]%'
+      AND t.name LIKE '%[_]r%'
+      AND t.name NOT LIKE '%[_]backup%'
 )
 BEGIN
-    THROW 50022, 'No eligible user tables were found in the source schema.', 1;
+    THROW 50022, 'No eligible _r tables were found in the source schema.', 1;
 END;
 
 DECLARE @Work TABLE (
@@ -59,7 +61,8 @@ FROM sys.tables AS t
 INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
 WHERE s.name = @SourceSchema
-  AND t.name NOT LIKE '%[_]backup[_]%'
+  AND t.name LIKE '%[_]r%'
+  AND t.name NOT LIKE '%[_]backup%'
 ORDER BY t.name;
 
 DECLARE
