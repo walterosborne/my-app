@@ -32,9 +32,10 @@ IF NOT EXISTS (
     INNER JOIN sys.schemas AS s
         ON s.schema_id = t.schema_id
     WHERE s.name = @SchemaName
+      AND t.name NOT LIKE N'%[_]backup%'
 )
 BEGIN
-    THROW 50001, 'No user tables were found in the source schema.', 1;
+    THROW 50001, 'No eligible non-backup user tables were found in the source schema.', 1;
 END;
 
 DECLARE @Work TABLE (
@@ -51,6 +52,7 @@ FROM sys.tables AS t
 INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
 WHERE s.name = @SchemaName
+  AND t.name NOT LIKE N'%[_]backup%'
 ORDER BY t.name;
 
 SELECT
