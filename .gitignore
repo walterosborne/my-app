@@ -80,3 +80,5 @@ smtpConfig.js
 /yams/**
 
 server.js
+
+networkids.txt

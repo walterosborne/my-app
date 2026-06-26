@@ -1,5 +1,5 @@
 import { React, useEffect, useMemo, useState, useRef, useCallback } from 'react'
-import { useForm, Controller } from 'react-hook-form'
+import { useForm, Controller, useWatch } from 'react-hook-form'
 import Select from "react-select"
 import AsyncSelect from 'react-select/async'
 import { Box } from '@mui/material';
@@ -733,8 +733,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     formState: { errors, isSubmitting },
     control,
     reset,
-    setValue,
-    watch
+    setValue
   } = useForm(
     {
       defaultValues: {}
@@ -847,7 +846,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     };
   }, [normalizeFileIds]);
 
-  const watchedStandards = watch('standards');
+  const watchedStandards = useWatch({ control, name: 'standards' });
   const selectedStandardIds = useMemo(() => {
     if (Array.isArray(watchedStandards) && watchedStandards.length > 0) {
       return watchedStandards;
@@ -855,13 +854,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return selectedAudit?.standardIds || [];
   }, [watchedStandards, selectedAudit]);
 
-  const standardTextsForAudit = useMemo(() => {
-    const ids = new Set((selectedStandardIds || []).map((id) => Number(id)));
-    if (ids.size === 0) return [];
-    return standardTextsList.filter((item) => ids.has(Number(item.standardId)));
-  }, [standardTextsList, selectedStandardIds]);
-
-  const standardTextsByStandard = useMemo(() => {
+  const buildStandardTextsByStandard = useCallback((standardIds) => {
+    const ids = new Set((standardIds || []).map((id) => Number(id)));
+    if (ids.size === 0) return {};
+    const standardTextsForAudit = standardTextsList.filter((item) => ids.has(Number(item.standardId)));
     const grouped = {};
     standardTextsForAudit.forEach((item) => {
       const standardId = Number(item.standardId);
@@ -886,7 +882,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     });
 
     return grouped;
-  }, [standardTextsForAudit]);
+  }, [standardTextsList]);
+
+  const standardTextsByStandard = useMemo(() => {
+    return buildStandardTextsByStandard(selectedStandardIds);
+  }, [buildStandardTextsByStandard, selectedStandardIds]);
 
   const buildAuditQuestionCollapseDefaults = useCallback((audit, auditNCs, etqQuestions, groupedStandardTexts) => {
     const sectionDefaults = {};
@@ -950,40 +950,46 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     });
 
     setCollapsedSections((current) => {
+      let changed = false;
       const next = { ...current };
       Object.entries(nextSectionDefaults).forEach(([key, value]) => {
         if (!(key in next)) {
           next[key] = value;
+          changed = true;
         }
       });
-      return next;
+      return changed ? next : current;
     });
 
     setCollapsedSubsections((current) => {
+      let changed = false;
       const next = { ...current };
       Object.entries(nextSubsectionDefaults).forEach(([key, value]) => {
         if (!(key in next)) {
           next[key] = value;
+          changed = true;
         }
       });
-      return next;
+      return changed ? next : current;
     });
   }, [standardTextsByStandard]);
 
   useEffect(() => {
     setCollapsedEveryTimeQuestions((current) => {
+      let changed = false;
       const next = { ...current };
       filteredEveryTimeQuestions.forEach((question, index) => {
         const key = getEveryTimeQuestionCollapseKey(question, index);
         if (!(key in next)) {
           next[key] = true;
+          changed = true;
         }
       });
-      return next;
+      return changed ? next : current;
     });
   }, [filteredEveryTimeQuestions, getEveryTimeQuestionCollapseKey]);
 
-  const auditDate = watch('auditDate');
+  const auditDate = useWatch({ control, name: 'auditDate' });
   const expectedStartDate = selectedAudit?.expectedStartDate
     ? formatDateForInput(selectedAudit.expectedStartDate)
     : '';
@@ -1010,11 +1016,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         combinedPeqs,
         standardAdditionalTemp
       } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
+      const groupedStandardTexts = buildStandardTextsByStandard(selectedAudit?.standardIds || []);
       const {
         sectionDefaults,
         subsectionDefaults,
         everyTimeQuestionDefaults
-      } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, standardTextsByStandard);
+      } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, groupedStandardTexts);
 
       setNewPEQs(combinedPeqs.length);
       setDeletedPEQs(new Set());
@@ -1028,7 +1035,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, standardTextsByStandard]);
+  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
 
   useEffect(() => {
     if (!isDelayed) {
