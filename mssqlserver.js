@@ -14,12 +14,21 @@ const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
     mode: 'production'
 });
+const auditDbUser = process.env.audituser || process.env.user || '';
+const auditDbPassword = process.env.auditpassword || process.env.password || '';
+const rosterDbUser = process.env.rosteruser || process.env.user || '';
+const rosterDbPassword = process.env.rosterpassword || process.env.password || '';
+
 console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
 console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditserver: Boolean(process.env.auditserver),
     auditdb: Boolean(process.env.auditdb),
+    audituser: Boolean(process.env.audituser),
+    auditpassword: Boolean(process.env.auditpassword),
     server: Boolean(process.env.server),
     database: Boolean(process.env.database),
+    rosteruser: Boolean(process.env.rosteruser),
+    rosterpassword: Boolean(process.env.rosterpassword),
     user: Boolean(process.env.user),
     password: Boolean(process.env.password),
     APP_BASE_URL: Boolean(process.env.APP_BASE_URL),
@@ -33,8 +42,8 @@ app.use(express.json());
 const sqlConfig = {
     server: process.env.auditserver || '',
     database: process.env.auditdb || '',
-    user: process.env.audituser || '',
-    password: process.env.auditpassword || '',
+    user: auditDbUser,
+    password: auditDbPassword,
     options: {
         encrypt: true,
         trustServerCertificate: true
@@ -44,8 +53,8 @@ const sqlConfig = {
 const rosterConfig = {
     server: process.env.server || '',
     database: process.env.database || '',
-    user: process.env.user || '',
-    password: process.env.password || '',
+    user: rosterDbUser,
+    password: rosterDbPassword,
     options: {
         encrypt: true,
         trustServerCertificate: true
@@ -1525,8 +1534,12 @@ app.get(['/api/healthz'], async (_req, res) => {
         envPresent: {
             auditserver: Boolean(process.env.auditserver),
             auditdb: Boolean(process.env.auditdb),
+            audituser: Boolean(process.env.audituser),
+            auditpassword: Boolean(process.env.auditpassword),
             server: Boolean(process.env.server),
             database: Boolean(process.env.database),
+            rosteruser: Boolean(process.env.rosteruser),
+            rosterpassword: Boolean(process.env.rosterpassword),
             user: Boolean(process.env.user),
             password: Boolean(process.env.password)
         }
