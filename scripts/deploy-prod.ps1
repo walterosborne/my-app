@@ -336,113 +336,44 @@ function Stop-NgatMssqlBackend {
 
 function Start-NgatMssqlBackend {
     $nodePath = Get-NgatNodePath
-    $powershellPath = (Get-Command powershell.exe -ErrorAction Stop).Source
-    $serverPath = Join-Path $AppRoot 'mssqlserver.js'
+    $startHelper = Join-Path $AppRoot 'scripts\start-mssqlserver-bg.js'
     $stdoutLog = Join-Path $AppRoot 'mssqlserver.log'
     $stderrLog = Join-Path $AppRoot 'mssqlserver.error.log'
     $pidFile = Join-Path $AppRoot '.mssqlserver.pid'
-    $launchScript = Join-Path $AppRoot '.mssqlserver-launch.ps1'
-    $runId = "$(Get-Date -Format 'yyyyMMddTHHmmssfff')-$PID"
-    $taskName = 'NGAT_MSSQL_Backend'
 
     Write-NgatDeployLog 'STEP START: start MSSQL backend via PowerShell'
     Write-NgatDeployLog "Backend nodePath=$nodePath"
-    Write-NgatDeployLog "Backend powershellPath=$powershellPath"
-    Write-NgatDeployLog "Backend serverPath=$serverPath"
+    Write-NgatDeployLog "Backend startHelper=$startHelper"
 
-    if (!(Test-Path -LiteralPath $serverPath)) {
-        throw "Could not find mssqlserver.js at $serverPath"
+    if (!(Test-Path -LiteralPath $startHelper)) {
+        throw "Could not find start helper at $startHelper"
     }
 
-    Set-Content -LiteralPath $stdoutLog -Value "[NGAT DEPLOY START RUN $runId] stdout log reset $(Get-Date -Format o)" -Encoding UTF8
-    Set-Content -LiteralPath $stderrLog -Value "[NGAT DEPLOY START RUN $runId] stderr log reset $(Get-Date -Format o)" -Encoding UTF8
+    $startOutput = & $nodePath $startHelper 2>&1
+    $startExitCode = $LASTEXITCODE
 
-    $quotedAppRoot = ConvertTo-NgatPsSingleQuotedLiteral -Value $AppRoot
-    $quotedNodePath = ConvertTo-NgatPsSingleQuotedLiteral -Value $nodePath
-    $quotedServerPath = ConvertTo-NgatPsSingleQuotedLiteral -Value $serverPath
-    $quotedStdoutLog = ConvertTo-NgatPsSingleQuotedLiteral -Value $stdoutLog
-    $quotedStderrLog = ConvertTo-NgatPsSingleQuotedLiteral -Value $stderrLog
-    $quotedRunId = ConvertTo-NgatPsSingleQuotedLiteral -Value $runId
-
-    $launchScriptContents = @"
-`$ErrorActionPreference = 'Stop'
-`$env:VSTS_PROCESS_LOOKUP_ID = `$null
-Set-Location -LiteralPath $quotedAppRoot
-`$nodePath = $quotedNodePath
-`$serverPath = $quotedServerPath
-`$stdoutLog = $quotedStdoutLog
-`$stderrLog = $quotedStderrLog
-`$runId = $quotedRunId
-"[{0}] Launching mssqlserver.js from deploy-prod.ps1. runId={1}" -f (Get-Date -Format o), `$runId | Out-File -FilePath `$stdoutLog -Append -Encoding utf8
-& `$nodePath `$serverPath >> `$stdoutLog 2>> `$stderrLog
-`$exitCode = `$LASTEXITCODE
-"[{0}] mssqlserver.js exited with code {1}. runId={2}" -f (Get-Date -Format o), `$exitCode, `$runId | Out-File -FilePath `$stdoutLog -Append -Encoding utf8
-exit `$exitCode
-"@
-
-    Set-Content -LiteralPath $launchScript -Value $launchScriptContents -Encoding UTF8
-    Write-NgatDeployLog "Launcher script written to $launchScript"
-
-    $taskCommand = "`"$powershellPath`" -NoProfile -ExecutionPolicy Bypass -File `"$launchScript`""
-    Write-NgatDeployLog "Scheduled task command=$taskCommand"
-
-    $createOutput = & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC ONSTART /RU SYSTEM /RL HIGHEST /F 2>&1
-    $createExitCode = $LASTEXITCODE
-    Write-NgatDeployLog "schtasks /Create exitCode=$createExitCode"
-    if ($createOutput) {
-        Write-NgatDeployLog ('schtasks /Create output:{0}{1}' -f [Environment]::NewLine, ($createOutput -join [Environment]::NewLine))
+    Write-NgatDeployLog "start-mssqlserver-bg.js exitCode=$startExitCode"
+    if ($startOutput) {
+        Write-NgatDeployLog ('start-mssqlserver-bg.js output:{0}{1}' -f [Environment]::NewLine, ($startOutput -join [Environment]::NewLine))
     }
-    if ($createExitCode -ne 0) {
-        throw "schtasks /Create failed with exit code $createExitCode."
+    if ($startExitCode -ne 0) {
+        Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog
+        Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog
+        throw "start-mssqlserver-bg.js failed with exit code $startExitCode."
     }
 
-    $runOutput = & schtasks.exe /Run /TN $taskName 2>&1
-    $runExitCode = $LASTEXITCODE
-    Write-NgatDeployLog "schtasks /Run exitCode=$runExitCode"
-    if ($runOutput) {
-        Write-NgatDeployLog ('schtasks /Run output:{0}{1}' -f [Environment]::NewLine, ($runOutput -join [Environment]::NewLine))
-    }
-    if ($runExitCode -ne 0) {
-        Write-NgatScheduledTaskState -TaskName $taskName
-        throw "schtasks /Run failed with exit code $runExitCode."
+    $reportedPid = if (Test-Path -LiteralPath $pidFile) {
+        (Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue | Select-Object -First 1).Trim()
+    } else {
+        ''
     }
 
-    Start-Sleep -Seconds 2
-
-    $backendProcessIds = @(Get-NgatBackendProcessIds)
-    $listeningProcessIds = @(Get-NgatListeningProcessIds -Port 3001)
-    $matchedPid = @($backendProcessIds | Where-Object { $listeningProcessIds -contains $_ } | Select-Object -First 1)
-    $stdoutContents = if (Test-Path -LiteralPath $stdoutLog) { Get-Content -LiteralPath $stdoutLog -Raw -ErrorAction SilentlyContinue } else { '' }
-
-    if ($matchedPid.Count -gt 0) {
-        Set-Content -LiteralPath $pidFile -Value "$($matchedPid[0])" -Encoding ASCII
-        Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$($matchedPid[0])"
-        Write-Host "Started mssqlserver.js in background (PID $($matchedPid[0]))."
-        Write-Host "Stdout log: $stdoutLog"
-        Write-Host "Stderr log: $stderrLog"
-        return
+    if ([string]::IsNullOrWhiteSpace($reportedPid)) {
+        $reportedPid = 'unavailable'
     }
 
-    if ($stdoutContents -match '\[NGAT MSSQL READY\]\s+host=\S+\s+port=3001\b' -or $stdoutContents -match 'Server running on http://[^\s]+:3001\b') {
-        $resolvedPid = @($backendProcessIds | Select-Object -First 1)
-        $reportedPid = if ($resolvedPid.Count -gt 0) { $resolvedPid[0] } else { 'unavailable' }
-        if ($resolvedPid.Count -gt 0) {
-            Set-Content -LiteralPath $pidFile -Value "$($resolvedPid[0])" -Encoding ASCII
-        }
-
-        Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$reportedPid verifiedByLog=true"
-        Write-Host "Started mssqlserver.js in background (PID $reportedPid)."
-        Write-Host "Stdout log: $stdoutLog"
-        Write-Host "Stderr log: $stderrLog"
-        return
-    }
-
-    Write-NgatDeployLog 'Backend launch was triggered, but readiness was not confirmed within the brief post-launch check. Continuing without failing deploy.'
-    Write-NgatScheduledTaskState -TaskName $taskName
-    Write-NgatFileTail -Label 'mssqlserver stdout log' -Path $stdoutLog
-    Write-NgatFileTail -Label 'mssqlserver stderr log' -Path $stderrLog
-    Write-NgatDeployLog 'STEP END: start MSSQL backend via PowerShell launchedWithoutConfirmation=true'
-    Write-Host 'Triggered mssqlserver.js startup without blocking on readiness confirmation.'
+    Write-NgatDeployLog "STEP END: start MSSQL backend via PowerShell pid=$reportedPid"
+    Write-Host "Started mssqlserver.js in background (PID $reportedPid)."
     Write-Host "Stdout log: $stdoutLog"
     Write-Host "Stderr log: $stderrLog"
 }

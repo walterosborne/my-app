@@ -9,7 +9,8 @@ Important:
 - This creates target tables and copies data in one step.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
 - It will fail and roll back if any target table already exists in the target schema.
-- It refuses to create non-backup tables in dbo.
+- This script is intentionally allowed to create tables in dbo.
+- Other repo scripts may still block non-backup writes to dbo.
 
 Preview query:
 DECLARE @SourceSchema sysname = N'dbo';
@@ -36,7 +37,6 @@ SET XACT_ABORT ON;
 
 DECLARE @SourceSchema sysname = N'dbo';
 DECLARE @TargetSchema sysname = N'dev';
-DECLARE @UnsafeDboTargetList nvarchar(max);
 
 IF @SourceSchema = @TargetSchema
 BEGIN
@@ -84,18 +84,6 @@ INNER JOIN sys.schemas AS s
     ON s.schema_id = t.schema_id
 WHERE s.name = @SourceSchema
 ORDER BY t.name;
-
-SELECT
-    @UnsafeDboTargetList = STRING_AGG(CAST(QUOTENAME(source_table) AS nvarchar(max)), N', ')
-FROM @Work
-WHERE @TargetSchema = N'dbo'
-  AND source_table NOT LIKE N'%[_]backup%';
-
-IF @UnsafeDboTargetList IS NOT NULL AND LTRIM(RTRIM(@UnsafeDboTargetList)) <> N''
-BEGIN
-    SELECT @UnsafeDboTargetList AS UnsafeDboTargetTables;
-    THROW 50064, 'Refusing to create non-backup tables in dbo. Only _backup tables may be targeted in dbo.', 1;
-END;
 
 DECLARE
     @CurrentRow int = 1,
