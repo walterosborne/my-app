@@ -14,10 +14,14 @@ const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
     mode: 'production'
 });
-const auditDbUser = process.env.audituser || process.env.user || '';
-const auditDbPassword = process.env.auditpassword || process.env.password || '';
-const rosterDbUser = process.env.rosteruser || process.env.user || '';
-const rosterDbPassword = process.env.rosterpassword || process.env.password || '';
+const auditDbServer = process.env.auditserver || '';
+const auditDbDatabase = process.env.auditdb || '';
+const auditDbUser = process.env.audituser || '';
+const auditDbPassword = process.env.auditpassword || '';
+const rosterDbServer = process.env.server || '';
+const rosterDbDatabase = process.env.database || '';
+const rosterDbUser = process.env.user || '';
+const rosterDbPassword = process.env.password || '';
 
 console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
 console.log('[NGAT ENV] mssqlserver.js env present =', {
@@ -27,8 +31,6 @@ console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditpassword: Boolean(process.env.auditpassword),
     server: Boolean(process.env.server),
     database: Boolean(process.env.database),
-    rosteruser: Boolean(process.env.rosteruser),
-    rosterpassword: Boolean(process.env.rosterpassword),
     user: Boolean(process.env.user),
     password: Boolean(process.env.password),
     APP_BASE_URL: Boolean(process.env.APP_BASE_URL),
@@ -40,8 +42,8 @@ app.use(cors());
 app.use(express.json());
 
 const sqlConfig = {
-    server: process.env.auditserver || '',
-    database: process.env.auditdb || '',
+    server: auditDbServer,
+    database: auditDbDatabase,
     user: auditDbUser,
     password: auditDbPassword,
     options: {
@@ -51,8 +53,8 @@ const sqlConfig = {
 };
 
 const rosterConfig = {
-    server: process.env.server || '',
-    database: process.env.database || '',
+    server: rosterDbServer,
+    database: rosterDbDatabase,
     user: rosterDbUser,
     password: rosterDbPassword,
     options: {
@@ -1538,8 +1540,6 @@ app.get(['/api/healthz'], async (_req, res) => {
             auditpassword: Boolean(process.env.auditpassword),
             server: Boolean(process.env.server),
             database: Boolean(process.env.database),
-            rosteruser: Boolean(process.env.rosteruser),
-            rosterpassword: Boolean(process.env.rosterpassword),
             user: Boolean(process.env.user),
             password: Boolean(process.env.password)
         }
