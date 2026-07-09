@@ -70,6 +70,30 @@ export async function getSites() {
     return await fetchData('sites');
 }
 
+export async function getFoeSites(skipCache = false) {
+    return await fetchData('foe-sites', skipCache);
+}
+
+export async function getFoeAuditAreas(skipCache = false) {
+    return await fetchData('foe-audit-areas', skipCache);
+}
+
+export async function getFoeAuditors(skipCache = false) {
+    return await fetchData('foe-auditors', skipCache);
+}
+
+export async function getFoeCustomers(skipCache = false) {
+    return await fetchData('foe-customers', skipCache);
+}
+
+export async function getFoeDivisions(skipCache = false) {
+    return await fetchData('foe-divisions', skipCache);
+}
+
+export async function getFoeShifts(skipCache = false) {
+    return await fetchData('foe-shifts', skipCache);
+}
+
 export async function getBusinessUnits() {
     return await fetchData('business-units');
 }

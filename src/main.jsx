@@ -20,6 +20,7 @@ import Nonconformities from './Nonconformaties.jsx'
 import Calendar from './Calendar.jsx'
 import AdminMenu from './AdminMenu.jsx'
 import FOE from './FOE.jsx'
+import FoeAdminMenu from './FoeAdminMenu.jsx'
 import InfoSupport from './InfoSupport.jsx'
 import AuditStatuses from './AuditStatuses.jsx'
 import AuditReports from './AuditReports.jsx'
@@ -152,6 +153,8 @@ const getPageTitle = (location) => {
       return 'View Risk Analysis';
     case '/foe':
       return getFoeTitle(searchParams);
+    case '/foe/admin':
+      return 'FOE Admin Menu';
     case '/info-support':
       return 'Info and Support';
     case '/request-auditor-access':
@@ -253,6 +256,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
           <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
           <Route path="/foe" element={<FOE />} />
+          <Route path="/foe/admin" element={<FoeAdminMenu />} />
           <Route path="/info-support" element={<InfoSupport />} />
           <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
           <Route path="/submit-improvement" element={<ImprovementRequest />} />

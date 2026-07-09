@@ -2331,6 +2331,667 @@ startServer(PREFERRED_HOST);
 
 // ==================== LOOKUP TABLE ENDPOINTS ====================
 
+const mapFoeSiteRow = (row) => ({
+    siteId: row.siteid,
+    siteName: row.site,
+    parentDivisionId: row.parentdiv ?? null,
+    leadAuditorIds: Array.isArray(row.leadauditorids) ? row.leadauditorids : [],
+    auditorIds: Array.isArray(row.auditorids) ? row.auditorids : [],
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const mapFoeAuditAreaRow = (row) => ({
+    auditAreaId: row.auditareaid,
+    name: row.auditarea,
+    parentSiteId: row.parent,
+    team: row.team ?? '',
+    manager: row.manager ?? '',
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const parseFoeSiteIdArray = (value) => {
+    if (Array.isArray(value)) {
+        return value.map(Number).filter((siteId) => Number.isFinite(siteId));
+    }
+    if (value === null || value === undefined || value === '') {
+        return [];
+    }
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed)
+            ? parsed.map(Number).filter((siteId) => Number.isFinite(siteId))
+            : [];
+    } catch {
+        return [];
+    }
+};
+
+const normalizeFoeSiteIdArray = (siteIds) => {
+    if (!Array.isArray(siteIds)) {
+        return [];
+    }
+    return [...new Set(
+        siteIds
+            .map(Number)
+            .filter((siteId) => Number.isFinite(siteId))
+    )];
+};
+
+const mapFoeAuditorRow = (row) => ({
+    auditorId: row.userid,
+    myId: row.myid ?? '',
+    name: row.name ?? '',
+    approvedSiteIds: parseFoeSiteIdArray(row.approved),
+    leadSiteIds: parseFoeSiteIdArray(row.lead),
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const mapFoeCustomerRow = (row) => ({
+    customerId: row.customerid,
+    customerName: row.customer ?? '',
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const mapFoeDivisionRow = (row) => ({
+    divisionId: row.divisionid,
+    divisionName: row.division ?? '',
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const mapFoeShiftRow = (row) => ({
+    shiftId: row.shiftid,
+    shiftName: row.shift ?? '',
+    active: Number(row.archive ?? 0) === 1 ? 0 : 1
+});
+
+const getFoeSitesWithAssignments = async (queryRunner = pool) => {
+    const [sitesResult, auditorsResult] = await Promise.all([
+        queryRunner.query(`
+            SELECT [SiteID], [Site], [ParentDiv], [Archive]
+            FROM [dbo].[FodeSites]
+            ORDER BY [Site]
+        `),
+        queryRunner.query(`
+            SELECT [UserID], [Approved], [Lead]
+            FROM [dbo].[FodeAuditors]
+        `)
+    ]);
+
+    const normalizedAuditors = auditorsResult.rows.map((row) => ({
+        auditorId: Number(row.userid),
+        approvedSiteIds: parseFoeSiteIdArray(row.approved),
+        leadSiteIds: parseFoeSiteIdArray(row.lead)
+    }));
+
+    return sitesResult.rows.map((row) => mapFoeSiteRow({
+        ...row,
+        leadauditorids: normalizedAuditors
+            .filter((auditor) => auditor.leadSiteIds.includes(Number(row.siteid)))
+            .map((auditor) => auditor.auditorId),
+        auditorids: normalizedAuditors
+            .filter((auditor) => auditor.approvedSiteIds.includes(Number(row.siteid)))
+            .map((auditor) => auditor.auditorId)
+    }));
+};
+
+const syncFoeSiteAssignments = async (queryRunner, siteId, leadAuditorIds = [], auditorIds = []) => {
+    const normalizedSiteId = Number(siteId);
+    const leadAuditorSet = new Set(normalizeFoeSiteIdArray(leadAuditorIds));
+    const auditorSet = new Set(normalizeFoeSiteIdArray(auditorIds));
+    const auditorsResult = await queryRunner.query(`
+        SELECT [UserID], [Approved], [Lead]
+        FROM [dbo].[FodeAuditors]
+    `);
+
+    for (const row of auditorsResult.rows) {
+        const auditorId = Number(row.userid);
+        const currentApproved = parseFoeSiteIdArray(row.approved);
+        const currentLead = parseFoeSiteIdArray(row.lead);
+
+        const nextApproved = currentApproved.filter((currentSiteId) => currentSiteId !== normalizedSiteId);
+        if (auditorSet.has(auditorId)) {
+            nextApproved.push(normalizedSiteId);
+        }
+        nextApproved.sort((left, right) => left - right);
+
+        const nextLead = currentLead.filter((currentSiteId) => currentSiteId !== normalizedSiteId);
+        if (leadAuditorSet.has(auditorId)) {
+            nextLead.push(normalizedSiteId);
+        }
+        nextLead.sort((left, right) => left - right);
+
+        const approvedChanged = JSON.stringify(currentApproved) !== JSON.stringify(nextApproved);
+        const leadChanged = JSON.stringify(currentLead) !== JSON.stringify(nextLead);
+
+        if (!approvedChanged && !leadChanged) {
+            continue;
+        }
+
+        await queryRunner.query(`
+            UPDATE [dbo].[FodeAuditors]
+            SET [Approved] = $1,
+                [Lead] = $2
+            WHERE [UserID] = $3
+        `, [
+            JSON.stringify(nextApproved),
+            JSON.stringify(nextLead),
+            auditorId
+        ]);
+    }
+};
+
+app.get('/api/foe-sites', async (req, res) => {
+    try {
+        const result = await getFoeSitesWithAssignments();
+        res.json(result);
+    } catch (error) {
+        console.error('Error fetching FOE sites:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-sites', async (req, res) => {
+    const {
+        site,
+        parentDivisionId = null,
+        leadAuditorIds = [],
+        auditorIds = []
+    } = req.body;
+    if (!site || !String(site).trim()) {
+        return res.status(400).json({ success: false, error: 'site is required.' });
+    }
+
+    let transactionClient = null;
+    try {
+        transactionClient = await pool.connect();
+        await transactionClient.query('BEGIN');
+
+        const insert = await transactionClient.query(`
+            INSERT INTO [dbo].[FodeSites] ([Site], [ParentDiv], [Archive])
+            VALUES ($1, $2, $3)
+            RETURNING [SiteID]
+        `, [
+            String(site).trim(),
+            parentDivisionId ? Number(parentDivisionId) : null,
+            0
+        ]);
+
+        const createdSiteId = Number(insert.rows[0]?.siteid);
+        await syncFoeSiteAssignments(transactionClient, createdSiteId, leadAuditorIds, auditorIds);
+
+        await transactionClient.query('COMMIT');
+        transactionClient.release();
+        transactionClient = null;
+
+        const refreshedSites = await getFoeSitesWithAssignments();
+        const createdSite = refreshedSites.find((row) => Number(row.siteId) === createdSiteId);
+        res.status(201).json(createdSite || {
+            siteId: createdSiteId,
+            siteName: String(site).trim(),
+            parentDivisionId: parentDivisionId ? Number(parentDivisionId) : null,
+            leadAuditorIds: normalizeFoeSiteIdArray(leadAuditorIds),
+            auditorIds: normalizeFoeSiteIdArray(auditorIds),
+            active: 1
+        });
+    } catch (error) {
+        if (transactionClient) {
+            await rollbackTransaction(transactionClient, 'create FOE site');
+            transactionClient.release();
+        }
+        console.error('Error creating FOE site:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-sites/:siteId', async (req, res) => {
+    const { siteId } = req.params;
+    const {
+        site,
+        parentDivisionId = null,
+        leadAuditorIds = [],
+        auditorIds = [],
+        active
+    } = req.body;
+    if (!site || !String(site).trim()) {
+        return res.status(400).json({ success: false, error: 'site is required.' });
+    }
+
+    let transactionClient = null;
+    try {
+        transactionClient = await pool.connect();
+        await transactionClient.query('BEGIN');
+
+        const update = await transactionClient.query(`
+            UPDATE [dbo].[FodeSites]
+            SET [Site] = $1,
+                [ParentDiv] = $2,
+                [Archive] = $3
+            WHERE [SiteID] = $4
+            RETURNING [SiteID]
+        `, [
+            String(site).trim(),
+            parentDivisionId ? Number(parentDivisionId) : null,
+            Number(active ?? 1) === 1 ? 0 : 1,
+            Number(siteId)
+        ]);
+
+        if (update.rowCount === 0) {
+            await transactionClient.query('ROLLBACK');
+            transactionClient.release();
+            transactionClient = null;
+            return res.status(404).json({ success: false, error: 'FOE site not found.' });
+        }
+
+        await syncFoeSiteAssignments(transactionClient, Number(siteId), leadAuditorIds, auditorIds);
+
+        await transactionClient.query('COMMIT');
+        transactionClient.release();
+        transactionClient = null;
+
+        const refreshedSites = await getFoeSitesWithAssignments();
+        const updatedSite = refreshedSites.find((row) => Number(row.siteId) === Number(siteId));
+        res.json(updatedSite || {
+            siteId: Number(siteId),
+            siteName: String(site).trim(),
+            parentDivisionId: parentDivisionId ? Number(parentDivisionId) : null,
+            leadAuditorIds: normalizeFoeSiteIdArray(leadAuditorIds),
+            auditorIds: normalizeFoeSiteIdArray(auditorIds),
+            active: 1
+        });
+    } catch (error) {
+        if (transactionClient) {
+            await rollbackTransaction(transactionClient, 'update FOE site');
+            transactionClient.release();
+        }
+        console.error('Error updating FOE site:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/foe-audit-areas', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT [AuditAreaID], [AuditArea], [Parent], [Archive], [Team], [Manager]
+            FROM [dbo].[FodeAuditAreas]
+            ORDER BY [AuditArea]
+        `);
+        res.json(result.rows.map(mapFoeAuditAreaRow));
+    } catch (error) {
+        console.error('Error fetching FOE audit areas:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-audit-areas', async (req, res) => {
+    const { name, parentSiteId, team = '', manager = '' } = req.body;
+    if (!name || !String(name).trim() || !parentSiteId) {
+        return res.status(400).json({ success: false, error: 'name and parentSiteId are required.' });
+    }
+
+    try {
+        const insert = await pool.query(`
+            INSERT INTO [dbo].[FodeAuditAreas] ([AuditArea], [Parent], [Archive], [Team], [Manager])
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING [AuditAreaID], [AuditArea], [Parent], [Archive], [Team], [Manager]
+        `, [
+            String(name).trim(),
+            Number(parentSiteId),
+            0,
+            String(team ?? '').trim(),
+            String(manager ?? '').trim()
+        ]);
+
+        res.status(201).json(mapFoeAuditAreaRow(insert.rows[0]));
+    } catch (error) {
+        console.error('Error creating FOE audit area:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-audit-areas/:auditAreaId', async (req, res) => {
+    const { auditAreaId } = req.params;
+    const { name, parentSiteId, team = '', manager = '', active } = req.body;
+    if (!name || !String(name).trim() || !parentSiteId) {
+        return res.status(400).json({ success: false, error: 'name and parentSiteId are required.' });
+    }
+
+    try {
+        const update = await pool.query(`
+            UPDATE [dbo].[FodeAuditAreas]
+            SET [AuditArea] = $1,
+                [Parent] = $2,
+                [Archive] = $3,
+                [Team] = $4,
+                [Manager] = $5
+            WHERE [AuditAreaID] = $6
+            RETURNING [AuditAreaID], [AuditArea], [Parent], [Archive], [Team], [Manager]
+        `, [
+            String(name).trim(),
+            Number(parentSiteId),
+            Number(active ?? 1) === 1 ? 0 : 1,
+            String(team ?? '').trim(),
+            String(manager ?? '').trim(),
+            Number(auditAreaId)
+        ]);
+
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'FOE audit area not found.' });
+        }
+
+        res.json(mapFoeAuditAreaRow(update.rows[0]));
+    } catch (error) {
+        console.error('Error updating FOE audit area:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/foe-auditors', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT [UserID], [Name], [MyID], [Approved], [Lead], [Admin], [Archive]
+            FROM [dbo].[FodeAuditors]
+            ORDER BY [Name]
+        `);
+        res.json(result.rows.map(mapFoeAuditorRow));
+    } catch (error) {
+        console.error('Error fetching FOE auditors:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-auditors', async (req, res) => {
+    const { myId, name, approvedSiteIds = [] } = req.body;
+    if (!myId || !String(myId).trim() || !name || !String(name).trim()) {
+        return res.status(400).json({ success: false, error: 'myId and name are required.' });
+    }
+
+    const normalizedMyId = String(myId).trim();
+    const normalizedApprovedSiteIds = normalizeFoeSiteIdArray(approvedSiteIds);
+
+    try {
+        const existing = await pool.query(`
+            SELECT [UserID]
+            FROM [dbo].[FodeAuditors]
+            WHERE LOWER(TRIM([MyID])) = LOWER(TRIM($1))
+        `, [normalizedMyId]);
+
+        if (existing.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'The auditor with this MyID already exists.' });
+        }
+
+        const insert = await pool.query(`
+            INSERT INTO [dbo].[FodeAuditors] ([Name], [MyID], [Approved], [Lead], [Admin], [Archive])
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING [UserID], [Name], [MyID], [Approved], [Lead], [Admin], [Archive]
+        `, [
+            String(name).trim(),
+            normalizedMyId,
+            JSON.stringify(normalizedApprovedSiteIds),
+            '[]',
+            0,
+            0
+        ]);
+
+        res.status(201).json(mapFoeAuditorRow(insert.rows[0]));
+    } catch (error) {
+        console.error('Error creating FOE auditor:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-auditors/:auditorId', async (req, res) => {
+    const { auditorId } = req.params;
+    const { myId, name, approvedSiteIds = [], active } = req.body;
+    if (!myId || !String(myId).trim() || !name || !String(name).trim()) {
+        return res.status(400).json({ success: false, error: 'myId and name are required.' });
+    }
+
+    const normalizedMyId = String(myId).trim();
+    const normalizedApprovedSiteIds = normalizeFoeSiteIdArray(approvedSiteIds);
+
+    try {
+        const conflict = await pool.query(`
+            SELECT [UserID]
+            FROM [dbo].[FodeAuditors]
+            WHERE LOWER(TRIM([MyID])) = LOWER(TRIM($1))
+              AND [UserID] <> $2
+        `, [normalizedMyId, Number(auditorId)]);
+
+        if (conflict.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'The auditor with this MyID already exists.' });
+        }
+
+        const update = await pool.query(`
+            UPDATE [dbo].[FodeAuditors]
+            SET [MyID] = $1,
+                [Name] = $2,
+                [Approved] = $3,
+                [Archive] = $4
+            WHERE [UserID] = $5
+            RETURNING [UserID], [Name], [MyID], [Approved], [Lead], [Admin], [Archive]
+        `, [
+            normalizedMyId,
+            String(name).trim(),
+            JSON.stringify(normalizedApprovedSiteIds),
+            Number(active ?? 1) === 1 ? 0 : 1,
+            Number(auditorId)
+        ]);
+
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'FOE auditor not found.' });
+        }
+
+        res.json(mapFoeAuditorRow(update.rows[0]));
+    } catch (error) {
+        console.error('Error updating FOE auditor:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/foe-customers', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT [CustomerID], [Customer], [Archive]
+            FROM [dbo].[FodeCustomers]
+            ORDER BY [Customer]
+        `);
+        res.json(result.rows.map(mapFoeCustomerRow));
+    } catch (error) {
+        console.error('Error fetching FOE customers:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-customers', async (req, res) => {
+    const { customer } = req.body;
+    if (!customer || !String(customer).trim()) {
+        return res.status(400).json({ success: false, error: 'customer is required.' });
+    }
+
+    try {
+        const insert = await pool.query(`
+            INSERT INTO [dbo].[FodeCustomers] ([Customer], [Archive])
+            VALUES ($1, $2)
+            RETURNING [CustomerID], [Customer], [Archive]
+        `, [
+            String(customer).trim(),
+            0
+        ]);
+
+        res.status(201).json(mapFoeCustomerRow(insert.rows[0]));
+    } catch (error) {
+        console.error('Error creating FOE customer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-customers/:customerId', async (req, res) => {
+    const { customerId } = req.params;
+    const { customer, active } = req.body;
+    if (!customer || !String(customer).trim()) {
+        return res.status(400).json({ success: false, error: 'customer is required.' });
+    }
+
+    try {
+        const update = await pool.query(`
+            UPDATE [dbo].[FodeCustomers]
+            SET [Customer] = $1,
+                [Archive] = $2
+            WHERE [CustomerID] = $3
+            RETURNING [CustomerID], [Customer], [Archive]
+        `, [
+            String(customer).trim(),
+            Number(active ?? 1) === 1 ? 0 : 1,
+            Number(customerId)
+        ]);
+
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'FOE customer not found.' });
+        }
+
+        res.json(mapFoeCustomerRow(update.rows[0]));
+    } catch (error) {
+        console.error('Error updating FOE customer:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/foe-divisions', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT [DivisionID], [Division], [Archive]
+            FROM [dbo].[FodeDivisions]
+            ORDER BY [Division]
+        `);
+        res.json(result.rows.map(mapFoeDivisionRow));
+    } catch (error) {
+        console.error('Error fetching FOE divisions:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-divisions', async (req, res) => {
+    const { division } = req.body;
+    if (!division || !String(division).trim()) {
+        return res.status(400).json({ success: false, error: 'division is required.' });
+    }
+
+    try {
+        const insert = await pool.query(`
+            INSERT INTO [dbo].[FodeDivisions] ([Division], [Archive])
+            VALUES ($1, $2)
+            RETURNING [DivisionID], [Division], [Archive]
+        `, [
+            String(division).trim(),
+            0
+        ]);
+
+        res.status(201).json(mapFoeDivisionRow(insert.rows[0]));
+    } catch (error) {
+        console.error('Error creating FOE division:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-divisions/:divisionId', async (req, res) => {
+    const { divisionId } = req.params;
+    const { division, active } = req.body;
+    if (!division || !String(division).trim()) {
+        return res.status(400).json({ success: false, error: 'division is required.' });
+    }
+
+    try {
+        const update = await pool.query(`
+            UPDATE [dbo].[FodeDivisions]
+            SET [Division] = $1,
+                [Archive] = $2
+            WHERE [DivisionID] = $3
+            RETURNING [DivisionID], [Division], [Archive]
+        `, [
+            String(division).trim(),
+            Number(active ?? 1) === 1 ? 0 : 1,
+            Number(divisionId)
+        ]);
+
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'FOE division not found.' });
+        }
+
+        res.json(mapFoeDivisionRow(update.rows[0]));
+    } catch (error) {
+        console.error('Error updating FOE division:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.get('/api/foe-shifts', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT [ShiftID], [Shift], [Archive]
+            FROM [dbo].[FodeShifts]
+            ORDER BY [Shift]
+        `);
+        res.json(result.rows.map(mapFoeShiftRow));
+    } catch (error) {
+        console.error('Error fetching FOE shifts:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.post('/api/foe-shifts', async (req, res) => {
+    const { shift } = req.body;
+    if (!shift || !String(shift).trim()) {
+        return res.status(400).json({ success: false, error: 'shift is required.' });
+    }
+
+    try {
+        const insert = await pool.query(`
+            INSERT INTO [dbo].[FodeShifts] ([Shift], [Archive])
+            VALUES ($1, $2)
+            RETURNING [ShiftID], [Shift], [Archive]
+        `, [
+            String(shift).trim(),
+            0
+        ]);
+
+        res.status(201).json(mapFoeShiftRow(insert.rows[0]));
+    } catch (error) {
+        console.error('Error creating FOE shift:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+app.put('/api/foe-shifts/:shiftId', async (req, res) => {
+    const { shiftId } = req.params;
+    const { shift, active } = req.body;
+    if (!shift || !String(shift).trim()) {
+        return res.status(400).json({ success: false, error: 'shift is required.' });
+    }
+
+    try {
+        const update = await pool.query(`
+            UPDATE [dbo].[FodeShifts]
+            SET [Shift] = $1,
+                [Archive] = $2
+            WHERE [ShiftID] = $3
+            RETURNING [ShiftID], [Shift], [Archive]
+        `, [
+            String(shift).trim(),
+            Number(active ?? 1) === 1 ? 0 : 1,
+            Number(shiftId)
+        ]);
+
+        if (update.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'FOE shift not found.' });
+        }
+
+        res.json(mapFoeShiftRow(update.rows[0]));
+    } catch (error) {
+        console.error('Error updating FOE shift:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get all audit types
 app.get('/api/audit-types', async (req, res) => {
     try {

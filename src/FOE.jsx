@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './Entry.css';
 import foeLinks from './config/foeLinks.js';
 import { getCurrentUser } from './assets/data/apiData';
@@ -44,6 +44,10 @@ const FOE = () => {
   const iframeConfig = useMemo(() => getIframeConfig(type), [type, currentUser.myId]);
 
   const renderContent = () => {
+    if (type === 'admin') {
+      return <Navigate to="/foe/admin" replace />;
+    }
+
     if (!type) {
       return (
         <div className="entry-message">
@@ -71,7 +75,7 @@ const FOE = () => {
               {foeLinks.download.label}
             </button>
             <button
-              onClick={() => navigate('/foe?type=admin')}
+              onClick={() => navigate('/foe/admin')}
               className="button"
               style={{ backgroundColor: '#0066cc', width: '200px' }}
             >
