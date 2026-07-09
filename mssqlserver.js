@@ -2029,9 +2029,21 @@ app.get('/api/current-user', async (req, res) => {
                 networkId: null,
                 auditorId: null,
                 divisionId: null,
-                isAdmin: false
+                isAdmin: false,
+                isFoeAdmin: false
             });
         }
+
+        let isFoeAdmin = false;
+        if (row.myid) {
+            const foeAuditorResult = await pool.query(`
+                SELECT TOP 1 [Admin]
+                FROM [dbo].[FodeAuditors]
+                WHERE LOWER(TRIM([MyID])) = LOWER(TRIM($1))
+            `, [row.myid]);
+            isFoeAdmin = Number(foeAuditorResult.rows[0]?.admin ?? 0) === 1;
+        }
+
         res.json({
             name: row.rostername,
             myId: row.myid,
@@ -2040,7 +2052,8 @@ app.get('/api/current-user', async (req, res) => {
             divisionId: row.divisionid,
             programIds: normalizeNumberArray(row.programids),
             cuiApproved: Number(row.cuiapproved) === 1 ? 1 : 0,
-            isAdmin: Boolean(row.admin)
+            isAdmin: Boolean(row.admin),
+            isFoeAdmin
         });
     } catch (error) {
         console.error('Error fetching current user:', error);

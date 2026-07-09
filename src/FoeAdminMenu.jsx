@@ -1094,7 +1094,7 @@ const FoeAdminMenu = () => {
         );
     }
 
-    if (!currentUser.isAdmin) {
+    if (!currentUser.isFoeAdmin) {
         return (
             <div className="entry-page">
                 <div className="entry-container admin-card">
