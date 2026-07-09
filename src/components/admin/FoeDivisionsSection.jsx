@@ -5,16 +5,18 @@ const FoeDivisionsSection = ({
     actionOptions,
     selectedAction,
     onActionChange,
+    isEditMode,
     isNewMode,
-    isArchiveMode,
+    includeArchived,
+    onIncludeArchivedChange,
     divisions,
-    selectedDivision,
+    editingDivision,
     onSelectDivision,
     divisionInput,
     onDivisionChange,
     fieldErrors,
     onSubmit,
-    onArchive,
+    onArchiveToggle,
     onReset,
     submitting,
     message,
@@ -26,7 +28,7 @@ const FoeDivisionsSection = ({
                 <div>
                     <h3>Division Management</h3>
                     <p className="admin-section-subhead">
-                        Add new divisions or archive existing records.
+                        Add new divisions or update existing records.
                     </p>
                 </div>
                 <div className="admin-section-action-inline">
@@ -47,29 +49,48 @@ const FoeDivisionsSection = ({
                             ))}
                         </select>
                     </div>
+                    {isEditMode && (
+                        <label className="admin-include-archived">
+                            <input
+                                type="checkbox"
+                                checked={includeArchived}
+                                onChange={onIncludeArchivedChange}
+                            />
+                            Include archived divisions?
+                        </label>
+                    )}
                 </div>
             </div>
         </div>
-        {isArchiveMode && (
+        {isEditMode && (
             <div className="admin-edit-table-wrapper">
-                <p className="admin-editing-label">Select a division to archive</p>
+                <p className="admin-editing-label">Select a division to edit</p>
                 <AdminSelectionGrid
                     rows={divisions}
                     columns={[
-                        { field: 'divisionName', headerName: 'Division', flex: 1.5, minWidth: 220 }
+                        { field: 'divisionName', headerName: 'Division', flex: 1.5, minWidth: 220 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
                     ]}
                     getRowId={(row) => row.divisionId}
-                    selectedRowId={selectedDivision?.divisionId}
+                    selectedRowId={editingDivision?.divisionId}
                     onSelectRow={onSelectDivision}
                 />
             </div>
         )}
-        {isArchiveMode && selectedDivision && (
+        {isEditMode && editingDivision && (
             <p className="admin-editing-tag">
-                Currently selected: {selectedDivision.divisionName}
+                Currently editing: {editingDivision.divisionName}
             </p>
         )}
-        {isNewMode && (
+        {(isNewMode || (isEditMode && editingDivision)) && (
             <div className="admin-form">
                 <div className="admin-form-row">
                     <label htmlFor="foe-division-input" className="admin-label">
@@ -94,37 +115,24 @@ const FoeDivisionsSection = ({
                         disabled={submitting}
                         className="admin-primary"
                     >
-                        {submitting ? 'Adding Division...' : 'Add Division'}
+                        {submitting
+                            ? isEditMode
+                                ? 'Submitting Changes...'
+                                : 'Adding Division...'
+                            : isEditMode
+                                ? 'Submit Changes'
+                                : 'Add Division'}
                     </button>
-                    <button
-                        type="button"
-                        onClick={onReset}
-                        className="admin-secondary"
-                    >
-                        Reset
-                    </button>
-                </div>
-                {message && (
-                    <p className="admin-success">{message}</p>
-                )}
-                {error && (
-                    <p className="admin-field-error" style={{ marginTop: '0.2rem' }}>
-                        {error}
-                    </p>
-                )}
-            </div>
-        )}
-        {isArchiveMode && selectedDivision && (
-            <div className="admin-form" style={{ marginTop: 0 }}>
-                <div className="admin-button-row">
-                    <button
-                        type="button"
-                        onClick={onArchive}
-                        disabled={submitting}
-                        className="admin-warning"
-                    >
-                        {submitting ? 'Archiving Division...' : 'Archive Division'}
-                    </button>
+                    {isEditMode && editingDivision && (
+                        <button
+                            type="button"
+                            onClick={onArchiveToggle}
+                            disabled={submitting}
+                            className={editingDivision.active === 1 ? 'admin-warning' : 'admin-info'}
+                        >
+                            {editingDivision.active === 1 ? 'Archive Division' : 'Reactivate Division'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={onReset}

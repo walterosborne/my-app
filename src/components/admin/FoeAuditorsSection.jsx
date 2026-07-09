@@ -84,6 +84,7 @@ const FoeAuditorsSection = ({
                             flex: 1.8,
                             minWidth: 260,
                             sortable: false,
+                            valueGetter: (_value, row) => getSiteNames(row.approvedSiteIds),
                             renderCell: ({ row }) => getSiteNames(row.approvedSiteIds)
                         },
                         {
@@ -92,6 +93,7 @@ const FoeAuditorsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
                             renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
                         }
                     ]}

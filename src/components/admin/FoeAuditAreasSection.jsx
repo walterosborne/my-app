@@ -84,6 +84,7 @@ const FoeAuditAreasSection = ({
                             flex: 1.4,
                             minWidth: 220,
                             sortable: false,
+                            valueGetter: (_value, row) => getSiteLabelById(row.parentSiteId),
                             renderCell: ({ row }) => getSiteLabelById(row.parentSiteId)
                         },
                         { field: 'team', headerName: 'Team', flex: 1, minWidth: 160 },
@@ -94,6 +95,7 @@ const FoeAuditAreasSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
                             renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
                         }
                     ]}

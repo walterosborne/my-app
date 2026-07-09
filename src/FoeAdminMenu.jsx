@@ -13,9 +13,9 @@ import FoeSitesSection from './components/admin/FoeSitesSection';
 
 const DROPDOWN_OPTIONS = ['Edit Audit Areas', 'Edit Auditors', 'Edit Customers', 'Edit Divisions', 'Edit Shifts', 'Edit Sites'];
 const ACTION_OPTIONS = ['New', 'Edit'];
-const CUSTOMER_ACTION_OPTIONS = ['New', 'Archive'];
-const DIVISION_ACTION_OPTIONS = ['New', 'Archive'];
-const SHIFT_ACTION_OPTIONS = ['New', 'Archive'];
+const CUSTOMER_ACTION_OPTIONS = ['New', 'Edit'];
+const DIVISION_ACTION_OPTIONS = ['New', 'Edit'];
+const SHIFT_ACTION_OPTIONS = ['New', 'Edit'];
 const TOAST_OPTIONS = {
     progressStyle: { backgroundColor: '#f44336' },
     style: { borderLeft: '4px solid #f44336' }
@@ -55,6 +55,7 @@ const FoeAdminMenu = () => {
     const [foeCustomersList, setFoeCustomersList] = React.useState([]);
     const [selectedCustomerAction, setSelectedCustomerAction] = React.useState(CUSTOMER_ACTION_OPTIONS[0]);
     const [selectedFoeCustomer, setSelectedFoeCustomer] = React.useState(null);
+    const [includeArchivedFoeCustomers, setIncludeArchivedFoeCustomers] = React.useState(false);
     const [customerInput, setCustomerInput] = React.useState('');
     const [customerSubmissionMessage, setCustomerSubmissionMessage] = React.useState('');
     const [customerSubmissionError, setCustomerSubmissionError] = React.useState('');
@@ -63,6 +64,7 @@ const FoeAdminMenu = () => {
     const [foeDivisionsList, setFoeDivisionsList] = React.useState([]);
     const [selectedDivisionAction, setSelectedDivisionAction] = React.useState(DIVISION_ACTION_OPTIONS[0]);
     const [selectedFoeDivision, setSelectedFoeDivision] = React.useState(null);
+    const [includeArchivedFoeDivisions, setIncludeArchivedFoeDivisions] = React.useState(false);
     const [divisionInput, setDivisionInput] = React.useState('');
     const [divisionSubmissionMessage, setDivisionSubmissionMessage] = React.useState('');
     const [divisionSubmissionError, setDivisionSubmissionError] = React.useState('');
@@ -71,6 +73,7 @@ const FoeAdminMenu = () => {
     const [foeShiftsList, setFoeShiftsList] = React.useState([]);
     const [selectedShiftAction, setSelectedShiftAction] = React.useState(SHIFT_ACTION_OPTIONS[0]);
     const [selectedFoeShift, setSelectedFoeShift] = React.useState(null);
+    const [includeArchivedFoeShifts, setIncludeArchivedFoeShifts] = React.useState(false);
     const [shiftInput, setShiftInput] = React.useState('');
     const [shiftSubmissionMessage, setShiftSubmissionMessage] = React.useState('');
     const [shiftSubmissionError, setShiftSubmissionError] = React.useState('');
@@ -233,22 +236,28 @@ const FoeAdminMenu = () => {
     }, [sortedSites]);
 
     const visibleFoeCustomers = React.useMemo(() => {
-        return [...foeCustomersList]
-            .filter((customer) => (customer.active ?? 1) === 1)
-            .sort((a, b) => (a.customerName || '').localeCompare(b.customerName || ''));
-    }, [foeCustomersList]);
+        const sortedCustomers = [...foeCustomersList].sort((a, b) => (a.customerName || '').localeCompare(b.customerName || ''));
+        if (!includeArchivedFoeCustomers && selectedCustomerAction === 'Edit') {
+            return sortedCustomers.filter((customer) => (customer.active ?? 1) === 1);
+        }
+        return sortedCustomers;
+    }, [foeCustomersList, includeArchivedFoeCustomers, selectedCustomerAction]);
 
     const visibleFoeDivisions = React.useMemo(() => {
-        return [...foeDivisionsList]
-            .filter((division) => (division.active ?? 1) === 1)
-            .sort((a, b) => (a.divisionName || '').localeCompare(b.divisionName || ''));
-    }, [foeDivisionsList]);
+        const sortedDivisions = [...foeDivisionsList].sort((a, b) => (a.divisionName || '').localeCompare(b.divisionName || ''));
+        if (!includeArchivedFoeDivisions && selectedDivisionAction === 'Edit') {
+            return sortedDivisions.filter((division) => (division.active ?? 1) === 1);
+        }
+        return sortedDivisions;
+    }, [foeDivisionsList, includeArchivedFoeDivisions, selectedDivisionAction]);
 
     const visibleFoeShifts = React.useMemo(() => {
-        return [...foeShiftsList]
-            .filter((shift) => (shift.active ?? 1) === 1)
-            .sort((a, b) => (a.shiftName || '').localeCompare(b.shiftName || ''));
-    }, [foeShiftsList]);
+        const sortedShifts = [...foeShiftsList].sort((a, b) => (a.shiftName || '').localeCompare(b.shiftName || ''));
+        if (!includeArchivedFoeShifts && selectedShiftAction === 'Edit') {
+            return sortedShifts.filter((shift) => (shift.active ?? 1) === 1);
+        }
+        return sortedShifts;
+    }, [foeShiftsList, includeArchivedFoeShifts, selectedShiftAction]);
 
     const visibleFoeSites = React.useMemo(() => {
         const sortedVisibleSites = [...foeSitesList].sort((a, b) => (a.siteName || '').localeCompare(b.siteName || ''));
@@ -259,11 +268,14 @@ const FoeAdminMenu = () => {
     }, [foeSitesList, includeArchivedFoeSites, selectedAction]);
 
     const foeDivisionOptions = React.useMemo(() => {
-        return visibleFoeDivisions.map((division) => ({
-            value: Number(division.divisionId),
-            label: division.divisionName
-        }));
-    }, [visibleFoeDivisions]);
+        return [...foeDivisionsList]
+            .filter((division) => (division.active ?? 1) === 1)
+            .sort((a, b) => (a.divisionName || '').localeCompare(b.divisionName || ''))
+            .map((division) => ({
+                value: Number(division.divisionId),
+                label: division.divisionName
+            }));
+    }, [foeDivisionsList]);
 
     const foeAuditorOptions = React.useMemo(() => {
         return [...foeAuditorsList]
@@ -280,11 +292,11 @@ const FoeAdminMenu = () => {
     const isNewMode = selectedAction === 'New';
     const isEditMode = selectedAction === 'Edit';
     const isCustomerNewMode = selectedCustomerAction === 'New';
-    const isCustomerArchiveMode = selectedCustomerAction === 'Archive';
+    const isCustomerEditMode = selectedCustomerAction === 'Edit';
     const isDivisionNewMode = selectedDivisionAction === 'New';
-    const isDivisionArchiveMode = selectedDivisionAction === 'Archive';
+    const isDivisionEditMode = selectedDivisionAction === 'Edit';
     const isShiftNewMode = selectedShiftAction === 'New';
-    const isShiftArchiveMode = selectedShiftAction === 'Archive';
+    const isShiftEditMode = selectedShiftAction === 'Edit';
 
     const validateAuditAreaForm = React.useCallback(() => {
         const errors = {};
@@ -497,18 +509,24 @@ const FoeAdminMenu = () => {
 
     const handleSelectFoeCustomer = React.useCallback((customer) => {
         setSelectedFoeCustomer(customer);
+        setCustomerInput(customer.customerName ?? '');
+        setCustomerFieldErrors({});
         setCustomerSubmissionMessage('');
         setCustomerSubmissionError('');
     }, []);
 
     const handleSelectFoeDivision = React.useCallback((division) => {
         setSelectedFoeDivision(division);
+        setDivisionInput(division.divisionName ?? '');
+        setDivisionFieldErrors({});
         setDivisionSubmissionMessage('');
         setDivisionSubmissionError('');
     }, []);
 
     const handleSelectFoeShift = React.useCallback((shift) => {
         setSelectedFoeShift(shift);
+        setShiftInput(shift.shiftName ?? '');
+        setShiftFieldErrors({});
         setShiftSubmissionMessage('');
         setShiftSubmissionError('');
     }, []);
@@ -661,11 +679,16 @@ const FoeAdminMenu = () => {
             setCustomerSubmitting(true);
             setCustomerSubmissionError('');
             try {
-                const response = await fetch(`${API_BASE}/foe-customers`, {
-                    method: 'POST',
+                const endpoint = isCustomerEditMode && selectedFoeCustomer
+                    ? `${API_BASE}/foe-customers/${selectedFoeCustomer.customerId}`
+                    : `${API_BASE}/foe-customers`;
+                const method = isCustomerEditMode && selectedFoeCustomer ? 'PUT' : 'POST';
+                const response = await fetch(endpoint, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        customer: customerInput.trim()
+                        customer: customerInput.trim(),
+                        active: selectedFoeCustomer?.active ?? 1
                     })
                 });
                 if (!response.ok) {
@@ -675,9 +698,12 @@ const FoeAdminMenu = () => {
 
                 const refreshedCustomers = await getFoeCustomers(true);
                 setFoeCustomersList(Array.isArray(refreshedCustomers) ? refreshedCustomers : []);
-                const successMessage = 'Customer added successfully.';
+                const successMessage = isCustomerEditMode && selectedFoeCustomer
+                    ? 'Customer updated successfully.'
+                    : 'Customer added successfully.';
                 setCustomerSubmissionMessage(successMessage);
                 toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+                setSelectedFoeCustomer(null);
                 setCustomerInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE customer.';
@@ -690,9 +716,9 @@ const FoeAdminMenu = () => {
         };
 
         submitFoeCustomer();
-    }, [customerInput, validateFoeCustomerForm]);
+    }, [customerInput, isCustomerEditMode, selectedFoeCustomer, validateFoeCustomerForm]);
 
-    const handleArchiveFoeCustomer = React.useCallback(async () => {
+    const handleFoeCustomerArchiveToggle = React.useCallback(async () => {
         if (!selectedFoeCustomer) return;
         setCustomerSubmitting(true);
         setCustomerSubmissionError('');
@@ -702,29 +728,38 @@ const FoeAdminMenu = () => {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    customer: selectedFoeCustomer.customerName,
-                    active: 0
+                    customer: (customerInput.trim() || selectedFoeCustomer.customerName || '').trim(),
+                    active: selectedFoeCustomer.active === 1 ? 0 : 1
                 })
             });
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => null);
-                throw new Error(errorBody?.error || 'Failed to archive FOE customer.');
+                throw new Error(errorBody?.error || 'Failed to update FOE customer.');
             }
 
             const refreshedCustomers = await getFoeCustomers(true);
-            setFoeCustomersList(Array.isArray(refreshedCustomers) ? refreshedCustomers : []);
-            const successMessage = 'Customer archived.';
-            setCustomerSubmissionMessage(successMessage);
-            toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
-            setSelectedFoeCustomer(null);
+            const normalizedCustomers = Array.isArray(refreshedCustomers) ? refreshedCustomers : [];
+            setFoeCustomersList(normalizedCustomers);
+            const refreshedCustomer = normalizedCustomers.find(
+                (customer) => String(customer.customerId) === String(selectedFoeCustomer.customerId)
+            );
+            if (refreshedCustomer) {
+                setSelectedFoeCustomer(refreshedCustomer);
+                setCustomerInput(refreshedCustomer.customerName ?? '');
+                const successMessage = refreshedCustomer.active === 1
+                    ? 'Customer reactivated.'
+                    : 'Customer archived.';
+                setCustomerSubmissionMessage(successMessage);
+                toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+            }
         } catch (error) {
-            const errorMessage = error.message || 'Failed to archive FOE customer.';
+            const errorMessage = error.message || 'Failed to update FOE customer.';
             toast.error(errorMessage, TOAST_OPTIONS);
             setCustomerSubmissionError(errorMessage);
         } finally {
             setCustomerSubmitting(false);
         }
-    }, [selectedFoeCustomer]);
+    }, [customerInput, selectedFoeCustomer]);
 
     const handleSubmitFoeDivision = React.useCallback(() => {
         const submitFoeDivision = async () => {
@@ -739,11 +774,16 @@ const FoeAdminMenu = () => {
             setDivisionSubmitting(true);
             setDivisionSubmissionError('');
             try {
-                const response = await fetch(`${API_BASE}/foe-divisions`, {
-                    method: 'POST',
+                const endpoint = isDivisionEditMode && selectedFoeDivision
+                    ? `${API_BASE}/foe-divisions/${selectedFoeDivision.divisionId}`
+                    : `${API_BASE}/foe-divisions`;
+                const method = isDivisionEditMode && selectedFoeDivision ? 'PUT' : 'POST';
+                const response = await fetch(endpoint, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        division: divisionInput.trim()
+                        division: divisionInput.trim(),
+                        active: selectedFoeDivision?.active ?? 1
                     })
                 });
                 if (!response.ok) {
@@ -753,9 +793,12 @@ const FoeAdminMenu = () => {
 
                 const refreshedDivisions = await getFoeDivisions(true);
                 setFoeDivisionsList(Array.isArray(refreshedDivisions) ? refreshedDivisions : []);
-                const successMessage = 'Division added successfully.';
+                const successMessage = isDivisionEditMode && selectedFoeDivision
+                    ? 'Division updated successfully.'
+                    : 'Division added successfully.';
                 setDivisionSubmissionMessage(successMessage);
                 toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+                setSelectedFoeDivision(null);
                 setDivisionInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE division.';
@@ -768,9 +811,9 @@ const FoeAdminMenu = () => {
         };
 
         submitFoeDivision();
-    }, [divisionInput, validateFoeDivisionForm]);
+    }, [divisionInput, isDivisionEditMode, selectedFoeDivision, validateFoeDivisionForm]);
 
-    const handleArchiveFoeDivision = React.useCallback(async () => {
+    const handleFoeDivisionArchiveToggle = React.useCallback(async () => {
         if (!selectedFoeDivision) return;
         setDivisionSubmitting(true);
         setDivisionSubmissionError('');
@@ -780,29 +823,38 @@ const FoeAdminMenu = () => {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    division: selectedFoeDivision.divisionName,
-                    active: 0
+                    division: (divisionInput.trim() || selectedFoeDivision.divisionName || '').trim(),
+                    active: selectedFoeDivision.active === 1 ? 0 : 1
                 })
             });
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => null);
-                throw new Error(errorBody?.error || 'Failed to archive FOE division.');
+                throw new Error(errorBody?.error || 'Failed to update FOE division.');
             }
 
             const refreshedDivisions = await getFoeDivisions(true);
-            setFoeDivisionsList(Array.isArray(refreshedDivisions) ? refreshedDivisions : []);
-            const successMessage = 'Division archived.';
-            setDivisionSubmissionMessage(successMessage);
-            toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
-            setSelectedFoeDivision(null);
+            const normalizedDivisions = Array.isArray(refreshedDivisions) ? refreshedDivisions : [];
+            setFoeDivisionsList(normalizedDivisions);
+            const refreshedDivision = normalizedDivisions.find(
+                (division) => String(division.divisionId) === String(selectedFoeDivision.divisionId)
+            );
+            if (refreshedDivision) {
+                setSelectedFoeDivision(refreshedDivision);
+                setDivisionInput(refreshedDivision.divisionName ?? '');
+                const successMessage = refreshedDivision.active === 1
+                    ? 'Division reactivated.'
+                    : 'Division archived.';
+                setDivisionSubmissionMessage(successMessage);
+                toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+            }
         } catch (error) {
-            const errorMessage = error.message || 'Failed to archive FOE division.';
+            const errorMessage = error.message || 'Failed to update FOE division.';
             toast.error(errorMessage, TOAST_OPTIONS);
             setDivisionSubmissionError(errorMessage);
         } finally {
             setDivisionSubmitting(false);
         }
-    }, [selectedFoeDivision]);
+    }, [divisionInput, selectedFoeDivision]);
 
     const handleSubmitFoeShift = React.useCallback(() => {
         const submitFoeShift = async () => {
@@ -817,11 +869,16 @@ const FoeAdminMenu = () => {
             setShiftSubmitting(true);
             setShiftSubmissionError('');
             try {
-                const response = await fetch(`${API_BASE}/foe-shifts`, {
-                    method: 'POST',
+                const endpoint = isShiftEditMode && selectedFoeShift
+                    ? `${API_BASE}/foe-shifts/${selectedFoeShift.shiftId}`
+                    : `${API_BASE}/foe-shifts`;
+                const method = isShiftEditMode && selectedFoeShift ? 'PUT' : 'POST';
+                const response = await fetch(endpoint, {
+                    method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        shift: shiftInput.trim()
+                        shift: shiftInput.trim(),
+                        active: selectedFoeShift?.active ?? 1
                     })
                 });
                 if (!response.ok) {
@@ -831,9 +888,12 @@ const FoeAdminMenu = () => {
 
                 const refreshedShifts = await getFoeShifts(true);
                 setFoeShiftsList(Array.isArray(refreshedShifts) ? refreshedShifts : []);
-                const successMessage = 'Shift added successfully.';
+                const successMessage = isShiftEditMode && selectedFoeShift
+                    ? 'Shift updated successfully.'
+                    : 'Shift added successfully.';
                 setShiftSubmissionMessage(successMessage);
                 toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+                setSelectedFoeShift(null);
                 setShiftInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE shift.';
@@ -846,9 +906,9 @@ const FoeAdminMenu = () => {
         };
 
         submitFoeShift();
-    }, [shiftInput, validateFoeShiftForm]);
+    }, [isShiftEditMode, selectedFoeShift, shiftInput, validateFoeShiftForm]);
 
-    const handleArchiveFoeShift = React.useCallback(async () => {
+    const handleFoeShiftArchiveToggle = React.useCallback(async () => {
         if (!selectedFoeShift) return;
         setShiftSubmitting(true);
         setShiftSubmissionError('');
@@ -858,29 +918,38 @@ const FoeAdminMenu = () => {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    shift: selectedFoeShift.shiftName,
-                    active: 0
+                    shift: (shiftInput.trim() || selectedFoeShift.shiftName || '').trim(),
+                    active: selectedFoeShift.active === 1 ? 0 : 1
                 })
             });
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => null);
-                throw new Error(errorBody?.error || 'Failed to archive FOE shift.');
+                throw new Error(errorBody?.error || 'Failed to update FOE shift.');
             }
 
             const refreshedShifts = await getFoeShifts(true);
-            setFoeShiftsList(Array.isArray(refreshedShifts) ? refreshedShifts : []);
-            const successMessage = 'Shift archived.';
-            setShiftSubmissionMessage(successMessage);
-            toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
-            setSelectedFoeShift(null);
+            const normalizedShifts = Array.isArray(refreshedShifts) ? refreshedShifts : [];
+            setFoeShiftsList(normalizedShifts);
+            const refreshedShift = normalizedShifts.find(
+                (shift) => String(shift.shiftId) === String(selectedFoeShift.shiftId)
+            );
+            if (refreshedShift) {
+                setSelectedFoeShift(refreshedShift);
+                setShiftInput(refreshedShift.shiftName ?? '');
+                const successMessage = refreshedShift.active === 1
+                    ? 'Shift reactivated.'
+                    : 'Shift archived.';
+                setShiftSubmissionMessage(successMessage);
+                toast.success(successMessage, SUCCESS_TOAST_OPTIONS);
+            }
         } catch (error) {
-            const errorMessage = error.message || 'Failed to archive FOE shift.';
+            const errorMessage = error.message || 'Failed to update FOE shift.';
             toast.error(errorMessage, TOAST_OPTIONS);
             setShiftSubmissionError(errorMessage);
         } finally {
             setShiftSubmitting(false);
         }
-    }, [selectedFoeShift]);
+    }, [selectedFoeShift, shiftInput]);
 
     const handleSubmitFoeSite = React.useCallback(() => {
         const submitFoeSite = async () => {
@@ -1161,10 +1230,12 @@ const FoeAdminMenu = () => {
                         actionOptions={CUSTOMER_ACTION_OPTIONS}
                         selectedAction={selectedCustomerAction}
                         onActionChange={(event) => setSelectedCustomerAction(event.target.value)}
+                        isEditMode={isCustomerEditMode}
                         isNewMode={isCustomerNewMode}
-                        isArchiveMode={isCustomerArchiveMode}
+                        includeArchived={includeArchivedFoeCustomers}
+                        onIncludeArchivedChange={(event) => setIncludeArchivedFoeCustomers(event.target.checked)}
                         customers={visibleFoeCustomers}
-                        selectedCustomer={selectedFoeCustomer}
+                        editingCustomer={selectedFoeCustomer}
                         onSelectCustomer={handleSelectFoeCustomer}
                         customerInput={customerInput}
                         onCustomerChange={(event) => {
@@ -1173,7 +1244,7 @@ const FoeAdminMenu = () => {
                         }}
                         fieldErrors={customerFieldErrors}
                         onSubmit={handleSubmitFoeCustomer}
-                        onArchive={handleArchiveFoeCustomer}
+                        onArchiveToggle={handleFoeCustomerArchiveToggle}
                         onReset={resetFoeCustomerForm}
                         submitting={customerSubmitting}
                         message={customerSubmissionMessage}
@@ -1185,10 +1256,12 @@ const FoeAdminMenu = () => {
                         actionOptions={DIVISION_ACTION_OPTIONS}
                         selectedAction={selectedDivisionAction}
                         onActionChange={(event) => setSelectedDivisionAction(event.target.value)}
+                        isEditMode={isDivisionEditMode}
                         isNewMode={isDivisionNewMode}
-                        isArchiveMode={isDivisionArchiveMode}
+                        includeArchived={includeArchivedFoeDivisions}
+                        onIncludeArchivedChange={(event) => setIncludeArchivedFoeDivisions(event.target.checked)}
                         divisions={visibleFoeDivisions}
-                        selectedDivision={selectedFoeDivision}
+                        editingDivision={selectedFoeDivision}
                         onSelectDivision={handleSelectFoeDivision}
                         divisionInput={divisionInput}
                         onDivisionChange={(event) => {
@@ -1197,7 +1270,7 @@ const FoeAdminMenu = () => {
                         }}
                         fieldErrors={divisionFieldErrors}
                         onSubmit={handleSubmitFoeDivision}
-                        onArchive={handleArchiveFoeDivision}
+                        onArchiveToggle={handleFoeDivisionArchiveToggle}
                         onReset={resetFoeDivisionForm}
                         submitting={divisionSubmitting}
                         message={divisionSubmissionMessage}
@@ -1209,10 +1282,12 @@ const FoeAdminMenu = () => {
                         actionOptions={SHIFT_ACTION_OPTIONS}
                         selectedAction={selectedShiftAction}
                         onActionChange={(event) => setSelectedShiftAction(event.target.value)}
+                        isEditMode={isShiftEditMode}
                         isNewMode={isShiftNewMode}
-                        isArchiveMode={isShiftArchiveMode}
+                        includeArchived={includeArchivedFoeShifts}
+                        onIncludeArchivedChange={(event) => setIncludeArchivedFoeShifts(event.target.checked)}
                         shifts={visibleFoeShifts}
-                        selectedShift={selectedFoeShift}
+                        editingShift={selectedFoeShift}
                         onSelectShift={handleSelectFoeShift}
                         shiftInput={shiftInput}
                         onShiftChange={(event) => {
@@ -1221,7 +1296,7 @@ const FoeAdminMenu = () => {
                         }}
                         fieldErrors={shiftFieldErrors}
                         onSubmit={handleSubmitFoeShift}
-                        onArchive={handleArchiveFoeShift}
+                        onArchiveToggle={handleFoeShiftArchiveToggle}
                         onReset={resetFoeShiftForm}
                         submitting={shiftSubmitting}
                         message={shiftSubmissionMessage}

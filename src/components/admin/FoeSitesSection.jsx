@@ -85,6 +85,7 @@ const FoeSitesSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
                             renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
                         }
                     ]}

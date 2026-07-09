@@ -5,16 +5,18 @@ const FoeShiftsSection = ({
     actionOptions,
     selectedAction,
     onActionChange,
+    isEditMode,
     isNewMode,
-    isArchiveMode,
+    includeArchived,
+    onIncludeArchivedChange,
     shifts,
-    selectedShift,
+    editingShift,
     onSelectShift,
     shiftInput,
     onShiftChange,
     fieldErrors,
     onSubmit,
-    onArchive,
+    onArchiveToggle,
     onReset,
     submitting,
     message,
@@ -26,7 +28,7 @@ const FoeShiftsSection = ({
                 <div>
                     <h3>Shift Management</h3>
                     <p className="admin-section-subhead">
-                        Add new shifts or archive existing records.
+                        Add new shifts or update existing records.
                     </p>
                 </div>
                 <div className="admin-section-action-inline">
@@ -47,29 +49,48 @@ const FoeShiftsSection = ({
                             ))}
                         </select>
                     </div>
+                    {isEditMode && (
+                        <label className="admin-include-archived">
+                            <input
+                                type="checkbox"
+                                checked={includeArchived}
+                                onChange={onIncludeArchivedChange}
+                            />
+                            Include archived shifts?
+                        </label>
+                    )}
                 </div>
             </div>
         </div>
-        {isArchiveMode && (
+        {isEditMode && (
             <div className="admin-edit-table-wrapper">
-                <p className="admin-editing-label">Select a shift to archive</p>
+                <p className="admin-editing-label">Select a shift to edit</p>
                 <AdminSelectionGrid
                     rows={shifts}
                     columns={[
-                        { field: 'shiftName', headerName: 'Shift', flex: 1.5, minWidth: 220 }
+                        { field: 'shiftName', headerName: 'Shift', flex: 1.5, minWidth: 220 },
+                        {
+                            field: 'status',
+                            headerName: 'Status',
+                            flex: 0.9,
+                            minWidth: 140,
+                            sortable: false,
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                        }
                     ]}
                     getRowId={(row) => row.shiftId}
-                    selectedRowId={selectedShift?.shiftId}
+                    selectedRowId={editingShift?.shiftId}
                     onSelectRow={onSelectShift}
                 />
             </div>
         )}
-        {isArchiveMode && selectedShift && (
+        {isEditMode && editingShift && (
             <p className="admin-editing-tag">
-                Currently selected: {selectedShift.shiftName}
+                Currently editing: {editingShift.shiftName}
             </p>
         )}
-        {isNewMode && (
+        {(isNewMode || (isEditMode && editingShift)) && (
             <div className="admin-form">
                 <div className="admin-form-row">
                     <label htmlFor="foe-shift-input" className="admin-label">
@@ -94,37 +115,24 @@ const FoeShiftsSection = ({
                         disabled={submitting}
                         className="admin-primary"
                     >
-                        {submitting ? 'Adding Shift...' : 'Add Shift'}
+                        {submitting
+                            ? isEditMode
+                                ? 'Submitting Changes...'
+                                : 'Adding Shift...'
+                            : isEditMode
+                                ? 'Submit Changes'
+                                : 'Add Shift'}
                     </button>
-                    <button
-                        type="button"
-                        onClick={onReset}
-                        className="admin-secondary"
-                    >
-                        Reset
-                    </button>
-                </div>
-                {message && (
-                    <p className="admin-success">{message}</p>
-                )}
-                {error && (
-                    <p className="admin-field-error" style={{ marginTop: '0.2rem' }}>
-                        {error}
-                    </p>
-                )}
-            </div>
-        )}
-        {isArchiveMode && selectedShift && (
-            <div className="admin-form" style={{ marginTop: 0 }}>
-                <div className="admin-button-row">
-                    <button
-                        type="button"
-                        onClick={onArchive}
-                        disabled={submitting}
-                        className="admin-warning"
-                    >
-                        {submitting ? 'Archiving Shift...' : 'Archive Shift'}
-                    </button>
+                    {isEditMode && editingShift && (
+                        <button
+                            type="button"
+                            onClick={onArchiveToggle}
+                            disabled={submitting}
+                            className={editingShift.active === 1 ? 'admin-warning' : 'admin-info'}
+                        >
+                            {editingShift.active === 1 ? 'Archive Shift' : 'Reactivate Shift'}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={onReset}
