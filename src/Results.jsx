@@ -192,6 +192,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [deletedPEQs, setDeletedPEQs] = useState(new Set());
   const [selectedAudit, setSelectedAudit] = useState(null);
   const isViewOnly = Boolean(selectedAudit?.scheduleId && selectedAudit?.canEdit === false);
+  const [accessBlock, setAccessBlock] = useState(null);
   const [standardAdditional, setStandardAdditional] = useState({});
   const [deletedStandardQuestions, setDeletedStandardQuestions] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
@@ -210,13 +211,15 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const fileInputRef = useRef(null);
   const lastSelectedScheduleRef = useRef(null);
   const readOnlyToastRef = useRef(null);
+  const accessErrorToastRef = useRef(null);
   const uploadErrorToastIdRef = useRef('auditor-file-upload-error');
   const submitIntentRef = useRef('save');
   const skipNextFormResetRef = useRef(0);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const oversizedUploadFiles = uploadFiles.filter((file) => file.size > MAX_UPLOAD_BYTES);
   const isUploadTooLarge = oversizedUploadFiles.length > 0;
-  const readOnlyStyle = isViewOnly ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
+  const isCuiQuestionsBlocked = accessBlock?.kind === 'cui';
+  const readOnlyStyle = (isViewOnly || isCuiQuestionsBlocked) ? { pointerEvents: 'none', opacity: 0.65 } : undefined;
   const [rowSelectionModel, setRowSelectionModel] = useState({
     type: 'include',
     ids: new Set()
@@ -256,6 +259,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     toast.info(`You are not assigned as an auditor on audit ${selectedAudit.scheduleId}. Entry fields are view-only.`);
     readOnlyToastRef.current = selectedAudit.scheduleId;
   }, [isViewOnly, selectedAudit]);
+
+  useEffect(() => {
+    const accessKey = accessBlock && selectedAudit?.scheduleId
+      ? `${selectedAudit.scheduleId}:${accessBlock.kind}`
+      : null;
+
+    if (!accessKey) {
+      accessErrorToastRef.current = null;
+      return;
+    }
+
+    if (accessErrorToastRef.current === accessKey) return;
+
+    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+      progressStyle: { backgroundColor: '#f44336' },
+      style: { borderLeft: '4px solid #f44336' }
+    });
+
+    accessErrorToastRef.current = accessKey;
+  }, [accessBlock, selectedAudit?.scheduleId]);
 
   // State for lookup data from API
   const [programsList, setProgramsList] = useState([]);
@@ -625,11 +648,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
     async function fetchNonconformances() {
       if (!selectedAudit?.scheduleId) {
+        setAccessBlock(null);
         setEveryTimeQuestionsList([]);
         setNonconformances([]);
         return;
       }
 
+      setAccessBlock(null);
       setEveryTimeQuestionsList([]);
       setNonconformances([]);
 
@@ -655,6 +680,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         }
 
         if (!ncResponse.ok) {
+          const isCuiDenied = ncResponse.status === 403 && data?.code === 'CUI_ACCESS_DENIED';
+          if (ncResponse.status === 403 || ncResponse.status === 404) {
+            setAccessBlock({
+              kind: isCuiDenied ? 'cui' : 'forbidden',
+              message: data?.error || 'You do not have access to this audit.'
+            });
+          }
           throw new Error(data?.error || `Failed to load nonconformances (HTTP ${ncResponse.status}).`);
         }
 
@@ -662,6 +694,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           throw new Error('Nonconformances response was not an array.');
         }
 
+        setAccessBlock(null);
         const validEtqQuestions = new Set(etqList.map((question) => question.question));
         const convertedCount = data.filter(
           (nc) => nc.type === 'ETQ' && !validEtqQuestions.has(nc.question)
@@ -1798,7 +1831,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                 </>
               )}
             </div>
-            {schedule && (auditLocked ?
+            {schedule && accessBlock && accessBlock.kind !== 'cui' ? (
+              <>
+                <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                  {accessBlock.message || 'You do not have access to this audit.'}
+                </h2>
+              </>
+            ) : schedule && (auditLocked ?
               <>
                 <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
                   Audit {schedule.scheduleId} has been submitted for final approval and cannot be edited.
@@ -1845,37 +1884,39 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                     </p>
                   )}
                   <div style={readOnlyStyle}>
-                  <div className="admin-edit-table-wrapper" style={{ marginTop: '12px' }}>
-                    <p className="admin-editing-label">Existing Findings and Nonconformities</p>
-                    <div className="admin-edit-table-scroll">
-                      <table className="admin-edit-table">
-                        <thead>
-                          <tr>
-                            <th>Question</th>
-                            <th>Type</th>
-                            <th>Finding Type</th>
-                            <th>Comment</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {existingFindingsRows.length === 0 ? (
+                  {!isCuiQuestionsBlocked && (
+                    <div className="admin-edit-table-wrapper" style={{ marginTop: '12px' }}>
+                      <p className="admin-editing-label">Existing Findings and Nonconformities</p>
+                      <div className="admin-edit-table-scroll">
+                        <table className="admin-edit-table">
+                          <thead>
                             <tr>
-                              <td colSpan={4}>No findings recorded yet.</td>
+                              <th>Question</th>
+                              <th>Type</th>
+                              <th>Finding Type</th>
+                              <th>Comment</th>
                             </tr>
-                          ) : (
-                            existingFindingsRows.map((row) => (
-                              <tr key={row.id}>
-                                <td>{row.question}</td>
-                                <td>{row.type}</td>
-                                <td>{row.findingType}</td>
-                                <td>{row.comment}</td>
+                          </thead>
+                          <tbody>
+                            {existingFindingsRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={4}>No findings recorded yet.</td>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
+                            ) : (
+                              existingFindingsRows.map((row) => (
+                                <tr key={row.id}>
+                                  <td>{row.question}</td>
+                                  <td>{row.type}</td>
+                                  <td>{row.findingType}</td>
+                                  <td>{row.comment}</td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <div className='section'>
                     <label className='sectiontitle'>Overview</label>
                     <div className='sectionrow'>
@@ -2066,205 +2107,216 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                     </div>
 
                   </div>
-                  <div className='section'>
-                    <label className='sectiontitle'>Process Evaluation Questions</label>
-                    {Array.from({ length: newPEQs }, (_, index) => {
-                      // Don't render deleted PEQs
-                      if (deletedPEQs.has(index)) return null;
+                  {isCuiQuestionsBlocked ? (
+                    <>
+                      <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
+                        {accessBlock.message || 'This audit is marked CUI. You are not CUI approved and cannot view its questions.'}
+                      </h2>
+                      <p style={{ fontSize: '14px', color: '#666', marginTop: '10px' }}>
+                        You can view the Overview and Process Evaluation (PE) Introduction above, but the audit questions are hidden until you are CUI approved.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className='section'>
+                        <label className='sectiontitle'>Process Evaluation Questions</label>
+                        {Array.from({ length: newPEQs }, (_, index) => {
+                          // Don't render deleted PEQs
+                          if (deletedPEQs.has(index)) return null;
 
-                      return (
-                        <div key={index} style={{ width: '100%' }}>
-                          <div className='peq'>
-                            <div className="fieldboxwhole">
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                <label style={{ margin: 0, alignSelf: 'center' }}>Process Evaluation Question {index + 1}</label>
-                                <button
-                                  type="button"
-                                  onClick={() => deletePEQ(index)}
-                                  style={{
-                                    background: '#f44336',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                    padding: '6px 16px',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: 'bold',
-                                    whiteSpace: 'nowrap'
-                                  }}
-                                >
-                                  × Delete
-                                </button>
-                              </div>
-                              <textarea
-                                {...register(`peqQuestion${index}`)}
-                                style={{ width: '100%', height: '80px', resize: 'vertical' }}
-                                id={`peqQuestion${index}`}
-                                className='textfield'
-                                placeholder="Enter your question here..."
-                              />
-                            </div>
-                            <div className="fieldboxwhole">
-                              <label>Finding Type</label>
-                              <Controller
-                                name={`findingType${index}`}
-                                control={control}
-                                render={({ field }) => (
-                                  <ToggleButtonGroup
-                                    {...field}
-                                    exclusive
-                                    onChange={(event, newValue) => {
-                                      if (newValue !== null) {
-                                        field.onChange(newValue);
-                                      }
-                                    }}
-                                    aria-label="finding type"
-                                  >
-                                    <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                      Nonconformity
-                                    </ToggleButton>
-                                    <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                      Conformity
-                                    </ToggleButton>
-                                    <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                      OFI
-                                    </ToggleButton>
-                                    <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                      OBS
-                                    </ToggleButton>
-                                  </ToggleButtonGroup>
-                                )}
-                              />
-                            </div>
-                            <div className='sectionrow'>
-                              <div className="fieldboxhalf">
-                                <label>Auditor Comment</label>
-                                <textarea
-                                  {...register(`auditorComment${index}`)}
-                                  style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                  id={`auditorComment${index}`}
-                                  className='textfield'
-                                />
-                              </div>
-                              <div className="fieldboxhalf">
-                                <label>Auditee Response</label>
-                                <textarea
-                                  {...register(`auditeeResponse${index}`)}
-                                  style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                  id={`auditeeResponse${index}`}
-                                  className='textfield'
-                                />
-                              </div>
-                            </div>
-                            <div className='sectionrow'>
-                              <div className="fieldboxquarter">
-                                <label>Corporate PrOP</label>
-                                <Controller
-                                  name={`prOPCorporate${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <Select
-                                      isClearable
-                                      isMulti
-                                      options={corporatePrOPOptions}
-                                      styles={customStyles}
-                                      placeholder="Corporate"
-                                      value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                      onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                          return (
+                            <div key={index} style={{ width: '100%' }}>
+                              <div className='peq'>
+                                <div className="fieldboxwhole">
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                    <label style={{ margin: 0, alignSelf: 'center' }}>Process Evaluation Question {index + 1}</label>
+                                    <button
+                                      type="button"
+                                      onClick={() => deletePEQ(index)}
+                                      style={{
+                                        background: '#f44336',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        padding: '6px 16px',
+                                        cursor: 'pointer',
+                                        fontSize: '12px',
+                                        fontWeight: 'bold',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      × Delete
+                                    </button>
+                                  </div>
+                                  <textarea
+                                    {...register(`peqQuestion${index}`)}
+                                    style={{ width: '100%', height: '80px', resize: 'vertical' }}
+                                    id={`peqQuestion${index}`}
+                                    className='textfield'
+                                    placeholder="Enter your question here..."
+                                  />
+                                </div>
+                                <div className="fieldboxwhole">
+                                  <label>Finding Type</label>
+                                  <Controller
+                                    name={`findingType${index}`}
+                                    control={control}
+                                    render={({ field }) => (
+                                      <ToggleButtonGroup
+                                        {...field}
+                                        exclusive
+                                        onChange={(event, newValue) => {
+                                          if (newValue !== null) {
+                                            field.onChange(newValue);
+                                          }
+                                        }}
+                                        aria-label="finding type"
+                                      >
+                                        <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
+                                          Nonconformity
+                                        </ToggleButton>
+                                        <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
+                                          Conformity
+                                        </ToggleButton>
+                                        <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
+                                          OFI
+                                        </ToggleButton>
+                                        <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
+                                          OBS
+                                        </ToggleButton>
+                                      </ToggleButtonGroup>
+                                    )}
+                                  />
+                                </div>
+                                <div className='sectionrow'>
+                                  <div className="fieldboxhalf">
+                                    <label>Auditor Comment</label>
+                                    <textarea
+                                      {...register(`auditorComment${index}`)}
+                                      style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                      id={`auditorComment${index}`}
+                                      className='textfield'
                                     />
-                                  )}
-                                />
-                              </div>
-                              <div className="fieldboxquarter">
-                                <label>Sector PrOP</label>
-                                <Controller
-                                  name={`prOPSector${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <Select
-                                      isClearable
-                                      isMulti
-                                      options={sectorPrOPOptions}
-                                      styles={customStyles}
-                                      placeholder="Sector"
-                                      value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                      onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                  </div>
+                                  <div className="fieldboxhalf">
+                                    <label>Auditee Response</label>
+                                    <textarea
+                                      {...register(`auditeeResponse${index}`)}
+                                      style={{ width: '100%', height: '100px', resize: 'vertical' }}
+                                      id={`auditeeResponse${index}`}
+                                      className='textfield'
                                     />
-                                  )}
-                                />
-                              </div>
-                              <div className="fieldboxquarter">
-                                <label>Division PrOP</label>
-                                <Controller
-                                  name={`prOPDivision${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <Select
-                                      isClearable
-                                      isMulti
-                                      options={divisionPrOPOptions}
-                                      styles={customStyles}
-                                      placeholder="Division"
-                                      value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                      onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                  </div>
+                                </div>
+                                <div className='sectionrow'>
+                                  <div className="fieldboxquarter">
+                                    <label>Corporate PrOP</label>
+                                    <Controller
+                                      name={`prOPCorporate${index}`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select
+                                          isClearable
+                                          isMulti
+                                          options={corporatePrOPOptions}
+                                          styles={customStyles}
+                                          placeholder="Corporate"
+                                          value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                        />
+                                      )}
                                     />
-                                  )}
-                                />
-                              </div>
-                              <div className="fieldboxquarter">
-                                <label>Other PrOP</label>
-                                <Controller
-                                  name={`prOPOther${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <Select
-                                      isClearable
-                                      isMulti
-                                      options={otherPrOPOptions}
-                                      styles={customStyles}
-                                      placeholder="Other"
-                                      value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                      onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                  </div>
+                                  <div className="fieldboxquarter">
+                                    <label>Sector PrOP</label>
+                                    <Controller
+                                      name={`prOPSector${index}`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select
+                                          isClearable
+                                          isMulti
+                                          options={sectorPrOPOptions}
+                                          styles={customStyles}
+                                          placeholder="Sector"
+                                          value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                        />
+                                      )}
                                     />
-                                  )}
-                                />
+                                  </div>
+                                  <div className="fieldboxquarter">
+                                    <label>Division PrOP</label>
+                                    <Controller
+                                      name={`prOPDivision${index}`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select
+                                          isClearable
+                                          isMulti
+                                          options={divisionPrOPOptions}
+                                          styles={customStyles}
+                                          placeholder="Division"
+                                          value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                        />
+                                      )}
+                                    />
+                                  </div>
+                                  <div className="fieldboxquarter">
+                                    <label>Other PrOP</label>
+                                    <Controller
+                                      name={`prOPOther${index}`}
+                                      control={control}
+                                      render={({ field }) => (
+                                        <Select
+                                          isClearable
+                                          isMulti
+                                          options={otherPrOPOptions}
+                                          styles={customStyles}
+                                          placeholder="Other"
+                                          value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
+                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                        />
+                                      )}
+                                    />
+                                  </div>
+                                </div>
+                                <div className='sectionrow'>
+                                  <div className="fieldboxwhole">
+                                    <label>Objective Evidence</label>
+                                    <Controller
+                                      name={`peqFiles${index}`}
+                                      control={control}
+                                      render={({ field }) => {
+                                        const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
+                                        const selectedFileIds = normalizeFileIds(field.value);
+                                        return (
+                                          <Select
+                                            isClearable
+                                            isMulti
+                                            options={objectiveEvidenceOptions}
+                                            styles={customStyles}
+                                            placeholder="Select files"
+                                            value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
+                                            onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                          />
+                                        );
+                                      }}
+                                    />
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                            <div className='sectionrow'>
-                              <div className="fieldboxwhole">
-                                <label>Objective Evidence</label>
-                                <Controller
-                                  name={`peqFiles${index}`}
-                                  control={control}
-                                  render={({ field }) => {
-                                    const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                    const selectedFileIds = normalizeFileIds(field.value);
-                                    return (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        options={objectiveEvidenceOptions}
-                                        styles={customStyles}
-                                        placeholder="Select files"
-                                        value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    );
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          </div>
+                          );
+                        })}
+                        <div className='sectionrow'>
+                          <button type='button' onClick={addPEQ} className='button' style={{ backgroundColor: 'green', width: '100%' }}>Add Question</button>
                         </div>
-                      );
-                    })}
-                    <div className='sectionrow'>
-                      <button type='button' onClick={addPEQ} className='button' style={{ backgroundColor: 'green', width: '100%' }}>Add Question</button>
-                    </div>
-                  </div>
-                  <div className='section'>
-                    <label className='sectiontitle'>Every Time Questions</label>
-                    {filteredEveryTimeQuestions.map((question, index) => {
+                      </div>
+                      <div className='section'>
+                        <label className='sectiontitle'>Every Time Questions</label>
+                        {filteredEveryTimeQuestions.map((question, index) => {
                       const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
                       const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
 
@@ -2451,16 +2503,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           )}
                         </div>
                       );
-                    })}
-                  </div>
-                  <div className='section'>
-                    {Object.keys(standardTextsByStandard).length === 0 ? (
-                      <>
-                        <label className='sectiontitle'>Standard Requirements</label>
-                        <p style={{ marginTop: '8px' }}>No standard requirements available for this audit.</p>
-                      </>
-                    ) : (
-                      Object.entries(standardTextsByStandard).map(([standardIdValue, sections]) => {
+                        })}
+                      </div>
+                      <div className='section'>
+                        {Object.keys(standardTextsByStandard).length === 0 ? (
+                          <>
+                            <label className='sectiontitle'>Standard Requirements</label>
+                            <p style={{ marginTop: '8px' }}>No standard requirements available for this audit.</p>
+                          </>
+                        ) : (
+                          Object.entries(standardTextsByStandard).map(([standardIdValue, sections]) => {
                         const standardId = Number(standardIdValue);
                         const standardName = standardNameMap.get(standardId) || `Standard ${standardId}`;
 
@@ -2773,9 +2825,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             })}
                           </div>
                         );
-                      })
-                    )}
-                  </div>
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
                   {Object.keys(errors).length > 0 && (
                     <div className='section' style={{ backgroundColor: '#ffebee', border: '1px solid #f44336', borderRadius: '4px' }}>
                       <p style={{ color: '#d32f2f', margin: 0, fontWeight: 'bold' }}>
@@ -2795,7 +2849,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
           </ form>
           {/* Fixed position buttons at bottom right */}
-          {(selectedAudit && !auditLocked && !isViewOnly) && (
+          {(selectedAudit && !auditLocked && !isViewOnly && !accessBlock) && (
             <div style={{
               position: 'fixed',
               bottom: '20px',

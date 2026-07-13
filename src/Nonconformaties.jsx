@@ -317,11 +317,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    if (accessBlock.kind === 'cui') {
-      toast.error('This audit is marked CUI. You are not CUI approved and cannot view it.');
-    } else {
-      toast.error(accessBlock.message || 'You do not have access to this audit.');
-    }
+    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+      progressStyle: { backgroundColor: '#f44336' },
+      style: { borderLeft: '4px solid #f44336' }
+    });
 
     accessErrorToastRef.current = accessKey;
   }, [accessBlock, schedule?.scheduleId]);
@@ -934,9 +933,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
             {schedule && accessBlock ? (
               <>
                 <h2 style={{ marginTop: '30px', marginBottom: '20px', color: '#d32f2f' }}>
-                  {accessBlock.kind === 'cui'
-                    ? 'This audit is marked CUI. You are not CUI approved and cannot view its details.'
-                    : (accessBlock.message || 'You do not have access to this audit.')}
+                  {accessBlock.message || 'You do not have access to this audit.'}
                 </h2>
                 <button
                   type="button"

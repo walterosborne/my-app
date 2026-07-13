@@ -884,6 +884,74 @@ const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
     };
 };
 
+const buildCuiAccessDeniedMessage = async ({ req, userInfo, auditSchema } = {}) => {
+    const baseMessage = 'This audit is marked CUI. You are not CUI approved to view it.';
+
+    if (!userInfo?.divisionid) {
+        return `${baseMessage} Please contact support to request CUI access.`;
+    }
+
+    try {
+        const resolvedAuditSchema = auditSchema || getAuditSchemaForRequest(req);
+        const divisionResult = await pool.queryWithSchema(
+            resolvedAuditSchema,
+            `SELECT TOP 1 divisionname, leadid
+             FROM divisions_r
+             WHERE divisionid = $1`,
+            [userInfo.divisionid]
+        );
+        const division = divisionResult.rows[0];
+
+        if (!division?.leadid) {
+            return `${baseMessage} Please contact support to request CUI access.`;
+        }
+
+        const leadAuditorResult = await pool.queryWithSchema(
+            resolvedAuditSchema,
+            `SELECT TOP 1 auditorid, myid, fname, lname
+             FROM auditors_r
+             WHERE auditorid = $1`,
+            [division.leadid]
+        );
+        const leadAuditor = leadAuditorResult.rows[0];
+
+        if (!leadAuditor?.myid) {
+            return `${baseMessage} Please contact support to request CUI access.`;
+        }
+
+        const leadRoster = (await getRosterRowsByMyIds([leadAuditor.myid]))[0] || null;
+        const leadName = String(
+            leadRoster?.rostername
+            || [leadAuditor.fname, leadAuditor.lname].filter(Boolean).join(' ')
+            || ''
+        ).trim();
+        const leadEmail = String(leadRoster?.email || '').trim();
+
+        if (leadName && leadEmail) {
+            return `${baseMessage} Please contact your division lead ${leadName} (${leadEmail}) to request CUI access.`;
+        }
+        if (leadName) {
+            return `${baseMessage} Please contact your division lead ${leadName} to request CUI access.`;
+        }
+        if (leadEmail) {
+            return `${baseMessage} Please contact your division lead at ${leadEmail} to request CUI access.`;
+        }
+    } catch (error) {
+        console.error('Error building CUI access denied message:', error);
+    }
+
+    return `${baseMessage} Please contact support to request CUI access.`;
+};
+
+const sendCuiAccessDenied = async (res, { req, userInfo, auditSchema } = {}) => {
+    const errorMessage = await buildCuiAccessDeniedMessage({ req, userInfo, auditSchema });
+    return res.status(403).json({
+        success: false,
+        code: 'CUI_ACCESS_DENIED',
+        error: errorMessage
+    });
+};
+
 const getCurrentAuditorId = async (req, { auditSchema } = {}) => {
     const userInfo = await getCurrentUserInfo(req, { auditSchema });
     return userInfo?.auditorid ?? null;
@@ -1591,7 +1659,7 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
         if (!hasCuiAccess({ audit, userInfo })) {
-            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         const result = await pool.query(
@@ -1954,7 +2022,7 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
         if (!hasCuiAccess({ audit, userInfo })) {
-            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+            return sendCuiAccessDenied(res, { req, userInfo, auditSchema });
         }
 
         const ncResult = await pool.queryWithSchema(
@@ -4652,11 +4720,7 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
         if (!hasCuiAccess({ audit, userInfo })) {
-            return res.status(403).json({
-                success: false,
-                code: 'CUI_ACCESS_DENIED',
-                error: 'This audit is marked CUI. You are not approved to view it.'
-            });
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         res.json({
@@ -4858,7 +4922,7 @@ app.post('/api/approvals/:scheduleId/remind', async (req, res) => {
             return res.status(403).json({ success: false, error: 'Not authorized to send approval reminders for this audit' });
         }
         if (!hasCuiAccess({ audit, userInfo })) {
-            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         if (!audit.locked || audit.approvedAt) {
@@ -4990,7 +5054,7 @@ app.get('/api/cars/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
         if (!hasCuiAccess({ audit, userInfo })) {
-            return res.status(403).json({ success: false, code: 'CUI_ACCESS_DENIED', error: 'This audit is marked CUI. You are not approved to view it.' });
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         const result = await pool.query(
