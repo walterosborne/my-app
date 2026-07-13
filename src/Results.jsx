@@ -640,12 +640,27 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`)),
           getEveryTimeQuestions(divisionFilter)
         ]);
-        const data = await ncResponse.json();
         if (cancelled) return;
         const etqList = Array.isArray(everyTimeQuestions)
           ? everyTimeQuestions.filter((question) => (question.active ?? 1) === 1)
           : [];
         setEveryTimeQuestionsList(etqList);
+
+        const responseText = await ncResponse.text();
+        let data;
+        try {
+          data = responseText ? JSON.parse(responseText) : [];
+        } catch {
+          throw new Error('Nonconformances response was not valid JSON.');
+        }
+
+        if (!ncResponse.ok) {
+          throw new Error(data?.error || `Failed to load nonconformances (HTTP ${ncResponse.status}).`);
+        }
+
+        if (!Array.isArray(data)) {
+          throw new Error('Nonconformances response was not an array.');
+        }
 
         const validEtqQuestions = new Set(etqList.map((question) => question.question));
         const convertedCount = data.filter(
@@ -669,7 +684,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       } catch (error) {
         if (cancelled) return;
         console.error('Error fetching nonconformances:', error);
-        setEveryTimeQuestionsList([]);
         setNonconformances([]);
       }
     }

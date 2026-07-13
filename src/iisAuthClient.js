@@ -30,6 +30,25 @@ const getLikelyIdentityType = (payload) => {
     return normalizeString(identity.authType);
 };
 
+const looksLikeJson = (text) => {
+    const trimmed = String(text || '').trim();
+    return trimmed.startsWith('{') || trimmed.startsWith('[');
+};
+
+const summarizeNonJsonResponse = (text) => {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) {
+        return 'empty response body';
+    }
+    if (trimmed.startsWith('<%')) {
+        return 'raw ASP source returned instead of JSON';
+    }
+    if (trimmed.startsWith('<')) {
+        return 'HTML returned instead of JSON';
+    }
+    return 'non-JSON response body';
+};
+
 export async function getIisAuthPayload({ skipCache = false } = {}) {
     if (!skipCache && cachedIisAuthPromise) {
         return cachedIisAuthPromise;
@@ -53,7 +72,13 @@ export async function getIisAuthPayload({ skipCache = false } = {}) {
                     continue;
                 }
 
-                const payload = await response.json();
+                const rawBody = await response.text();
+                if (!looksLikeJson(rawBody)) {
+                    failures.push(`${endpoint}: ${summarizeNonJsonResponse(rawBody)}`);
+                    continue;
+                }
+
+                const payload = JSON.parse(rawBody);
                 return {
                     ...payload,
                     source: payload?.source || endpoint
