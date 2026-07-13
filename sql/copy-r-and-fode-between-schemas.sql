@@ -15,7 +15,7 @@ Important:
 - The target schema must already exist.
 - This creates target tables and copies data in one step.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
-- It will fail and roll back if any target table already exists in the target schema.
+- It overwrites any existing target table by dropping it first.
 - It refuses to create non-backup tables in dbo.
 
 Preview query:
@@ -144,7 +144,14 @@ BEGIN TRY
               AND t.name = @SourceTable
         )
         BEGIN
-            THROW 50115, 'A target table already exists in the target schema. Remove or rename it before rerunning.', 1;
+            SET @Sql =
+                N'DROP TABLE '
+                + QUOTENAME(@TargetSchema) + N'.' + QUOTENAME(@SourceTable)
+                + N';';
+
+            EXEC sys.sp_executesql @Sql;
+
+            PRINT N'Dropped existing ' + QUOTENAME(@TargetSchema) + N'.' + QUOTENAME(@SourceTable);
         END;
 
         SET @Sql =
