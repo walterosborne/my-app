@@ -192,6 +192,14 @@ const AdminMenu = () => {
     const [sortDirection, setSortDirection] = React.useState('asc');
     const navigate = useNavigate();
 
+    const normalizeActiveValue = React.useCallback((value) => {
+        if (value === null || value === undefined || value === '') {
+            return 1;
+        }
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 1;
+    }, []);
+
     const normalizeAuditorRow = React.useCallback((row) => {
         const firstName = row.firstName ?? row.firstname ?? row.fname ?? '';
         const lastName = row.lastName ?? row.lastname ?? row.lname ?? '';
@@ -206,56 +214,56 @@ const AdminMenu = () => {
             divisionId: row.divisionId ?? row.divisionid,
             cuiApproved: Number(row.cuiApproved ?? row.cuiapproved ?? 0) === 1 ? 1 : 0,
             programIds: Array.isArray(row.programIds ?? row.programids) ? (row.programIds ?? row.programids).map(Number) : [],
-            active: typeof row.active === 'number' ? row.active : row.active ?? 1
+            active: normalizeActiveValue(row.active)
         };
-    }, []);
+    }, [normalizeActiveValue]);
 
     const normalizeAuditTypeRow = React.useCallback((row) => ({
         auditTypeId: row.auditTypeId ?? row.audittypeid ?? row.id,
         auditTypeName: row.auditTypeName ?? row.audittypename ?? '',
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeBusinessUnitRow = React.useCallback((row) => ({
         businessUnitId: row.businessUnitId ?? row.businessunitid ?? row.id,
         businessUnitName: row.businessUnitName ?? row.businessunitname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeOperatingUnitRow = React.useCallback((row) => ({
         operatingUnitId: row.operatingUnitId ?? row.operatingunitid ?? row.id,
         operatingUnitName: row.operatingUnitName ?? row.operatingunitname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeDelayCauseRow = React.useCallback((row) => ({
         causeId: row.causeId ?? row.causeid ?? row.id,
         cause: row.cause ?? '',
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeEveryTimeQuestionRow = React.useCallback((row) => ({
         etqId: row.etqId ?? row.etqid ?? row.id,
         question: row.question ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeFunctionRow = React.useCallback((row) => ({
         functionId: row.functionId ?? row.functionid ?? row.id,
         functionName: row.functionName ?? row.functionname ?? '',
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeProgramRow = React.useCallback((row) => ({
         programId: row.programId ?? row.programid ?? row.id,
         programName: row.programName ?? row.programname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
         auditorIds: Array.isArray(row.auditorIds ?? row.auditorids) ? (row.auditorIds ?? row.auditorids).map(Number) : [],
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const reloadAuditorsAndPrograms = React.useCallback(async () => {
         const [auditorsData, programsData] = await Promise.all([
@@ -273,8 +281,8 @@ const AdminMenu = () => {
         divisionId: row.divisionId ?? row.divisionid ?? row.id,
         divisionName: row.divisionName ?? row.divisionname ?? '',
         sectorId: row.sectorId ?? row.sectorid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeSiteRow = React.useCallback((row) => ({
         siteId: row.siteId ?? row.siteid ?? row.id,
@@ -283,8 +291,8 @@ const AdminMenu = () => {
         state: row.state ?? '',
         country: row.country ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizePropRow = React.useCallback((row) => ({
         propId: row.propId ?? row.propid ?? row.id,
@@ -296,20 +304,20 @@ const AdminMenu = () => {
         ouId: row.ouId ?? row.ouid ?? null,
         programId: row.programId ?? row.programid ?? null,
         propTypeId: row.propTypeId ?? row.proptypeid ?? null,
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeTrainingRequirementRow = React.useCallback((row) => ({
         trainingRequirementId: row.trainingRequirementId ?? row.trainingrequirementid ?? row.id,
         trainingRequirementName: row.trainingRequirementName ?? row.trainingrequirementname ?? '',
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     const normalizeSafetyEquipmentRow = React.useCallback((row) => ({
         safetyEquipmentId: row.safetyEquipmentId ?? row.safetyequipmentid ?? row.id,
         safetyEquipmentName: row.safetyEquipmentName ?? row.safetyequipmentname ?? '',
-        active: typeof row.active === 'number' ? row.active : row.active ?? 1
-    }), []);
+        active: normalizeActiveValue(row.active)
+    }), [normalizeActiveValue]);
 
     React.useEffect(() => {
         let mounted = true;

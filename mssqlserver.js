@@ -680,6 +680,73 @@ const buildEnvDebugPayload = () => Object.fromEntries(
         .map(([name, value]) => [name, maskEnvValueForDebug(name, value)])
 );
 
+const authFailureLogCache = new Map();
+const AUTH_FAILURE_LOG_WINDOW_MS = 5 * 60 * 1000;
+
+const buildAuthFailureLogKey = (kind, summary, details) => [
+    kind,
+    summary.path,
+    summary.host,
+    summary.effectiveNetworkId || '',
+    details?.rosterMyId || '',
+    details?.auditSchema || ''
+].join('|');
+
+const summarizeRowsForAuthLog = (rows, keys) => (
+    Array.isArray(rows)
+        ? rows.slice(0, 3).map((row) => Object.fromEntries(
+            keys.map((key) => [key, row?.[key] ?? null])
+        ))
+        : []
+);
+
+const buildAuthRequestSummary = (req) => {
+    const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
+    const effectiveNetworkId = derivedNetworkId || HARD_CODED_NETWORK_ID || null;
+    const requestHost = getRequestEnvironmentHost(req);
+    const requestContext = getCurrentRequestContext();
+    const authTransport = buildAuthTransportDebug(req);
+
+    return {
+        method: req.method,
+        path: req.originalUrl,
+        host: requestHost,
+        environmentMode: requestContext?.environmentMode || getEnvironmentModeForHost(requestHost),
+        auditSchema: requestContext?.auditSchema || getDatabaseSchemaForHost(requestHost),
+        derivedNetworkId,
+        effectiveNetworkId,
+        usedHardcodedFallback: !derivedNetworkId && Boolean(HARD_CODED_NETWORK_ID),
+        authFields: authTransport.populatedIdentityFields
+    };
+};
+
+const logAuthFailure = (kind, req, details = {}) => {
+    const summary = buildAuthRequestSummary(req);
+    const logKey = buildAuthFailureLogKey(kind, summary, details);
+    const now = Date.now();
+    const previousLogAt = authFailureLogCache.get(logKey);
+
+    if (previousLogAt && (now - previousLogAt) < AUTH_FAILURE_LOG_WINDOW_MS) {
+        return;
+    }
+
+    authFailureLogCache.set(logKey, now);
+
+    console.warn('[NGAT AUTH]', {
+        kind,
+        method: summary.method,
+        path: summary.path,
+        host: summary.host,
+        environmentMode: summary.environmentMode,
+        auditSchema: details.auditSchema || summary.auditSchema,
+        derivedNetworkId: summary.derivedNetworkId,
+        effectiveNetworkId: summary.effectiveNetworkId,
+        usedHardcodedFallback: summary.usedHardcodedFallback,
+        authFields: summary.authFields,
+        ...details
+    });
+};
+
 const buildHeaderDebugPayload = (req) => {
     const authCandidates = getAuthCandidateHeaders(req);
     const requestHost = getRequestEnvironmentHost(req);
@@ -842,8 +909,15 @@ const getRosterRowsByMyIds = async (myIds = []) => {
 };
 
 const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
-    const networkId = getNetworkIdFromRequest(req);
-    if (!networkId) return null;
+    const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
+    const networkId = derivedNetworkId || HARD_CODED_NETWORK_ID;
+    const resolvedAuditSchema = auditSchema || getAuditSchemaForRequest(req);
+    if (!networkId) {
+        logAuthFailure('missing-network-id', req, {
+            auditSchema: resolvedAuditSchema
+        });
+        return null;
+    }
 
     const rosterResult = await rosterPool.query(
         `SELECT TOP 1 rostername, myid, networkid, email
@@ -853,11 +927,23 @@ const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
     );
     const rosterRow = rosterResult.rows[0];
     if (!rosterRow) {
+        const diagnosticRosterResult = await rosterPool.query(
+            `SELECT TOP 3 rostername, myid, networkid
+             FROM roster_r
+             WHERE LOWER(LTRIM(RTRIM(networkid))) = LOWER(LTRIM(RTRIM($1)))
+                OR LOWER(LTRIM(RTRIM(myid))) = LOWER(LTRIM(RTRIM($1)))`,
+            [networkId]
+        );
+        logAuthFailure('roster-miss', req, {
+            auditSchema: resolvedAuditSchema,
+            requestedNetworkId: networkId,
+            diagnosticRosterMatches: summarizeRowsForAuthLog(diagnosticRosterResult.rows, ['rostername', 'myid', 'networkid'])
+        });
         return null;
     }
 
     const auditorResult = await pool.queryWithSchema(
-        auditSchema || getAuditSchemaForRequest(req),
+        resolvedAuditSchema,
         `SELECT TOP 1
             a.auditorid,
             a.divisionid,
@@ -873,6 +959,27 @@ const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
         [rosterRow.myid]
     );
     const auditorRow = auditorResult.rows[0] ?? {};
+
+    if (!auditorRow.auditorid) {
+        const diagnosticAuditorResult = await pool.queryWithSchema(
+            resolvedAuditSchema,
+            `SELECT TOP 3
+                a.auditorid,
+                a.myid,
+                a.divisionid,
+                COALESCE(a.admin, 0) AS admin,
+                COALESCE(a.cuiapproved, 0) AS cuiapproved
+             FROM auditors_r a
+             WHERE LOWER(LTRIM(RTRIM(a.myid))) = LOWER(LTRIM(RTRIM($1)))`,
+            [rosterRow.myid]
+        );
+        logAuthFailure('auditor-miss', req, {
+            auditSchema: resolvedAuditSchema,
+            rosterMyId: rosterRow.myid,
+            rosterNetworkId: rosterRow.networkid,
+            diagnosticAuditorMatches: summarizeRowsForAuthLog(diagnosticAuditorResult.rows, ['auditorid', 'myid', 'divisionid', 'admin', 'cuiapproved'])
+        });
+    }
 
     return {
         ...rosterRow,
@@ -1505,7 +1612,20 @@ const resolveApproverIdentifiersToMyIds = async (queryable, identifiers) => {
     return resolvedIdentifiers;
 };
 
+const canAdminEditAudit = ({ audit, userInfo }) => {
+    if (!userInfo?.admin || !userInfo?.divisionid) return false;
+    const auditDivisionIds = Array.isArray(audit?.divisionId)
+        ? audit.divisionId.map(Number)
+        : audit?.divisionId != null
+            ? [Number(audit.divisionId)]
+            : [];
+    return auditDivisionIds.includes(Number(userInfo.divisionid));
+};
+
 const canEditAudit = ({ audit, userInfo }) => {
+    if (canAdminEditAudit({ audit, userInfo })) {
+        return true;
+    }
     if (!userInfo?.auditorid) return false;
     const auditorId = Number(userInfo.auditorid);
     const additionalAuditorIds = Array.isArray(audit.additionalAuditorIds)
@@ -1534,14 +1654,7 @@ const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds =
     const isAuditor = canEditAudit({ audit, userInfo });
     const isProgramAuditor = canViewAuditByProgram({ audit, userInfo });
 
-    const auditDivisionIds = Array.isArray(audit.divisionId)
-        ? audit.divisionId.map(Number)
-        : audit.divisionId != null
-            ? [Number(audit.divisionId)]
-            : [];
-    const isAdmin = Boolean(
-        userInfo.admin && userInfo.divisionid && auditDivisionIds.includes(Number(userInfo.divisionid))
-    );
+    const isAdmin = canAdminEditAudit({ audit, userInfo });
 
     if (!report) {
         return isAuditor || isAdmin || isProgramAuditor;
