@@ -14,7 +14,9 @@
     "start:mssqlserver:bg": "node scripts/start-mssqlserver-bg.js",
     "preprod": "echo NGAT_PREPROD_LIFECYCLE_REACHED",
     "prod": "echo NGAT_NPM_PROD_SCRIPT_REACHED && node scripts/prod-debug.js",
-    "postprod": "echo NGAT_POSTPROD_LIFECYCLE_REACHED"
+    "postprod": "echo NGAT_POSTPROD_LIFECYCLE_REACHED",
+    "start": "node mssqlserver.js",
+    "test:identity": "node --test tests/entraIdentity.test.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

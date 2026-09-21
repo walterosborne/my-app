@@ -103,7 +103,7 @@ export const getAppRootFromImportMetaUrl = (importMetaUrl) => (
 export const loadRuntimeEnv = ({
     appRoot,
     mode = 'development',
-    overrideProcessEnv = true
+    overrideProcessEnv = false
 }) => {
     if (!appRoot) {
         throw new Error('loadRuntimeEnv requires an appRoot.');

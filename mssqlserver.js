@@ -6,6 +6,9 @@ import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getEntraIdentity, getForwardedAccessToken } from './entraIdentity.js';
 import smtpConfig from './smtpConfig.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
@@ -38,8 +41,16 @@ console.log('[NGAT ENV] mssqlserver.js env present =', {
 });
 
 const app = express();
-app.use(cors());
+if (process.env.NODE_ENV !== 'production') app.use(cors());
 app.use(express.json());
+// A public Route must ONLY expose the OAuth2 Proxy, never this app Service.
+app.use('/api', async (req, res, next) => {
+    if (req.path === '/healthz' || req.path === '/health') return next();
+    try { await getEntraIdentity(req); next(); }
+    catch (error) { res.status(error.status || 502).json({ error: error.message || 'Identity resolution failed.' }); }
+});
+app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'ngat' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'ngat' }));
 
 const sqlConfig = {
     server: auditDbServer,
@@ -374,7 +385,7 @@ const smtpTransport = nodemailer.createTransport({
     tls: SMTP_TLS
 });
 
-const HARD_CODED_NETWORK_ID = 'N35589';
+// No hardcoded identity is accepted in the deployed application.
 
 const escapeHtmlForDebug = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -639,40 +650,18 @@ const buildAuthTransportDebug = (req) => {
     return {
         backendSeesAuthorizationHeader: authorization.present,
         authorizationScheme: authorization.scheme,
-        authorizationPreview: authorization.preview,
+        authorizationPreview: authorization.present ? '<redacted>' : null,
         backendSeesProxyAuthorizationHeader: proxyAuthorization.present,
         proxyAuthorizationScheme: proxyAuthorization.scheme,
         populatedIdentityFields,
         backendSeesForwardedIdentity: populatedIdentityFields.length > 0,
         backendSeesAuthType: Boolean(authCandidates.x_auth_type || authCandidates.x_client_auth_type),
-        note: 'Authorization headers are often terminated by IIS, so missing Authorization does not prove Kerberos failed. Forwarded identity headers are the main signal for the proxied Node app. X-Client-Auth-User is a browser-fetched fallback from the IIS-hosted auth endpoint.'
+        forwardedAccessTokenPresent: Boolean(getForwardedAccessToken(req)),
+        note: 'Only a delegated Graph US Government access token can identify a user. IIS and browser identity headers are ignored.'
     };
 };
 
-const getDerivedNetworkIdFromRequest = (req) => {
-    const authCandidates = getAuthCandidateHeaders(req);
-    const sources = [
-        authCandidates.x_auth_header,
-        authCandidates.x_auth_user,
-        authCandidates.x_logon_user,
-        authCandidates.x_remote_user,
-        authCandidates.auth_user,
-        authCandidates.remote_user,
-        authCandidates.x_iis_windowsauthuserid,
-        authCandidates.x_iisnode_auth_user,
-        authCandidates.x_forwarded_user,
-        authCandidates.x_client_auth_user
-    ];
-
-    for (const source of sources) {
-        const normalized = normalizePotentialNetworkId(source);
-        if (normalized) {
-            return normalized;
-        }
-    }
-
-    return null;
-};
+const getDerivedNetworkIdFromRequest = (req) => req.ngatResolvedNetworkId || null;
 
 const buildEnvDebugPayload = () => Object.fromEntries(
     Object.entries(process.env)
@@ -702,7 +691,7 @@ const summarizeRowsForAuthLog = (rows, keys) => (
 
 const buildAuthRequestSummary = (req) => {
     const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
-    const effectiveNetworkId = derivedNetworkId || HARD_CODED_NETWORK_ID || null;
+    const effectiveNetworkId = derivedNetworkId || null;
     const requestHost = getRequestEnvironmentHost(req);
     const requestContext = getCurrentRequestContext();
     const authTransport = buildAuthTransportDebug(req);
@@ -715,7 +704,7 @@ const buildAuthRequestSummary = (req) => {
         auditSchema: requestContext?.auditSchema || getDatabaseSchemaForHost(requestHost),
         derivedNetworkId,
         effectiveNetworkId,
-        usedHardcodedFallback: !derivedNetworkId && Boolean(HARD_CODED_NETWORK_ID),
+        usedHardcodedFallback: false,
         authFields: authTransport.populatedIdentityFields
     };
 };
@@ -770,8 +759,8 @@ const buildHeaderDebugPayload = (req) => {
             remoteAddress: req.socket?.remoteAddress ?? null,
             remotePort: req.socket?.remotePort ?? null
         },
-        headers: req.headers,
-        rawHeaders: req.rawHeaders,
+        headers: Object.fromEntries(Object.entries(req.headers).map(([name, value]) => [name, /authorization|cookie|token|secret|password|api-key/i.test(name) ? '<redacted>' : value])),
+        rawHeaders: '<redacted>',
         authTransport: buildAuthTransportDebug(req),
         environment: {
             requestHost,
@@ -784,14 +773,14 @@ const buildHeaderDebugPayload = (req) => {
             normalizedCandidates: Object.fromEntries(
                 Object.entries(authCandidates).map(([name, value]) => [name, normalizePotentialNetworkId(value)])
             ),
-            selectedByCurrentCode: getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID,
-            hardcodedFallback: HARD_CODED_NETWORK_ID
+            selectedByCurrentCode: getDerivedNetworkIdFromRequest(req),
+            hardcodedFallback: null
         }
     };
 };
 
 const getNetworkIdFromRequest = (req) => {
-    return getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID;
+    return getDerivedNetworkIdFromRequest(req);
 };
 
 app.use((req, _res, next) => {
@@ -909,35 +898,29 @@ const getRosterRowsByMyIds = async (myIds = []) => {
 };
 
 const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
-    const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
-    const networkId = derivedNetworkId || HARD_CODED_NETWORK_ID;
+    const identity = await getEntraIdentity(req);
     const resolvedAuditSchema = auditSchema || getAuditSchemaForRequest(req);
-    if (!networkId) {
-        logAuthFailure('missing-network-id', req, {
-            auditSchema: resolvedAuditSchema
-        });
-        return null;
-    }
-
-    const rosterResult = await rosterPool.query(
-        `SELECT TOP 1 rostername, myid, networkid, email
-         FROM roster_r
-         WHERE networkid = $1`,
-        [networkId]
-    );
-    const rosterRow = rosterResult.rows[0];
-    if (!rosterRow) {
-        const diagnosticRosterResult = await rosterPool.query(
-            `SELECT TOP 3 rostername, myid, networkid
-             FROM roster_r
-             WHERE LOWER(LTRIM(RTRIM(networkid))) = LOWER(LTRIM(RTRIM($1)))
-                OR LOWER(LTRIM(RTRIM(myid))) = LOWER(LTRIM(RTRIM($1)))`,
-            [networkId]
+    let rosterRow = null;
+    // Only these three SQL columns can be selected, never an untrusted header.
+    for (const candidate of identity.candidates) {
+        if (!['networkid', 'myid', 'email'].includes(candidate.column)) continue;
+        const result = await rosterPool.query(
+            `SELECT TOP 1 rostername, myid, networkid, email
+             FROM roster_r WHERE LOWER(LTRIM(RTRIM([${candidate.column}]))) = LOWER(LTRIM(RTRIM($1)))`,
+            [candidate.value]
         );
+        if (result.rows[0]) {
+            rosterRow = result.rows[0];
+            req.ngatResolvedNetworkId = rosterRow.networkid;
+            req.ngatRosterMatchedBy = candidate.column;
+            break;
+        }
+    }
+    if (!rosterRow) {
         logAuthFailure('roster-miss', req, {
             auditSchema: resolvedAuditSchema,
-            requestedNetworkId: networkId,
-            diagnosticRosterMatches: summarizeRowsForAuthLog(diagnosticRosterResult.rows, ['rostername', 'myid', 'networkid'])
+            entraObjectId: identity.entraObjectId || null,
+            candidateCount: identity.candidates.length
         });
         return null;
     }
@@ -2491,7 +2474,7 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
     }
 });
 
-const PORT = 3001;
+const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);
 const PREFERRED_HOST = '0.0.0.0';
 const FALLBACK_HOST = '127.0.0.1';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
@@ -5696,3 +5679,14 @@ app.delete('/api/risk-ratings', async (req, res) => {
         client.release();
     }
 });
+
+
+// Retain all original API routes, while serving the unmodified Vite UI in production.
+if (process.env.NODE_ENV === 'production') {
+    const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+    app.use(express.static(distPath, { index: 'index.html' }));
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+}

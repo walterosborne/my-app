@@ -4,7 +4,7 @@ import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
-import ngFavicon from './assets/NG.png'
+import ngFavicon from './assets/NG.svg'
 import Navbar from './Navbar.jsx'
 import Home from './Home.jsx'
 import Audit from './Audit.jsx'
@@ -32,10 +32,7 @@ import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
 import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
-import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
 import { getEnvironmentModeForHost, getProductionAppUrlForPath, normalizeEnvironmentHost } from '../environment-config.js'
-
-installIisAuthFetchShim();
 
 const AppBootstrapGate = ({ children }) => {
   const [isReady, setIsReady] = useState(false)
@@ -44,12 +41,6 @@ const AppBootstrapGate = ({ children }) => {
     let cancelled = false
 
     ;(async () => {
-      try {
-        await getIisAuthPayload()
-      } catch (error) {
-        console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error)
-      }
-
       try {
         await getHeaderDiagnostics()
       } catch (error) {
