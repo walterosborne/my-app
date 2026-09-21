@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Navbar.css';
-import logo from './assets/NG.svg';
+import logo from './assets/NG.png';
 import foeLinks from './config/foeLinks.js';
 
 const Navbar = () => {

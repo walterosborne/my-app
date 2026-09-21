@@ -65,9 +65,7 @@ DATABASE-README.md
 # SQL setup/migration helpers (not required at runtime)
 /sqlarchive/
 
-# Local assets
-src/assets/NG.png
-src/assets/placeholder.jpg
+# Local image assets must be committed to the source repository for OpenShift builds.
 
 # Local FOE link config
 src/config/foeLinks.js

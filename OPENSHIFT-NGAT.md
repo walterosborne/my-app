@@ -1,6 +1,6 @@
 # NGAT OpenShift migration — two deployments
 
-The `kubernetes` branch changes hosting from IIS/Kerberos to React/Express
+The source branch changes hosting from IIS/Kerberos to React/Express
 in one app container plus a separate OAuth2 Proxy Deployment, like the
 standalone QMI proxy pattern. All existing audit API routes, React screens,
 CSS and SQL-backed workflows are retained; no tables are recreated.
@@ -25,21 +25,23 @@ secret. No real credentials belong in Git.
    in Entra US Government, with delegated Microsoft Graph `User.Read`.
 2. Check the target registry in the BuildConfig and app Deployment; change
    both image names together if the `wosborne` repository is unavailable.
-   The BuildConfig reads `kubernetes`. Supply sourceSecret if needed.
+   The BuildConfig reads the internal `EnterpriseKubernetes/ngat-ops`
+   repository's `main` branch, matching the working OpenShift configuration. Supply sourceSecret if needed.
 3. `NGAT_ENV=production` selects `dbo`. Set `AUDIT_SCHEMA` only when
    deploying a deliberate alternate schema. Never derive the target audit
    schema from an inbound Host/Origin header.
 4. Set `APP_BASE_URL` to the public NGAT origin for approval and audit
-   emails. Configure SMTP values `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`,
-   and corporate CA trust/egress to Graph and the database as needed.
-5. **Restore the original ignored `src/assets/NG.png` and private
-   `src/config/foeLinks.js`** from your IIS/source workspace to guarantee
-   visual and FOE parity. A temporary NG.svg placeholder and empty FOE
-   link defaults exist solely because those files are not in GitHub.
-   Switch the two NG.svg imports back to NG.png after restoring it.
-   To use the FOE defaults instead, populate VITE_FOE_* at build time,
-   then rebuild the image; runtime Secret values cannot change a Vite
-   browser bundle.
+   emails. The app Deployment reads secret `smtp` containing EXACT keys
+   `from`, `host`, `port`, `secure`, `tls`. Keep `secure=false` if that
+   matches your working SMTP service; `tls` may be `true`, `false`, or
+   a JSON object of Node TLS options. Ensure appropriate CA trust and
+   network access to Graph, SQL and SMTP.
+5. Include the original `src/assets/NG.png` and `src/assets/placeholder.jpg`
+   in the INTERNAL `ngat-ops` Git source: a file only on a workstation will
+   NOT be available to an OpenShift Git build. The app again imports NG.png,
+   not the temporary SVG. Restore private FOE links configuration or populate
+   VITE_FOE_* at build time, then rebuild; runtime Secret values cannot
+   change a Vite browser bundle.
 
 ## Apply
 
@@ -85,3 +87,16 @@ Keep IIS available for rollback until live parity is verified.
 This commit cannot establish corporate image-pull access, actual
 SQL/Graph/SMTP connectivity, consent, certificate trust, or visual
 parity for private untracked assets.
+
+## Current build-source note
+
+The OpenShift BuildConfig clones
+`https://github.northgrum.com/EnterpriseKubernetes/ngat-ops.git`,
+branch `main`. Updating public `walterosborne/my-app` branch
+`kubernetes` **does not** modify that internal Git repository or cause
+a rebuild. Copy/cherry-pick these changes into the internal build source
+(including its Dockerfile and aligned package.json/package-lock.json)
+before running `oc start-build ngat --follow`. The previous `npm ci`
+failure was the unused `concurrently` devDependency appearing only in
+package.json; it is removed to match the existing lockfile. The Dockerfile
+installs Vite before setting NODE_ENV=production.

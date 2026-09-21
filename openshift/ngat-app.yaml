@@ -19,6 +19,7 @@ spec:
             - secretRef: { name: audit }
             - secretRef: { name: roster }
             - secretRef: { name: entra }
+            - secretRef: { name: smtp }
           env:
             - { name: NODE_ENV, value: production }
             - { name: NGAT_ENV, value: production }
