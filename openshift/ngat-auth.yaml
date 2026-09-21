@@ -1,0 +1,95 @@
+# Set the same public Route host in both placeholders and register /oauth2/callback in Entra.
+# The Route MUST point to ngat-auth, NEVER ngat-app.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngat-auth
+  labels: { app: ngat-auth }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ngat-auth }
+  template:
+    metadata:
+      labels: { app: ngat-auth }
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: docker-ng-untrusted-group.northgrum.com/oauth2-proxy/oauth2-proxy:v7.15.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ENTRA_DIRECTORY_ID
+              valueFrom: { secretKeyRef: { name: entra, key: ENTRA_DIRECTORY_ID } }
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom: { secretKeyRef: { name: entra, key: ENTRA_APPLICATION_ID } }
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom: { secretKeyRef: { name: entra, key: ENTRA_CLIENT_SECRET } }
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom: { secretKeyRef: { name: entra, key: OAUTH2_PROXY_COOKIE_SECRET } }
+            - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
+            - { name: OAUTH2_PROXY_PROVIDER_DISPLAY_NAME, value: EntraID }
+            - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: "https://login.microsoftonline.us/$(ENTRA_DIRECTORY_ID)/v2.0" }
+            - { name: OAUTH2_PROXY_REDIRECT_URL, value: "https://REPLACE_WITH_NGAT_ROUTE/oauth2/callback" }
+            - { name: OAUTH2_PROXY_UPSTREAMS, value: "http://ngat-app:8080/" }
+            - { name: OAUTH2_PROXY_HTTP_ADDRESS, value: "0.0.0.0:4180" }
+            - { name: OAUTH2_PROXY_EMAIL_DOMAINS, value: ngc.com }
+            - { name: OAUTH2_PROXY_SCOPE, value: "openid email profile offline_access User.Read" }
+            - { name: OAUTH2_PROXY_CODE_CHALLENGE_METHOD, value: S256 }
+            - { name: OAUTH2_PROXY_USER_ID_CLAIM, value: email }
+            - { name: OAUTH2_PROXY_OIDC_EMAIL_CLAIM, value: email }
+            - { name: OAUTH2_PROXY_PASS_BASIC_AUTH, value: "false" }
+            - { name: OAUTH2_PROXY_PASS_USER_HEADERS, value: "true" }
+            - { name: OAUTH2_PROXY_PREFER_EMAIL_TO_USER, value: "true" }
+            - { name: OAUTH2_PROXY_SET_XAUTHREQUEST, value: "true" }
+            - { name: OAUTH2_PROXY_PASS_ACCESS_TOKEN, value: "true" }
+            - { name: OAUTH2_PROXY_COOKIE_NAME, value: __Host-ngat }
+            - { name: OAUTH2_PROXY_COOKIE_SECURE, value: "true" }
+            - { name: OAUTH2_PROXY_COOKIE_HTTPONLY, value: "true" }
+            - { name: OAUTH2_PROXY_COOKIE_SAMESITE, value: lax }
+            - { name: OAUTH2_PROXY_COOKIE_EXPIRE, value: 8h }
+            - { name: OAUTH2_PROXY_COOKIE_REFRESH, value: 50m }
+            - { name: OAUTH2_PROXY_REVERSE_PROXY, value: "true" }
+            - { name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON, value: "true" }
+          ports:
+            - { name: auth, containerPort: 4180 }
+          readinessProbe:
+            httpGet: { path: /ready, port: auth }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /ping, port: auth }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 25m, memory: 32Mi }
+            limits: { cpu: 200m, memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngat-auth
+spec:
+  type: ClusterIP
+  selector: { app: ngat-auth }
+  ports:
+    - { name: auth, port: 4180, targetPort: auth }
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ngat
+spec:
+  host: REPLACE_WITH_NGAT_ROUTE
+  to:
+    kind: Service
+    name: ngat-auth
+  port:
+    targetPort: auth
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
