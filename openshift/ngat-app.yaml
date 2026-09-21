@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ngat-app
-  labels: { app: ngat-app }
+  name: ngat
+  labels: { app: ngat }
 spec:
   replicas: 1
   selector:
-    matchLabels: { app: ngat-app }
+    matchLabels: { app: ngat }
   template:
     metadata:
-      labels: { app: ngat-app }
+      labels: { app: ngat }
     spec:
       containers:
-        - name: ngat-app
+        - name: ngat
           image: docker-ng-staging.northgrum.com/wosborne/ngat:latest
           imagePullPolicy: Always
           envFrom:
@@ -46,9 +46,9 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ngat-app
+  name: ngat-internal
 spec:
   type: ClusterIP
-  selector: { app: ngat-app }
+  selector: { app: ngat }
   ports:
     - { name: http, port: 8080, targetPort: http }

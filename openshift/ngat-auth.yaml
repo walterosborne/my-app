@@ -1,5 +1,6 @@
-# Set the same public Route host in both placeholders and register /oauth2/callback in Entra.
-# The Route MUST point to ngat-auth, NEVER ngat-app.
+# PREPARED FOR YOUR EXISTING deployment/ngat (container ngat, port 8080).
+# Do not apply the Route until the public host and Entra redirect URI are set.
+# The Route MUST point to ngat-auth, NEVER to ngat-internal or the app directly.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -23,14 +24,14 @@ spec:
             - name: OAUTH2_PROXY_CLIENT_ID
               valueFrom: { secretKeyRef: { name: entra, key: ENTRA_APPLICATION_ID } }
             - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom: { secretKeyRef: { name: entra, key: ENTRA_CLIENT_SECRET } }
+              valueFrom: { secretKeyRef: { name: entra, key: ENTRA_CLIENT_SECRET_VALUE } }
             - name: OAUTH2_PROXY_COOKIE_SECRET
               valueFrom: { secretKeyRef: { name: entra, key: OAUTH2_PROXY_COOKIE_SECRET } }
             - { name: OAUTH2_PROXY_PROVIDER, value: oidc }
             - { name: OAUTH2_PROXY_PROVIDER_DISPLAY_NAME, value: EntraID }
             - { name: OAUTH2_PROXY_OIDC_ISSUER_URL, value: "https://login.microsoftonline.us/$(ENTRA_DIRECTORY_ID)/v2.0" }
             - { name: OAUTH2_PROXY_REDIRECT_URL, value: "https://REPLACE_WITH_NGAT_ROUTE/oauth2/callback" }
-            - { name: OAUTH2_PROXY_UPSTREAMS, value: "http://ngat-app:8080/" }
+            - { name: OAUTH2_PROXY_UPSTREAMS, value: "http://ngat-internal:8080/" }
             - { name: OAUTH2_PROXY_HTTP_ADDRESS, value: "0.0.0.0:4180" }
             - { name: OAUTH2_PROXY_EMAIL_DOMAINS, value: ngc.com }
             - { name: OAUTH2_PROXY_SCOPE, value: "openid email profile offline_access User.Read" }
@@ -69,6 +70,19 @@ spec:
             runAsNonRoot: true
             capabilities: { drop: [ALL] }
 ---
+# A stable INTERNAL upstream for the current application Deployment.
+# Existing Deployment's pod labels include app: ngat (as shown in console).
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngat-internal
+  namespace: ngat-dev
+spec:
+  type: ClusterIP
+  selector: { app: ngat }
+  ports:
+    - { name: http, port: 8080, targetPort: 8080 }
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -82,7 +96,8 @@ spec:
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: ngat
+  name: ngat-auth
+  namespace: ngat-dev
 spec:
   host: REPLACE_WITH_NGAT_ROUTE
   to:

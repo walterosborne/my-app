@@ -7,24 +7,34 @@ CSS and SQL-backed workflows are retained; no tables are recreated.
 
 ## Runtime secrets — exact names and keys
 
-In the namespace, configure three key/value Secrets:
+In the namespace, configure four key/value Secrets:
 
 - `audit`: `auditserver`, `auditdb`, `audituser`, `auditpassword`.
 - `roster`: `server`, `database`, `user`, `password`.
 - `entra`: `ENTRA_APPLICATION_ID`, `ENTRA_OBJECT_ID`,
-  `ENTRA_DIRECTORY_ID`, `ENTRA_CLIENT_SECRET`, `OAUTH2_PROXY_COOKIE_SECRET`.
+  `ENTRA_DIRECTORY_ID`, `ENTRA_CLIENT_SECRET_VALUE`,
+  `ENTRA_CLIENT_SECRET_ID`, `OAUTH2_PROXY_COOKIE_SECRET`.
+- `smtp`: `from`, `host`, `port`, `secure`, `tls`.
 
-The app uses `envFrom` for all three. The proxy references the required
-Entra keys individually, using the client secret VALUE and a separate cookie
-secret. No real credentials belong in Git.
+The application can receive the Secrets as environment variables; your existing
+Deployment uses individual secretKeyRef entries instead, which is equally valid.
+The SMTP patch in this repo adds only the five `smtp` references and leaves the
+existing image, audit, roster and Entra references alone. The OAuth2 Proxy reads
+`ENTRA_CLIENT_SECRET_VALUE` into `OAUTH2_PROXY_CLIENT_SECRET`.
+`ENTRA_CLIENT_SECRET_ID` is optional inventory metadata; it is NOT a credential.
+No real credentials belong in Git.
 
 ## Before building
 
 1. Set the Route host in BOTH locations in `openshift/ngat-auth.yaml`.
    Register `https://YOUR_ROUTE/oauth2/callback` as a Web redirect URI
    in Entra US Government, with delegated Microsoft Graph `User.Read`.
-2. Check the target registry in the BuildConfig and app Deployment; change
-   both image names together if the `wosborne` repository is unavailable.
+2. Your live app is already deployed as `deployment/ngat`, container `ngat`,
+   port `8080`. Do NOT replace it with a newly created `ngat-app` Deployment.
+   The auth manifest creates a Service called `ngat-internal` selecting
+   `app: ngat` and forwarding to port 8080. Verify that pod label first.
+   Check the target registry in the BuildConfig and any *new* app Deployment;
+   change both image names together if the `wosborne` repository is unavailable.
    The BuildConfig reads the internal `EnterpriseKubernetes/ngat-ops`
    repository's `main` branch, matching the working OpenShift configuration. Supply sourceSecret if needed.
 3. `NGAT_ENV=production` selects `dbo`. Set `AUDIT_SCHEMA` only when
@@ -43,20 +53,50 @@ secret. No real credentials belong in Git.
    VITE_FOE_* at build time, then rebuild; runtime Secret values cannot
    change a Vite browser bundle.
 
-## Apply
+## Current running NGAT: add SMTP without changing its image
+
+Your OpenShift console shows `deployment/ngat` in `ngat-dev`, container
+`ngat`, port `8080`, and `app: ngat` on the pod template. This is a
+running app; the repository's full `ngat-app.yaml` is only a fresh-install
+example and **must not be applied over the working live Deployment**.
 
 ```bash
-oc apply -f openshift/ngat-buildconfig.yaml
-oc start-build ngat --follow
-oc apply -f openshift/ngat-app.yaml
-oc apply -f openshift/ngat-auth.yaml
-oc rollout status deployment/ngat-app
-oc rollout status deployment/ngat-auth
-oc get route ngat
+oc -n ngat-dev get deployment ngat -o jsonpath='{.spec.template.metadata.labels}{"\\n"}'
+oc -n ngat-dev patch deployment/ngat --type=strategic --patch-file openshift/ngat-smtp-env-patch.yaml
+oc -n ngat-dev rollout status deployment/ngat
 ```
 
-Only `ngat-auth` Service port 4180 may be exposed by the public Route.
-The internal `ngat-app` port 8080 MUST NOT receive its own public Route.
+Do not paste secret VALUES into any YAML or chat. SMTP `secure=false` is
+correct when matching your existing configuration; `tls` is separate and
+may be `true`, `false`, or a JSON object, depending on the existing setting.
+
+## Later: authentication and Route cutover
+
+The proxy's `OAUTH2_PROXY_CLIENT_SECRET` must reference Secret `entra`,
+key `ENTRA_CLIENT_SECRET_VALUE`. The `ENTRA_CLIENT_SECRET_ID` is not
+used for OAuth login. The proxy separately reads `ENTRA_APPLICATION_ID`,
+`ENTRA_DIRECTORY_ID`, and `OAUTH2_PROXY_COOKIE_SECRET`.
+
+Before applying `openshift/ngat-auth.yaml`, replace
+`REPLACE_WITH_NGAT_ROUTE` with the chosen public hostname, register its
+`https://HOST/oauth2/callback` redirect URI with your Entra administrator,
+and verify the client app has delegated Microsoft Graph `User.Read`.
+That manifest creates `ngat-internal` Service -> existing `ngat` pods,
+`ngat-auth` Deployment/Service, and an `ngat-auth` Route.
+Only switch the public hostname to the proxy-facing Route when authentication
+is tested; do not expose the internal app Service as the public entry point.
+
+```bash
+oc -n ngat-dev get svc
+oc -n ngat-dev get route
+# Once callback URI and hostname have been confirmed:
+oc -n ngat-dev apply -f openshift/ngat-auth.yaml
+oc -n ngat-dev rollout status deployment/ngat-auth
+```
+
+Only `ngat-auth` Service port 4180 may be exposed by the authenticated
+public Route. The internal `ngat-internal` Service port 8080 MUST NOT
+remain a direct public bypass once the authentication Route is active.
 Restrict pod-to-app access with a namespace-appropriate NetworkPolicy so
 other in-cluster workloads cannot inject headers or tokens.
 
@@ -73,7 +113,7 @@ hardcoded production Network ID.
 npm ci
 npm run test:identity
 npm run build
-oc logs deployment/ngat-app -c ngat-app --tail=100
+oc logs deployment/ngat -c ngat --tail=100
 oc logs deployment/ngat-auth -c oauth2-proxy --tail=100
 ```
 

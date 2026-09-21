@@ -1,0 +1,24 @@
+# Strategic-merge patch for YOUR EXISTING deployment/ngat (container name: ngat).
+# Does not replace image, service, resources, or current audit/roster/Entra env keys.
+# oc -n ngat-dev patch deployment/ngat --type=strategic --patch-file openshift/ngat-smtp-env-patch.yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: ngat
+          env:
+            - name: from
+              valueFrom:
+                secretKeyRef: { name: smtp, key: from }
+            - name: host
+              valueFrom:
+                secretKeyRef: { name: smtp, key: host }
+            - name: port
+              valueFrom:
+                secretKeyRef: { name: smtp, key: port }
+            - name: secure
+              valueFrom:
+                secretKeyRef: { name: smtp, key: secure }
+            - name: tls
+              valueFrom:
+                secretKeyRef: { name: smtp, key: tls }
