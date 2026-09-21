@@ -140,3 +140,41 @@ before running `oc start-build ngat --follow`. The previous `npm ci`
 failure was the unused `concurrently` devDependency appearing only in
 package.json; it is removed to match the existing lockfile. The Dockerfile
 installs Vite before setting NODE_ENV=production.
+
+## Entra registration confirmed: corporate callback; dev Route is different
+
+Confirmed registration: `https://ngat.northgrum.com/oauth2/callback`,
+delegated Graph `User.Read`. The current frontend Route is
+`https://ngat-ngat-dev.apps.ocpshareddev.gc1.myngc.com/`. These URLs
+are NOT interchangeable in OIDC. The corporate callback will only work
+if the custom hostname is configured in DNS/TLS to reach the auth proxy.
+Do not redirect the dev hostname to the corporate callback and expect
+the same origin's session cookie to work.
+
+The auth manifest has been split into:
+- `openshift/ngat-auth.yaml`: proxy Deployment, `ngat-internal` app
+  Service, and `ngat-auth` Service, NO Route. OAuth2 Proxy references
+  `entra.ENTRA_CLIENT_SECRET_VALUE`, not the secret ID.
+- `openshift/ngat-corporate-route.yaml`: corporate Route pointing at
+  the auth Service, applied only after DNS, TLS and enterprise routing
+  are confirmed.
+
+Pre-stage (does not replace or alter the currently working app Route):
+
+```bash
+oc -n ngat-dev apply -f openshift/ngat-auth.yaml
+oc -n ngat-dev rollout status deployment/ngat-auth
+oc -n ngat-dev get endpoints ngat-internal ngat-auth
+oc -n ngat-dev logs deployment/ngat-auth -c oauth2-proxy --tail=100
+```
+
+Proxy liveness/readiness may work without a live callback; **this does
+not establish that login works**. To test authentication immediately on
+the existing dev hostname, request one ADDITIONAL web redirect URI:
+`https://ngat-ngat-dev.apps.ocpshareddev.gc1.myngc.com/oauth2/callback`.
+Then point the dev Route to `ngat-auth` and set the proxy's redirect
+URL to that exact dev callback (and reload its Deployment). Alternatively,
+set up `ngat.northgrum.com` DNS/TLS to reach this OpenShift router,
+then apply the corporate Route separately. Don't remove the working
+dev Route until the new path is verified; don't leave an unauthenticated
+Route to the app as a bypass after cutover.
