@@ -2481,7 +2481,11 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 });
 
 const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);
-const PREFERRED_HOST = '0.0.0.0';
+// A local employee-ID bypass must never be reachable from another machine.
+const PREFERRED_HOST = process.env.NODE_ENV !== 'production'
+    && String(process.env.NGAT_DEV_EMPLOYEE_ID || '').trim()
+    ? '127.0.0.1'
+    : '0.0.0.0';
 const FALLBACK_HOST = '127.0.0.1';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
 console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());

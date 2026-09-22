@@ -210,3 +210,27 @@ oc -n ngat-dev rollout status deployment/ngat
 
 For a deliberate dbo target use NGAT_ENV=prod instead. Changes to a Kubernetes
 environment variable require a pod rollout; don't change the proxy Deployment.
+
+## Local-only employee ID fallback
+
+For local Vite + Express development, place the following in the IGNORED
+`.env.local` alongside your own audit/roster DB connection settings:
+
+```dotenv
+NODE_ENV=development
+NGAT_ENV=dev
+NGAT_DEV_EMPLOYEE_ID=YOUR_MYID
+```
+
+Then run `npm run server` and `npm run dev` in separate terminals.
+The backend tries the forwarded Entra Graph token first. Only when
+Entra fails or no token is available, it looks up `NGAT_DEV_EMPLOYEE_ID`
+against `roster_r.myid`, then derives division, admin, program, CUI
+and auditor permissions normally from `auditors_r`. A missing roster
+match does NOT grant access. This fallback is automatically disabled
+when `NODE_ENV=production` or `NGAT_ENV` is not dev and the local
+backend binds to 127.0.0.1 rather than accepting external connections
+when an employee ID is set. Do not set this variable in OpenShift or
+commit a real ID; don't use a production-mode container for local fallback.
+Neither the legacy NGAT_DEV_NETWORK_ID nor
+ALLOW_HARDCODED_IDENTITY_FALLBACK is needed.
