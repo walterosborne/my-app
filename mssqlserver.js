@@ -406,11 +406,22 @@ console.log('[SMTP DEBUG]', {
     configHostPresent: Boolean(smtpConfig.host),
     smtpHostPresent: Boolean(SMTP_HOST)
 });
+// Locally in NGAT dev only, accept the corporate SMTP relay's untrusted
+// certificate while keeping STARTTLS encryption. Kubernetes never uses this
+// exception, even if its NGAT_ENV selects the dev audit schema.
+const allowLocalSmtpUntrustedCert = !runningInKubernetes
+    && process.env.NODE_ENV !== 'production'
+    && configuredEnvironmentMode === 'dev';
+if (allowLocalSmtpUntrustedCert) {
+    console.warn('[NGAT SMTP] Local dev only: SMTP certificate verification is disabled.');
+}
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
-    tls: SMTP_TLS
+    tls: allowLocalSmtpUntrustedCert
+        ? { ...(SMTP_TLS || {}), rejectUnauthorized: false }
+        : SMTP_TLS
 });
 
 // No hardcoded identity is accepted in the deployed application.
