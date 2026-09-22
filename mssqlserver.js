@@ -479,24 +479,24 @@ const getRequestEnvironmentHost = (req) => {
 const buildAuditorFileUploadDiagnostics = (req, { auditSchema = null, auditorId = null } = {}) => {
     const uploadedFiles = getAuditorUploadFilesFromRequest(req);
     return {
-    requestHost: getRequestEnvironmentHost(req),
-    environmentMode: getCurrentRequestContext()?.environmentMode || getEnvironmentModeForHost(getRequestEnvironmentHost(req)),
-    auditSchema,
-    auditorId,
-    method: req.method,
-    originalUrl: req.originalUrl,
-    protocol: req.protocol,
-    secure: req.secure,
-    hostname: req.hostname,
-    ip: req.ip,
-    contentType: req.get('content-type') || null,
-    contentLength: req.get('content-length') || null,
-    userAgent: req.get('user-agent') || null,
-    fileCount: uploadedFiles.length,
-    fileNames: uploadedFiles.map((file) => file.originalname || null),
-    fileSizes: uploadedFiles.map((file) => file.size || null),
-    mimeTypes: uploadedFiles.map((file) => file.mimetype || null)
-};
+        requestHost: getRequestEnvironmentHost(req),
+        environmentMode: getCurrentRequestContext()?.environmentMode || getEnvironmentModeForHost(getRequestEnvironmentHost(req)),
+        auditSchema,
+        auditorId,
+        method: req.method,
+        originalUrl: req.originalUrl,
+        protocol: req.protocol,
+        secure: req.secure,
+        hostname: req.hostname,
+        ip: req.ip,
+        contentType: req.get('content-type') || null,
+        contentLength: req.get('content-length') || null,
+        userAgent: req.get('user-agent') || null,
+        fileCount: uploadedFiles.length,
+        fileNames: uploadedFiles.map((file) => file.originalname || null),
+        fileSizes: uploadedFiles.map((file) => file.size || null),
+        mimeTypes: uploadedFiles.map((file) => file.mimetype || null)
+    };
 };
 
 const serializeUploadError = (error) => ({
@@ -2506,10 +2506,10 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
 
 // PORT is reserved for the container's HTTP listener in OpenShift.
 // On a local workstation, an inherited PORT=25 (SMTP) must never redirect
-// the Express listener away from Vite's expected localhost:3002.
+// the Express listener away from Vite's expected localhost:3001.
 const PORT = Number(runningInKubernetes
-    ? (process.env.PORT || process.env.API_PORT || 3002)
-    : (process.env.API_PORT || 3002));
+    ? (process.env.PORT || process.env.API_PORT || 3001)
+    : (process.env.API_PORT || 3001));
 // A local employee-ID bypass must never be reachable from another machine.
 const PREFERRED_HOST = process.env.NODE_ENV !== 'production'
     && String(process.env.NGAT_DEV_EMPLOYEE_ID || '').trim()
