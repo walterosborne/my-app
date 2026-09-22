@@ -103,43 +103,40 @@ export const getAppRootFromImportMetaUrl = (importMetaUrl) => (
 export const loadRuntimeEnv = ({
     appRoot,
     mode = 'development',
-    overrideProcessEnv = false
+    overrideProcessEnv = false,
+    loadFiles = true,
+    envFileLast = false
 }) => {
     if (!appRoot) {
         throw new Error('loadRuntimeEnv requires an appRoot.');
     }
 
     const effectiveMode = String(mode || 'development').trim() || 'development';
-    const candidateFiles = [
-        '.env',
-        '.env.local',
-        `.env.${effectiveMode}`,
-        `.env.${effectiveMode}.local`
-    ];
+    // On a workstation, an explicitly configured .env is the final authority:
+    // it wins over .env.local, mode-specific files and inherited OS variables.
+    const candidateFiles = envFileLast
+        ? [`.env.${effectiveMode}.local`, `.env.${effectiveMode}`, '.env.local', '.env']
+        : ['.env', '.env.local', `.env.${effectiveMode}`, `.env.${effectiveMode}.local`];
 
     const loadedFiles = [];
 
-    for (const candidate of candidateFiles) {
-        const filePath = path.join(appRoot, candidate);
-        if (!fs.existsSync(filePath)) {
-            continue;
-        }
+    if (loadFiles) {
+        for (const candidate of candidateFiles) {
+            const filePath = path.join(appRoot, candidate);
+            if (!fs.existsSync(filePath)) continue;
 
-        for (const [key, value] of parseEnvFile(filePath)) {
-            if (overrideProcessEnv || process.env[key] === undefined) {
-                process.env[key] = value;
+            for (const [key, value] of parseEnvFile(filePath)) {
+                if (overrideProcessEnv || process.env[key] === undefined) {
+                    process.env[key] = value;
+                }
             }
+            loadedFiles.push(candidate);
         }
-
-        loadedFiles.push(candidate);
     }
 
     if (!process.env.NODE_ENV) {
         process.env.NODE_ENV = effectiveMode;
     }
 
-    return {
-        mode: effectiveMode,
-        loadedFiles
-    };
+    return { mode: effectiveMode, loadedFiles };
 };

@@ -13,9 +13,16 @@ import smtpConfig from './smtpConfig.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
 
+// OpenShift owns its environment via Secret/Deployment env vars.
+// Locally, .env is authoritative even if Windows already defines the same keys.
+// This runs BEFORE database connections or the local Entra fallback are set up.
+const runningInKubernetes = Boolean(process.env.KUBERNETES_SERVICE_HOST);
 const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
-    mode: 'production'
+    mode: runningInKubernetes ? 'production' : 'development',
+    loadFiles: !runningInKubernetes,
+    overrideProcessEnv: !runningInKubernetes,
+    envFileLast: !runningInKubernetes
 });
 // Fail at startup if OpenShift has not explicitly chosen its audit schema.
 const configuredEnvironmentMode = getEnvironmentModeForHost();
@@ -30,7 +37,13 @@ const rosterDbDatabase = process.env.database || '';
 const rosterDbUser = process.env.user || '';
 const rosterDbPassword = process.env.password || '';
 
-console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
+console.log(`[NGAT ENV] source: ${runningInKubernetes ? 'Kubernetes Deployment / Secrets' : 'local env files (last .env wins over OS env)'}`);
+console.log(`[NGAT ENV] loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
+console.log('[NGAT AUTH] local fallback:', process.env.NODE_ENV !== 'production'
+    && configuredEnvironmentMode === 'dev'
+    && Boolean(process.env.NGAT_DEV_EMPLOYEE_ID)
+    ? 'enabled on localhost'
+    : 'disabled');
 console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditserver: Boolean(process.env.auditserver),
     auditdb: Boolean(process.env.auditdb),

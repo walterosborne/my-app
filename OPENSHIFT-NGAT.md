@@ -234,3 +234,23 @@ when an employee ID is set. Do not set this variable in OpenShift or
 commit a real ID; don't use a production-mode container for local fallback.
 Neither the legacy NGAT_DEV_NETWORK_ID nor
 ALLOW_HARDCODED_IDENTITY_FALLBACK is needed.
+
+## Local .env precedence fix
+
+The local `mssqlserver.js` server loads the repository-root `.env` after
+other local dotenv files, and **overrides inherited Windows/system environment
+variables for keys defined in .env**. The backend uses
+`loadRuntimeEnv({mode:'development'})` on a workstation, not the previous
+hard-coded `mode:'production'`. It logs only which files were loaded and
+whether the local fallback is enabled, never the database password or the
+employee ID. Existing OS env values for keys NOT defined in .env still apply.
+
+Put `NODE_ENV=development`, `NGAT_ENV=dev`,
+`NGAT_DEV_EMPLOYEE_ID=YOUR_MYID`, and both SQL connection groups in
+the repository-root `.env` and restart the backend with `npm run server`.
+Run the browser separately with `npm run dev` (Vite proxies /api to 3001).
+
+OpenShift is identified by `KUBERNETES_SERVICE_HOST`; the backend does
+not load any .env files there and does NOT override Deployment or Secret
+variables. NODE_ENV=production still disallows the fallback even if the
+employee variable were accidentally configured.
