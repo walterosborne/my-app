@@ -217,7 +217,7 @@ const AppEnvironmentBanner = () => {
   const productionHref = getProductionAppUrlForPath(location.pathname || '/', location.search || '')
   return (
     <div className="environment-banner">
-      <span>You are working in a ${mode === 'stg' ? 'staging' : 'development'} environment.</span>
+      <span>You are working in a {mode === 'stg' ? 'staging' : 'development'} environment.</span>
       <a href={productionHref}>Go to production</a>
     </div>
   )
