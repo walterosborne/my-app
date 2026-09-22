@@ -32,7 +32,7 @@ import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
 import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
-import { getEnvironmentModeForHost, getProductionAppUrlForPath, normalizeEnvironmentHost } from '../environment-config.js'
+import { getProductionAppUrlForPath } from '../environment-config.js'
 
 const AppBootstrapGate = ({ children }) => {
   const [isReady, setIsReady] = useState(false)
@@ -190,19 +190,34 @@ const AppMetadata = () => {
 
 const AppEnvironmentBanner = () => {
   const location = useLocation()
-  const currentHost = typeof window !== 'undefined'
-    ? normalizeEnvironmentHost(window.location.hostname)
-    : ''
+  const [mode, setMode] = useState(null)
 
-  if (getEnvironmentModeForHost(currentHost) === 'prod') {
-    return null
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/environment', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Environment request failed: HTTP ${response.status}`)
+        return response.json()
+      })
+      .then((data) => {
+        if (!cancelled) setMode(data.mode)
+      })
+      .catch((error) => {
+        console.warn('NGAT could not verify its environment:', error)
+        if (!cancelled) setMode('unknown')
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  if (mode === null || mode === 'prod') return null
+  if (mode === 'unknown') {
+    return <div className="environment-banner">Unable to verify NGAT environment.</div>
   }
 
   const productionHref = getProductionAppUrlForPath(location.pathname || '/', location.search || '')
-
   return (
     <div className="environment-banner">
-      <span>You are working in a development environment.</span>
+      <span>You are working in a ${mode === 'stg' ? 'staging' : 'development'} environment.</span>
       <a href={productionHref}>Go to production</a>
     </div>
   )

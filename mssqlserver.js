@@ -17,6 +17,10 @@ const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
     mode: 'production'
 });
+// Fail at startup if OpenShift has not explicitly chosen its audit schema.
+const configuredEnvironmentMode = getEnvironmentModeForHost();
+const configuredAuditSchema = getDatabaseSchemaForHost();
+console.log('[NGAT ENV] Audit mode/schema:', configuredEnvironmentMode, configuredAuditSchema);
 const auditDbServer = process.env.auditserver || '';
 const auditDbDatabase = process.env.auditdb || '';
 const auditDbUser = process.env.audituser || '';
@@ -784,15 +788,17 @@ const getNetworkIdFromRequest = (req) => {
 };
 
 app.use((req, _res, next) => {
-    const requestHost = getRequestEnvironmentHost(req);
-    const environmentMode = getEnvironmentModeForHost(requestHost);
-    const auditSchema = getDatabaseSchemaForHost(requestHost);
-
     requestContextStorage.run({
-        requestHost,
-        environmentMode,
-        auditSchema
+        requestHost: getRequestEnvironmentHost(req), // for diagnostics, NOT mode selection
+        environmentMode: configuredEnvironmentMode,
+        auditSchema: configuredAuditSchema
     }, next);
+});
+
+// The React banner reads the single runtime NGAT_ENV; no Vite or hostname guess.
+app.get('/api/environment', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({ mode: configuredEnvironmentMode });
 });
 
 app.get(['/testheaders', '/api/testheaders'], (req, res) => {

@@ -15,7 +15,7 @@ RUN npm run build \
     && chmod -R g=u /opt/app-root/src
 
 ENV NODE_ENV=production
-ENV NGAT_ENV=production
+# NGAT_ENV must be set explicitly on the Deployment: dev or prod (legacy stg).
 ENV PORT=8080
 USER 1001
 EXPOSE 8080

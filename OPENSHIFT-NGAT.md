@@ -37,9 +37,11 @@ No real credentials belong in Git.
    change both image names together if the `wosborne` repository is unavailable.
    The BuildConfig reads the internal `EnterpriseKubernetes/ngat-ops`
    repository's `main` branch, matching the working OpenShift configuration. Supply sourceSecret if needed.
-3. `NGAT_ENV=production` selects `dbo`. Set `AUDIT_SCHEMA` only when
-   deploying a deliberate alternate schema. Never derive the target audit
-   schema from an inbound Host/Origin header.
+3. Set `NGAT_ENV` explicitly in the running Deployment. `dev` selects SQL
+   schema `dev`, `prod` selects `dbo`, and legacy `stg` selects `stag`.
+   The hostname, `NODE_ENV`, `AUDIT_SCHEMA`, and Vite build mode cannot
+   change the database schema. Check the CURRENT schema before changing
+   NGAT_ENV: this changes which audit data the app reads/writes.
 4. Set `APP_BASE_URL` to the public NGAT origin for approval and audit
    emails. The app Deployment reads secret `smtp` containing EXACT keys
    `from`, `host`, `port`, `secure`, `tls`. Keep `secure=false` if that
@@ -178,3 +180,33 @@ set up `ngat.northgrum.com` DNS/TLS to reach this OpenShift router,
 then apply the corporate Route separately. Don't remove the working
 dev Route until the new path is verified; don't leave an unauthenticated
 Route to the app as a bypass after cutover.
+
+## One runtime environment variable for dev/prod
+
+`NGAT_ENV=dev` selects audit schema `dev`; `NGAT_ENV=prod` selects `dbo`.
+Legacy `NGAT_ENV=stg` selects `stag`. There is no hostname fallback or
+AUDIT_SCHEMA override. An OpenShift container missing NGAT_ENV fails at
+startup instead of silently selecting an audit database schema; local
+non-production development without NGAT_ENV defaults to dev.
+
+Keep `NODE_ENV=production` in both OpenShift environments to serve the
+compiled React app. Remove the old NGAT_ENV default from the Docker image:
+the Deployment explicitly chooses it. The frontend fetches
+`/api/environment` from the backend at runtime for its banner; no
+VITE_NGAT_ENV or separate Vite build is needed.
+
+The checked-in fresh-install Deployment currently specifies NGAT_ENV=production
+(which is accepted as `prod`), to preserve its previous default. Do NOT
+apply it over your live `deployment/ngat`. First confirm which audit schema
+the running app uses; setting dev selects a DIFFERENT schema from dbo.
+
+Use Workloads > Deployments > ngat > Environment, or, if you have confirmed
+that your target is the development schema:
+
+```bash
+oc -n ngat-dev set env deployment/ngat NGAT_ENV=dev
+oc -n ngat-dev rollout status deployment/ngat
+```
+
+For a deliberate dbo target use NGAT_ENV=prod instead. Changes to a Kubernetes
+environment variable require a pod rollout; don't change the proxy Deployment.
