@@ -22,14 +22,14 @@ test('local .env overrides inherited OS env, .env.local and mode-specific files'
     process.env.NGAT_ENV = 'prod';
     process.env.NGAT_DEV_EMPLOYEE_ID = 'WRONG_ID';
     process.env.auditdb = 'WRONG_DB';
-    fs.writeFileSync(path.join(dir, '.env.local'), 'NGAT_ENV=stg\\n');
-    fs.writeFileSync(path.join(dir, '.env.development'), 'NGAT_ENV=stg\\n');
+    fs.writeFileSync(path.join(dir, '.env.local'), 'NGAT_ENV=stg\n');
+    fs.writeFileSync(path.join(dir, '.env.development'), 'NGAT_ENV=stg\n');
     fs.writeFileSync(path.join(dir, '.env'), [
       'NODE_ENV=development',
       'NGAT_ENV=dev',
       'NGAT_DEV_EMPLOYEE_ID=LOCAL_ID',
       'auditdb=LOCAL_DB'
-    ].join('\\n'));
+    ].join('\n'));
     const result = loadRuntimeEnv({
       appRoot: dir, mode: 'development', overrideProcessEnv: true, envFileLast: true
     });
@@ -48,7 +48,7 @@ test('Kubernetes mode never reads .env or overwrites Deployment vars', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ngat-kube-env-test-'));
   const previous = snapshot();
   try {
-    fs.writeFileSync(path.join(dir, '.env'), 'NODE_ENV=development\\nNGAT_ENV=dev\\nNGAT_DEV_EMPLOYEE_ID=WRONG\\n');
+    fs.writeFileSync(path.join(dir, '.env'), 'NODE_ENV=development\nNGAT_ENV=dev\nNGAT_DEV_EMPLOYEE_ID=WRONG\n');
     process.env.NODE_ENV = 'production';
     process.env.NGAT_ENV = 'prod';
     delete process.env.NGAT_DEV_EMPLOYEE_ID;

@@ -17,6 +17,9 @@ import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironme
 // Locally, .env is authoritative even if Windows already defines the same keys.
 // This runs BEFORE database connections or the local Entra fallback are set up.
 const runningInKubernetes = Boolean(process.env.KUBERNETES_SERVICE_HOST);
+// Local server defaults to development even if Windows inherited NODE_ENV=production.
+// A deliberate NODE_ENV value in the repository-root .env then overrides this.
+if (!runningInKubernetes) process.env.NODE_ENV = 'development';
 const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
     mode: runningInKubernetes ? 'production' : 'development',
