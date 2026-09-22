@@ -9,7 +9,6 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getEntraIdentity, getForwardedAccessToken } from './entraIdentity.js';
-import smtpConfig from './smtpConfig.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
 
@@ -27,6 +26,10 @@ const runtimeEnv = loadRuntimeEnv({
     overrideProcessEnv: !runningInKubernetes,
     envFileLast: !runningInKubernetes
 });
+// Static ESM imports run before the statements above. Import SMTP settings
+// only AFTER .env is loaded so even an older local smtpConfig.js that reads
+// process.env at module initialization sees the correct values.
+const { default: smtpConfig } = await import('./smtpConfig.js');
 // Fail at startup if OpenShift has not explicitly chosen its audit schema.
 const configuredEnvironmentMode = getEnvironmentModeForHost();
 const configuredAuditSchema = getDatabaseSchemaForHost();
@@ -398,6 +401,11 @@ const {
     secure: SMTP_SECURE = false,
     tls: SMTP_TLS
 } = smtpConfig;
+console.log('[SMTP DEBUG]', {
+    envHostPresent: Boolean(process.env.host),
+    configHostPresent: Boolean(smtpConfig.host),
+    smtpHostPresent: Boolean(SMTP_HOST)
+});
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
