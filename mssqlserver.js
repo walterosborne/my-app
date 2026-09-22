@@ -2504,7 +2504,12 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
     }
 });
 
-const PORT = Number(process.env.PORT || process.env.API_PORT || 3001);
+// PORT is reserved for the container's HTTP listener in OpenShift.
+// On a local workstation, an inherited PORT=25 (SMTP) must never redirect
+// the Express listener away from Vite's expected localhost:3001.
+const PORT = Number(runningInKubernetes
+    ? (process.env.PORT || process.env.API_PORT || 3001)
+    : (process.env.API_PORT || 3001));
 // A local employee-ID bypass must never be reachable from another machine.
 const PREFERRED_HOST = process.env.NODE_ENV !== 'production'
     && String(process.env.NGAT_DEV_EMPLOYEE_ID || '').trim()
