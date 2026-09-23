@@ -49,7 +49,7 @@ const CollapseHeading = ({ title, collapsed, onToggle, size }) => (
       display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
       padding: '4px 0', marginBottom: '5px',
       border: 0, background: 'transparent', color: 'inherit',
-      textAlign: 'left', cursor: 'pointer'
+      textAlign: 'left', cursor: 'pointer', pointerEvents: 'auto'
     }}
   >
     <span aria-hidden="true" style={{ fontSize: size === 'small' ? '14px' : '18px' }}>
@@ -1590,6 +1590,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   function onValidationError(validationErrors) {
     submitIntentRef.current = 'save';
+    // Required fields remain discoverable even if their section started empty/collapsed.
+    if (['standards', 'cui', 'auditDate', 'auditorsTime', 'delayCause']
+      .some((field) => Object.prototype.hasOwnProperty.call(validationErrors, field))) {
+      setCollapsedAuditSections((current) => ({ ...current, introduction: false }));
+    }
     const errorArray = Object.values(validationErrors)
       .map((error) => error?.message)
       .filter(Boolean);
