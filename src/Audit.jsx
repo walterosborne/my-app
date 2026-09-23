@@ -33,6 +33,41 @@ import {
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
 import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
+const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, onDownloadZip }) => {
+    const files = Array.isArray(finding.evidenceFiles) ? finding.evidenceFiles : [];
+    if (!files.length) return null;
+
+    return (
+        <aside className="finding-evidence" aria-label="Objective evidence files">
+            <div className="finding-evidence-heading">
+                <strong>Objective Evidence</strong>
+                <span>{files.length} {files.length === 1 ? 'file' : 'files'}</span>
+            </div>
+            <ul className="finding-evidence-list">
+                {files.map((file) => (
+                    <li key={file.fileId}>
+                        <a
+                            href={buildApiUrl(`audits/${scheduleId}/objective-evidence/${finding.ncId}/${file.fileId}/download`)}
+                            download={file.fileName}
+                            title={file.fileName}
+                        >
+                            {file.fileName}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+            <button
+                type="button"
+                className="finding-evidence-zip"
+                onClick={() => onDownloadZip(finding.ncId)}
+                disabled={downloadingNcId === finding.ncId}
+            >
+                {downloadingNcId === finding.ncId ? 'Downloading...' : 'Download ZIP'}
+            </button>
+        </aside>
+    );
+};
+
 const Audit = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -68,6 +103,7 @@ const Audit = () => {
     const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
     const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
     const [downloadingObjectiveEvidence, setDownloadingObjectiveEvidence] = React.useState(false);
+    const [downloadingEvidenceNcId, setDownloadingEvidenceNcId] = React.useState(null);
     const [changingLifecycle, setChangingLifecycle] = React.useState(false);
 
     // Load all data from API on mount
@@ -759,7 +795,7 @@ const Audit = () => {
             }
             if (auditData?.scheduleId) {
                 try {
-                    const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}`));
+                    const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}?includeEvidenceFiles=true`));
                     const data = await response.json();
                     setNonconformances(data);
                 } catch (error) {
@@ -1746,6 +1782,34 @@ const Audit = () => {
         }
     };
 
+    const handleDownloadFindingEvidence = async (ncId) => {
+        if (!auditData?.scheduleId || !Number.isSafeInteger(Number(ncId))) return;
+        setDownloadingEvidenceNcId(ncId);
+        try {
+            const response = await fetch(buildApiUrl(
+                `audits/${auditData.scheduleId}/objective-evidence.zip?ncId=${encodeURIComponent(ncId)}`
+            ));
+            if (!response.ok) {
+                const errorData = (response.headers.get('content-type') || '').includes('application/json')
+                    ? await response.json() : null;
+                throw new Error(errorData?.error || 'Failed to download question objective evidence.');
+            }
+            const blob = await response.blob();
+            const objectUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = `audit-${auditData.scheduleId}-question-${ncId}-objective-evidence.zip`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            errorToast(error.message || 'Failed to download question objective evidence.');
+        } finally {
+            setDownloadingEvidenceNcId(null);
+        }
+    };
+
     const handleLifecycle = async (action) => {
         if (!auditData?.scheduleId || changingLifecycle) return;
         if (action === 'archive' && !window.confirm(
@@ -2324,7 +2388,7 @@ const Audit = () => {
                             .map((finding, index) => {
                                 const chipMeta = getFindingChipMeta(finding.findingType);
                                 return (
-                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
+                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}${finding.evidenceFiles?.length ? ' has-finding-evidence' : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
                                             {chipMeta && (
@@ -2386,6 +2450,12 @@ const Audit = () => {
                                             )}
                                         </>
                                     )}
+                                    <FindingEvidencePanel
+                                        finding={finding}
+                                        scheduleId={auditData.scheduleId}
+                                        downloadingNcId={downloadingEvidenceNcId}
+                                        onDownloadZip={handleDownloadFindingEvidence}
+                                    />
                                 </div>
                             )})}
                     </div>
@@ -2405,7 +2475,7 @@ const Audit = () => {
                             .map((finding, index) => {
                                 const chipMeta = getFindingChipMeta(finding.findingType);
                                 return (
-                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
+                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}${finding.evidenceFiles?.length ? ' has-finding-evidence' : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
                                             {chipMeta && (
@@ -2467,6 +2537,12 @@ const Audit = () => {
                                             )}
                                         </>
                                     )}
+                                    <FindingEvidencePanel
+                                        finding={finding}
+                                        scheduleId={auditData.scheduleId}
+                                        downloadingNcId={downloadingEvidenceNcId}
+                                        onDownloadZip={handleDownloadFindingEvidence}
+                                    />
                                 </div>
                             )})}
                     </div>
@@ -2484,7 +2560,7 @@ const Audit = () => {
                             const chipMeta = getFindingChipMeta(finding.findingType);
 
                             return (
-                                <div key={finding.ncId || index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
+                                <div key={finding.ncId || index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}${finding.evidenceFiles?.length ? ' has-finding-evidence' : ''}`}>
                                     <div className="finding-header">
                                         <div className="finding-id-type">
                                             {chipMeta && (
@@ -2556,6 +2632,12 @@ const Audit = () => {
                                             )}
                                         </>
                                     )}
+                                    <FindingEvidencePanel
+                                        finding={finding}
+                                        scheduleId={auditData.scheduleId}
+                                        downloadingNcId={downloadingEvidenceNcId}
+                                        onDownloadZip={handleDownloadFindingEvidence}
+                                    />
                                 </div>
                             );
                         })}
