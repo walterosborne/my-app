@@ -79,6 +79,7 @@ const ThirtySixtyNinety = () => {
   const [propsList, setPropsList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
+  const [includeCancelledAudits, setIncludeCancelledAudits] = useState(false);
   const [sectorFilter, setSectorFilter] = useState(null);
   const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
@@ -345,6 +346,7 @@ const ThirtySixtyNinety = () => {
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
+      if (!includeCancelledAudits && Number(audit?.stage) === -2) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -399,6 +401,7 @@ const ThirtySixtyNinety = () => {
   }, [
     audits,
     titleFilter,
+    includeCancelledAudits,
     sectorFilter,
     divisionFilter,
     programFilter,
@@ -1439,6 +1442,17 @@ const ThirtySixtyNinety = () => {
                 value={titleFilter}
                 onChange={(event) => setTitleFilter(event.target.value)}
               />
+            </div>
+
+            <div className="filter-field filter-field--checkbox">
+              <label className="cancelled-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={includeCancelledAudits}
+                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
+                />
+                <span>Include cancelled audits</span>
+              </label>
             </div>
 
             <div className="filter-field">
