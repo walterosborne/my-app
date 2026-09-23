@@ -1772,6 +1772,9 @@ const Audit = () => {
             } else {
                 toast.success(action === 'cancel' ? 'Audit cancelled.' : 'Audit reactivated.');
             }
+            if (result.emailWarning) {
+                errorToast(result.emailWarning);
+            }
         } catch (error) {
             errorToast(error.message || 'Failed to change audit stage.');
         } finally {
