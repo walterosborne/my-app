@@ -33,6 +33,11 @@ IF OBJECT_ID(@QuestionsTable, N'U') IS NULL
 IF OBJECT_ID(@StandardsTable, N'U') IS NULL
     THROW 50174, 'Target standards_r table does not exist.', 1;
 
+-- Failed attempts can leave local temp tables in the same SSMS session.
+-- Clear only this script's scratch tables before each run.
+DROP TABLE IF EXISTS #ChangedQuestions;
+DROP TABLE IF EXISTS #LegacyTypeMapping;
+
 CREATE TABLE #LegacyTypeMapping (
     old_type NVARCHAR(4000) COLLATE DATABASE_DEFAULT NOT NULL,
     standard_id INT NULL,
