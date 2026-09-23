@@ -4,8 +4,8 @@ on these fields until the migration has completed in the dev audit database.
 
 - Every ALTER is hardcoded to [dev]; no configurable schema or dbo override.
 - Existing program / OU rows are NOT updated or backfilled.
-- Nullable columns preserve historic entries until an administrator corrects them.
-- New/edited records are validated by the application API, not by NOT NULL.
+- Nullable columns preserve historic entries and allow optional Admin assignments.
+- No hierarchy consistency or completeness checks are enforced by this migration or the app.
 - Safe to rerun; transaction rolls back on error.
 */
 SET NOCOUNT ON;
