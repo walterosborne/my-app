@@ -67,6 +67,7 @@ const Audit = () => {
     const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
     const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
     const [downloadingObjectiveEvidence, setDownloadingObjectiveEvidence] = React.useState(false);
+    const [changingLifecycle, setChangingLifecycle] = React.useState(false);
 
     // Load all data from API on mount
     React.useEffect(() => {
@@ -620,6 +621,7 @@ const Audit = () => {
 
     const getStageLabel = (stage, locked, approved) => {
         if (stage === -1) return 'Historical';
+        if (stage === -2) return 'Cancelled';
         if (approved) return 'Approved';
         if (locked) return 'Pending Approval';
         switch (stage) {
@@ -1743,8 +1745,42 @@ const Audit = () => {
         }
     };
 
+    const handleLifecycle = async (action) => {
+        if (!auditData?.scheduleId || changingLifecycle) return;
+        if (action === 'archive' && !window.confirm(
+            'Archive this audit? It will remain in the database but will no longer be available anywhere in NGAT. Contact an NGAT administrator to have it restored.'
+        )) return;
+
+        setChangingLifecycle(true);
+        try {
+            const response = await fetch(buildApiUrl(`audits/${auditData.scheduleId}/lifecycle`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to change audit stage.');
+            }
+            const refreshedAudits = await getAuditsReport(true);
+            setAudits(refreshedAudits);
+            if (action === 'archive') {
+                toast.success('Audit archived.');
+                const remaining = refreshedAudits.find((audit) => audit.scheduleId !== auditData.scheduleId);
+                navigate(remaining ? `/audit/${remaining.scheduleId}` : '/audit');
+            } else {
+                toast.success(action === 'cancel' ? 'Audit cancelled.' : 'Audit reactivated.');
+            }
+        } catch (error) {
+            toast.error(error.message || 'Failed to change audit stage.');
+        } finally {
+            setChangingLifecycle(false);
+        }
+    };
+
+    const canChangeLifecycle = Boolean(auditData?.canManage && !isLocked && !isApproved);
     const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
-    const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical')
+    const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical' || stageLabel === 'Cancelled')
         ? stageLabel
         : `Next step: ${stageLabel}`;
 
@@ -1777,7 +1813,9 @@ const Audit = () => {
                             ? { backgroundColor: 'green', color: 'white' }
                             : stageLabel === 'Historical'
                                 ? { backgroundColor: '#9ca3af', color: '#ffffff' }
-                                : {})}
+                                : stageLabel === 'Cancelled'
+                                    ? { backgroundColor: '#b45309', color: '#ffffff' }
+                                    : {})}
                         className="audit-status-badge"
                     >
                         {stageBadgeText}
@@ -1892,6 +1930,34 @@ const Audit = () => {
 
                     {isLocked && (
                         <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                    )}
+
+                    {canChangeLifecycle && stageValue > 0 && (
+                        <button
+                            className="action-btn lifecycle-cancel"
+                            onClick={() => handleLifecycle('cancel')}
+                            disabled={changingLifecycle}
+                        >
+                            Cancel Audit
+                        </button>
+                    )}
+                    {canChangeLifecycle && stageValue === -2 && (
+                        <button
+                            className="action-btn lifecycle-reactivate"
+                            onClick={() => handleLifecycle('reactivate')}
+                            disabled={changingLifecycle}
+                        >
+                            Reactivate Audit
+                        </button>
+                    )}
+                    {canChangeLifecycle && (
+                        <button
+                            className="action-btn lifecycle-archive"
+                            onClick={() => handleLifecycle('archive')}
+                            disabled={changingLifecycle}
+                        >
+                            Archive Audit
+                        </button>
                     )}
                 </div>
 
