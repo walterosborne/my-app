@@ -440,6 +440,93 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+/* Per-question evidence stays beside the finding details on wide reports. */
+.finding-card.has-finding-evidence {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 30%);
+    column-gap: 1.5rem;
+}
+
+.finding-card.has-finding-evidence > .finding-header {
+    grid-column: 1 / -1;
+}
+
+.finding-card.has-finding-evidence > .finding-item {
+    grid-column: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.finding-evidence {
+    grid-column: 2;
+    grid-row: 2 / span 12;
+    align-self: start;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #1f2937;
+}
+
+.finding-evidence-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.92rem;
+}
+
+.finding-evidence-heading span {
+    color: #64748b;
+    font-size: 0.85rem;
+}
+
+.finding-evidence-list {
+    margin: 0 0 0.9rem;
+    padding-left: 1.1rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.finding-evidence-list li {
+    padding: 0.25rem 0;
+    overflow-wrap: anywhere;
+}
+
+.finding-evidence-list a {
+    color: #0052a3;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.finding-evidence-zip {
+    width: 100%;
+    padding: 0.65rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    background: #0066cc;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.finding-evidence-zip:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+@media (max-width: 850px) {
+    .finding-card.has-finding-evidence {
+        display: block;
+    }
+
+    .finding-evidence {
+        margin-top: 0.75rem;
+    }
+}
+
 .finding-card.nonconformance {
     border-left-color: var(--color-danger);
     background-color: #fff5f5;
