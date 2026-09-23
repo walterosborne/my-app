@@ -657,32 +657,10 @@ const AdminMenu = () => {
         });
     }, [operatingUnitsList]);
 
-    // Existing incomplete or mismatched records remain selectable for correction;
-    // write validation prevents saving those relationships unchanged.
-    const operatingUnitBusinessUnitOptions = React.useMemo(() =>
-        sortedBusinessUnits.filter((unit) =>
-            (Boolean(operatingUnitDivisionId)
-                && Number(unit.divisionId) === Number(operatingUnitDivisionId)
-                && unit.active === 1)
-            || (editingOperatingUnit && Number(unit.businessUnitId) === Number(editingOperatingUnit.businessUnitId))
-        ), [sortedBusinessUnits, operatingUnitDivisionId, editingOperatingUnit]);
-
-    const programBusinessUnitOptions = React.useMemo(() =>
-        sortedBusinessUnits.filter((unit) =>
-            (Boolean(programDivisionId)
-                && Number(unit.divisionId) === Number(programDivisionId)
-                && unit.active === 1)
-            || (editingProgram && Number(unit.businessUnitId) === Number(editingProgram.businessUnitId))
-        ), [sortedBusinessUnits, programDivisionId, editingProgram]);
-
-    const programOperatingUnitOptions = React.useMemo(() =>
-        sortedOperatingUnits.filter((unit) =>
-            (Boolean(programDivisionId) && Boolean(programBusinessUnitId)
-                && Number(unit.divisionId) === Number(programDivisionId)
-                && Number(unit.businessUnitId) === Number(programBusinessUnitId)
-                && unit.active === 1)
-            || (editingProgram && Number(unit.operatingUnitId) === Number(editingProgram.operatingUnitId))
-        ), [sortedOperatingUnits, programDivisionId, programBusinessUnitId, editingProgram]);
+    // Admin assignments are independent selections; no hierarchy rules are enforced yet.
+    const operatingUnitBusinessUnitOptions = sortedBusinessUnits;
+    const programBusinessUnitOptions = sortedBusinessUnits;
+    const programOperatingUnitOptions = sortedOperatingUnits;
 
     const sortedDelayCauses = React.useMemo(() => {
         return [...delayCausesList].sort((a, b) => {
@@ -1441,19 +1419,9 @@ const AdminMenu = () => {
     const handleOperatingUnitSubmit = React.useCallback(async () => {
         const errors = {};
         if (!operatingUnitInput.trim()) errors.operatingUnitName = 'Operating unit is required.';
-        if (!operatingUnitDivisionId) errors.divisionId = 'Division is required.';
-        if (!operatingUnitBusinessUnitId) {
-            errors.businessUnitId = 'Business Unit is required.';
-        } else {
-            const bu = businessUnitsList.find((unit) =>
-                Number(unit.businessUnitId) === Number(operatingUnitBusinessUnitId));
-            if (!bu || Number(bu.divisionId) !== Number(operatingUnitDivisionId)) {
-                errors.businessUnitId = 'Business Unit must belong to the selected Division.';
-            }
-        }
         if (Object.keys(errors).length > 0) {
             setOperatingUnitFieldErrors(errors);
-            const msg = 'Please correct the required organization fields.';
+            const msg = 'Operating Unit name is required.';
             toast.error(msg, TOAST_OPTIONS);
             setOperatingUnitError(msg);
             setOperatingUnitMessage('');
@@ -1461,8 +1429,8 @@ const AdminMenu = () => {
         }
         const payload = {
             operatingUnitName: operatingUnitInput.trim(),
-            divisionId: Number(operatingUnitDivisionId),
-            businessUnitId: Number(operatingUnitBusinessUnitId),
+            divisionId: operatingUnitDivisionId ? Number(operatingUnitDivisionId) : null,
+            businessUnitId: operatingUnitBusinessUnitId ? Number(operatingUnitBusinessUnitId) : null,
             active: editingOperatingUnit?.active ?? 1
         };
         setOperatingUnitSubmitting(true);
@@ -1505,7 +1473,7 @@ const AdminMenu = () => {
         } finally {
             setOperatingUnitSubmitting(false);
         }
-    }, [operatingUnitInput, operatingUnitDivisionId, operatingUnitBusinessUnitId, businessUnitsList,
+    }, [operatingUnitInput, operatingUnitDivisionId, operatingUnitBusinessUnitId,
         editingOperatingUnit, isOperatingUnitEditMode, normalizeOperatingUnitRow]);
 
     const handleOperatingUnitArchive = React.useCallback(async () => {
@@ -1865,29 +1833,9 @@ const AdminMenu = () => {
     const handleProgramSubmit = React.useCallback(async () => {
         const errors = {};
         if (!programInput.trim()) errors.programName = 'Program is required.';
-        if (!programDivisionId) errors.divisionId = 'Division is required.';
-        if (!programBusinessUnitId) {
-            errors.businessUnitId = 'Business Unit is required.';
-        } else {
-            const bu = businessUnitsList.find((unit) =>
-                Number(unit.businessUnitId) === Number(programBusinessUnitId));
-            if (!bu || Number(bu.divisionId) !== Number(programDivisionId)) {
-                errors.businessUnitId = 'Business Unit must belong to the selected Division.';
-            }
-        }
-        if (!programOperatingUnitId) {
-            errors.operatingUnitId = 'Operating Unit is required.';
-        } else {
-            const ou = operatingUnitsList.find((unit) =>
-                Number(unit.operatingUnitId) === Number(programOperatingUnitId));
-            if (!ou || Number(ou.divisionId) !== Number(programDivisionId)
-                || Number(ou.businessUnitId) !== Number(programBusinessUnitId)) {
-                errors.operatingUnitId = 'Operating Unit must belong to the selected Business Unit and Division.';
-            }
-        }
         if (Object.keys(errors).length > 0) {
             setProgramFieldErrors(errors);
-            const msg = 'Please correct the required organization fields.';
+            const msg = 'Program name is required.';
             toast.error(msg, TOAST_OPTIONS);
             setProgramError(msg);
             setProgramMessage('');
@@ -1895,9 +1843,9 @@ const AdminMenu = () => {
         }
         const payload = {
             programName: programInput.trim(),
-            divisionId: Number(programDivisionId),
-            businessUnitId: Number(programBusinessUnitId),
-            operatingUnitId: Number(programOperatingUnitId),
+            divisionId: programDivisionId ? Number(programDivisionId) : null,
+            businessUnitId: programBusinessUnitId ? Number(programBusinessUnitId) : null,
+            operatingUnitId: programOperatingUnitId ? Number(programOperatingUnitId) : null,
             auditorIds: programAuditorIds.map(Number),
             active: editingProgram?.active ?? 1
         };
@@ -1940,7 +1888,7 @@ const AdminMenu = () => {
             setProgramSubmitting(false);
         }
     }, [programInput, programDivisionId, programBusinessUnitId, programOperatingUnitId,
-        businessUnitsList, operatingUnitsList, editingProgram, isProgramEditMode,
+        editingProgram, isProgramEditMode,
         programAuditorIds, reloadAuditorsAndPrograms]);
 
     const handleProgramArchive = React.useCallback(async () => {
@@ -3101,8 +3049,6 @@ const AdminMenu = () => {
                         programOperatingUnitOptions={programOperatingUnitOptions}
                         onDivisionChange={(event) => {
                             setProgramDivisionId(event.target.value);
-                            setProgramBusinessUnitId('');
-                            setProgramOperatingUnitId('');
                             if (programFieldErrors.divisionId || programFieldErrors.businessUnitId || programFieldErrors.operatingUnitId) {
                                 setProgramFieldErrors((prev) => {
                                     const { divisionId, businessUnitId, operatingUnitId, ...rest } = prev;
@@ -3113,8 +3059,6 @@ const AdminMenu = () => {
                         sortedDivisions={sortedDivisions}
                         onClearDivision={() => {
                             setProgramDivisionId('');
-                            setProgramBusinessUnitId('');
-                            setProgramOperatingUnitId('');
                             if (programFieldErrors.divisionId || programFieldErrors.businessUnitId || programFieldErrors.operatingUnitId) {
                                 setProgramFieldErrors((prev) => {
                                     const { divisionId, businessUnitId, operatingUnitId, ...rest } = prev;
@@ -3124,7 +3068,6 @@ const AdminMenu = () => {
                         }}
                         onBusinessUnitChange={(event) => {
                             setProgramBusinessUnitId(event.target.value);
-                            setProgramOperatingUnitId('');
                             setProgramFieldErrors((prev) => {
                                 const { businessUnitId, operatingUnitId, ...rest } = prev;
                                 return rest;
@@ -3138,8 +3081,6 @@ const AdminMenu = () => {
                             });
                         }}
                         onClearBusinessUnit={() => {
-                            setProgramBusinessUnitId('');
-                            setProgramOperatingUnitId('');
                         }}
                         onClearOperatingUnit={() => setProgramOperatingUnitId('')}
                         auditorOptions={programAuditorOptions}
@@ -3153,8 +3094,6 @@ const AdminMenu = () => {
                         onReset={() => {
                             setProgramInput('');
                             setProgramDivisionId('');
-                            setProgramBusinessUnitId('');
-                            setProgramOperatingUnitId('');
                             setProgramAuditorIds([]);
                             setEditingProgram(null);
                             setProgramError('');
@@ -3607,7 +3546,6 @@ const AdminMenu = () => {
                         operatingUnitBusinessUnitOptions={operatingUnitBusinessUnitOptions}
                         onDivisionChange={(event) => {
                             setOperatingUnitDivisionId(event.target.value);
-                            setOperatingUnitBusinessUnitId('');
                             if (operatingUnitFieldErrors.divisionId || operatingUnitFieldErrors.businessUnitId) {
                                 setOperatingUnitFieldErrors((prev) => {
                                     const { divisionId, businessUnitId, ...rest } = prev;
@@ -3618,7 +3556,6 @@ const AdminMenu = () => {
                         sortedDivisions={sortedDivisions}
                         onClearDivision={() => {
                             setOperatingUnitDivisionId('');
-                            setOperatingUnitBusinessUnitId('');
                             if (operatingUnitFieldErrors.divisionId || operatingUnitFieldErrors.businessUnitId) {
                                 setOperatingUnitFieldErrors((prev) => {
                                     const { divisionId, businessUnitId, ...rest } = prev;
@@ -3640,7 +3577,6 @@ const AdminMenu = () => {
                         onReset={() => {
                             setOperatingUnitInput('');
                             setOperatingUnitDivisionId('');
-                            setOperatingUnitBusinessUnitId('');
                             setEditingOperatingUnit(null);
                             setOperatingUnitError('');
                             setOperatingUnitMessage('');
