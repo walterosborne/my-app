@@ -19,7 +19,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -76,7 +75,6 @@ const AllReports = () => {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -95,7 +93,6 @@ const AllReports = () => {
   const [auditTypeFilter, setAuditTypeFilter] = useState(null);
   const [leadAuditorFilter, setLeadAuditorFilter] = useState(null);
   const [additionalAuditorsFilter, setAdditionalAuditorsFilter] = useState([]);
-  const [statusFilter, setStatusFilter] = useState(null);
   const [functionFilter, setFunctionFilter] = useState([]);
   const [intExtFilter, setIntExtFilter] = useState(null);
   const [standardsFilter, setStandardsFilter] = useState([]);
@@ -119,7 +116,6 @@ const AllReports = () => {
           operatingUnits,
           auditors,
           auditTypes,
-          statuses,
           functions,
           intExt,
           standards,
@@ -138,7 +134,6 @@ const AllReports = () => {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards(),
@@ -158,7 +153,6 @@ const AllReports = () => {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -229,7 +223,6 @@ const AllReports = () => {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [sitesList]);
   const auditTypeOptions = useMemo(() => buildSortedOptions(auditTypesList, 'auditTypeId', 'auditTypeName'), [auditTypesList]);
-  const statusOptions = useMemo(() => buildSortedOptions(statusesList, 'statusId', 'statusName'), [statusesList]);
   const functionOptions = useMemo(() => buildSortedOptions(functionsList, 'functionId', 'functionName'), [functionsList]);
   const businessUnitOptions = useMemo(() => buildSortedOptions(businessUnitsList, 'businessUnitId', 'businessUnitName'), [businessUnitsList]);
   const operatingUnitOptions = useMemo(() => buildSortedOptions(operatingUnitsList, 'operatingUnitId', 'operatingUnitName'), [operatingUnitsList]);
@@ -254,7 +247,6 @@ const AllReports = () => {
         if (!matchesDivision) return false;
       }
       if (auditTypeFilter && audit.auditTypeId !== auditTypeFilter.value) return false;
-      if (statusFilter && audit.statusId !== statusFilter.value) return false;
       if (functionFilter.length > 0) {
         const auditFunctionIds = normalizeIdArray(audit.functionId).map((id) => Number(id));
         const matchesFunction = functionFilter.some((option) => auditFunctionIds.includes(Number(option.value)));
@@ -302,7 +294,6 @@ const AllReports = () => {
     auditTypeFilter,
     leadAuditorFilter,
     additionalAuditorsFilter,
-    statusFilter,
     functionFilter,
     intExtFilter,
     standardsFilter,
@@ -323,7 +314,6 @@ const AllReports = () => {
     division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
-    status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
     expectedStartDate: formatDateForInput(audit.expectedStartDate),
     expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate),
     submittedDate: formatDateForInput(audit.submittedAt),
@@ -336,7 +326,6 @@ const AllReports = () => {
     { field: 'division', headerName: 'Division', width: 160 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
-    { field: 'status', headerName: 'Status', width: 140 },
     { field: 'expectedStartDate', headerName: 'Expected Start', width: 140 },
     { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 },
     { field: 'submittedDate', headerName: 'Submitted Date', width: 150 },
@@ -452,7 +441,7 @@ const AllReports = () => {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Status', 'Function', 'Comment',
+      'Function', 'Comment',
       'Submission Date', 'Approval Date'
     ];
     const scheduleRows = exportAudits.map((audit) => ([
@@ -471,7 +460,6 @@ const AllReports = () => {
       formatDateForInput(audit.expectedCompletionDate),
       formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
-      formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
       formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
       audit.comment || '',
       formatDateForInput(audit.submittedAt),
@@ -777,19 +765,6 @@ const AllReports = () => {
                 styles={customStyles}
                 value={auditTypeFilter}
                 onChange={setAuditTypeFilter}
-              />
-            </div>
-
-            <div className="filter-field">
-              <label>Status</label>
-              <Select
-                isClearable
-                className="reports-select"
-                classNamePrefix="reports-select"
-                options={statusOptions}
-                styles={customStyles}
-                value={statusFilter}
-                onChange={setStatusFilter}
               />
             </div>
 
