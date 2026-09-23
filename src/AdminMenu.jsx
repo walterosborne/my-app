@@ -98,6 +98,7 @@ const AdminMenu = () => {
     const [operatingUnitsList, setOperatingUnitsList] = React.useState([]);
     const [operatingUnitInput, setOperatingUnitInput] = React.useState('');
     const [operatingUnitDivisionId, setOperatingUnitDivisionId] = React.useState('');
+    const [operatingUnitBusinessUnitId, setOperatingUnitBusinessUnitId] = React.useState('');
     const [editingOperatingUnit, setEditingOperatingUnit] = React.useState(null);
     const [includeArchivedOperatingUnits, setIncludeArchivedOperatingUnits] = React.useState(false);
     const [operatingUnitMessage, setOperatingUnitMessage] = React.useState('');
@@ -132,6 +133,8 @@ const AdminMenu = () => {
     const [programsList, setProgramsList] = React.useState([]);
     const [programInput, setProgramInput] = React.useState('');
     const [programDivisionId, setProgramDivisionId] = React.useState('');
+    const [programBusinessUnitId, setProgramBusinessUnitId] = React.useState('');
+    const [programOperatingUnitId, setProgramOperatingUnitId] = React.useState('');
     const [programAuditorIds, setProgramAuditorIds] = React.useState([]);
     const [editingProgram, setEditingProgram] = React.useState(null);
     const [includeArchivedPrograms, setIncludeArchivedPrograms] = React.useState(false);
@@ -235,6 +238,7 @@ const AdminMenu = () => {
         operatingUnitId: row.operatingUnitId ?? row.operatingunitid ?? row.id,
         operatingUnitName: row.operatingUnitName ?? row.operatingunitname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
+        businessUnitId: row.businessUnitId ?? row.businessunitid ?? null,
         active: normalizeActiveValue(row.active)
     }), [normalizeActiveValue]);
 
@@ -261,6 +265,8 @@ const AdminMenu = () => {
         programId: row.programId ?? row.programid ?? row.id,
         programName: row.programName ?? row.programname ?? '',
         divisionId: row.divisionId ?? row.divisionid ?? null,
+        businessUnitId: row.businessUnitId ?? row.businessunitid ?? null,
+        operatingUnitId: row.operatingUnitId ?? row.operatingunitid ?? null,
         auditorIds: Array.isArray(row.auditorIds ?? row.auditorids) ? (row.auditorIds ?? row.auditorids).map(Number) : [],
         active: normalizeActiveValue(row.active)
     }), [normalizeActiveValue]);
@@ -268,7 +274,7 @@ const AdminMenu = () => {
     const reloadAuditorsAndPrograms = React.useCallback(async () => {
         const [auditorsData, programsData] = await Promise.all([
             getAuditors(),
-            getPrograms()
+            getPrograms(true)
         ]);
         const normalizedAuditors = auditorsData.map(normalizeAuditorRow);
         const normalizedPrograms = programsData.map(normalizeProgramRow);
@@ -431,6 +437,7 @@ const AdminMenu = () => {
             setEditingOperatingUnit(null);
             setOperatingUnitInput('');
             setOperatingUnitDivisionId('');
+            setOperatingUnitBusinessUnitId('');
             setOperatingUnitError('');
             setOperatingUnitMessage('');
             setOperatingUnitFieldErrors({});
@@ -453,6 +460,8 @@ const AdminMenu = () => {
             setEditingProgram(null);
             setProgramInput('');
             setProgramDivisionId('');
+            setProgramBusinessUnitId('');
+            setProgramOperatingUnitId('');
             setProgramAuditorIds([]);
             setProgramError('');
             setProgramMessage('');
@@ -647,6 +656,33 @@ const AdminMenu = () => {
             return nameA.localeCompare(nameB);
         });
     }, [operatingUnitsList]);
+
+    // Existing incomplete or mismatched records remain selectable for correction;
+    // write validation prevents saving those relationships unchanged.
+    const operatingUnitBusinessUnitOptions = React.useMemo(() =>
+        sortedBusinessUnits.filter((unit) =>
+            (Boolean(operatingUnitDivisionId)
+                && Number(unit.divisionId) === Number(operatingUnitDivisionId)
+                && unit.active === 1)
+            || (editingOperatingUnit && Number(unit.businessUnitId) === Number(editingOperatingUnit.businessUnitId))
+        ), [sortedBusinessUnits, operatingUnitDivisionId, editingOperatingUnit]);
+
+    const programBusinessUnitOptions = React.useMemo(() =>
+        sortedBusinessUnits.filter((unit) =>
+            (Boolean(programDivisionId)
+                && Number(unit.divisionId) === Number(programDivisionId)
+                && unit.active === 1)
+            || (editingProgram && Number(unit.businessUnitId) === Number(editingProgram.businessUnitId))
+        ), [sortedBusinessUnits, programDivisionId, editingProgram]);
+
+    const programOperatingUnitOptions = React.useMemo(() =>
+        sortedOperatingUnits.filter((unit) =>
+            (Boolean(programDivisionId) && Boolean(programBusinessUnitId)
+                && Number(unit.divisionId) === Number(programDivisionId)
+                && Number(unit.businessUnitId) === Number(programBusinessUnitId)
+                && unit.active === 1)
+            || (editingProgram && Number(unit.operatingUnitId) === Number(editingProgram.operatingUnitId))
+        ), [sortedOperatingUnits, programDivisionId, programBusinessUnitId, editingProgram]);
 
     const sortedDelayCauses = React.useMemo(() => {
         return [...delayCausesList].sort((a, b) => {
@@ -1884,6 +1920,8 @@ const AdminMenu = () => {
             toast.success('Submitted!', SUCCESS_TOAST_OPTIONS);
             setProgramInput('');
             setProgramDivisionId('');
+            setProgramBusinessUnitId('');
+            setProgramOperatingUnitId('');
             setProgramAuditorIds([]);
             setEditingProgram(null);
         } catch (error) {
