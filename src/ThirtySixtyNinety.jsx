@@ -1423,8 +1423,18 @@ const ThirtySixtyNinety = () => {
     <div className="reports-page">
       <div className="reports-container">
         <div className="reports-header">
-          <div>
-            <h1>{activeReport.title}</h1>
+          <div className="reports-heading">
+            <div className="reports-title-row">
+              <h1>{activeReport.title}</h1>
+              <label className="reports-title-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeCancelledAudits}
+                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
+                />
+                <span>Include cancelled audits</span>
+              </label>
+            </div>
             {!activeReport.ready && <p>This report is coming soon.</p>}
           </div>
           <button className="button export-button" onClick={handleExport}>
@@ -1442,17 +1452,6 @@ const ThirtySixtyNinety = () => {
                 value={titleFilter}
                 onChange={(event) => setTitleFilter(event.target.value)}
               />
-            </div>
-
-            <div className="filter-field filter-field--checkbox">
-              <label className="cancelled-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={includeCancelledAudits}
-                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
-                />
-                <span>Include cancelled audits</span>
-              </label>
             </div>
 
             <div className="filter-field">
