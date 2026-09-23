@@ -1416,6 +1416,7 @@ const AUDIT_SELECT_BASE_COLUMNS = [
     'functionid',
     'standardids',
     'stage',
+    'stagebeforeinactive',
     'expectedstartdate',
     'expectedcompletiondate',
     'startdate',
@@ -1517,6 +1518,7 @@ const parseAuditRow = (row) => {
         functionId: normalizeNumberArray(row.functionid),
         standardIds: normalizeNumberArray(row.standardids),
         stage: row.stage,
+        stageBeforeInactive: row.stagebeforeinactive,
         expectedStartDate: row.expectedstartdate,
         expectedCompletionDate: row.expectedcompletiondate,
         startDate: row.startdate,
@@ -1644,7 +1646,7 @@ const canAdminEditAudit = ({ audit, userInfo }) => {
     return auditDivisionIds.includes(Number(userInfo.divisionid));
 };
 
-const canEditAudit = ({ audit, userInfo }) => {
+const canManageAudit = ({ audit, userInfo }) => {
     if (canAdminEditAudit({ audit, userInfo })) {
         return true;
     }
@@ -1655,6 +1657,12 @@ const canEditAudit = ({ audit, userInfo }) => {
         : [];
     return Number(audit.leadAuditorId) === auditorId || additionalAuditorIds.includes(auditorId);
 };
+
+const canEditAudit = ({ audit, userInfo }) => (
+    Number(audit?.stage) !== -2
+    && Number(audit?.stage) !== -3
+    && canManageAudit({ audit, userInfo })
+);
 
 const canViewAuditByProgram = ({ audit, userInfo }) => {
     if (!userInfo?.auditorid) return false;
@@ -1670,10 +1678,10 @@ const hasCuiAccess = ({ audit, userInfo }) => {
 };
 
 const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds = new Set() }) => {
-    if (!userInfo) return false;
+    if (!userInfo || Number(audit?.stage) === -3) return false;
 
     const myId = userInfo.myid;
-    const isAuditor = canEditAudit({ audit, userInfo });
+    const isAuditor = canManageAudit({ audit, userInfo });
     const isProgramAuditor = canViewAuditByProgram({ audit, userInfo });
 
     const isAdmin = canAdminEditAudit({ audit, userInfo });
@@ -1699,7 +1707,7 @@ const getAuditForAccessCheck = async (client, scheduleId) => {
         `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, CAST(locked AS INT) AS locked FROM audits_r WHERE scheduleid = $1`,
         [Number(scheduleId)]
     );
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0 || Number(result.rows[0].stage) === -3) return null;
     return parseAuditRow(result.rows[0]);
 };
 
@@ -2393,7 +2401,11 @@ app.post('/api/submit-improvement', async (req, res) => {
 // Get all nonconformances
 app.get('/api/nonconformances', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM nonconformances_r ORDER BY ncId');
+        const result = await pool.query(`SELECT nc.*
+             FROM nonconformances_r AS nc
+             INNER JOIN audits_r AS a ON a.scheduleid = nc.scheduleid
+             WHERE a.stage <> -3
+             ORDER BY nc.ncid`);
 
         // Parse array fields back to arrays and convert column names to camelCase
         const nonconformances = result.rows.map(nc => ({
@@ -4506,7 +4518,8 @@ app.get('/api/audits', async (req, res) => {
         let query = `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, CAST(locked AS INT) AS locked FROM audits_r`;
         let params = [];
 
-        const conditions = [];
+        // Never expose archived audits, even with all=true.
+        const conditions = ['stage <> -3'];
         if (hash) {
             params.push(hash);
             conditions.push(`hash = $${params.length}`);
@@ -4547,7 +4560,8 @@ app.get('/api/audits', async (req, res) => {
             );
             audits = audits.map((audit) => ({
                 ...audit,
-                canEdit: canEditAudit({ audit, userInfo })
+                canEdit: canEditAudit({ audit, userInfo }),
+                canManage: canManageAudit({ audit, userInfo })
             }));
         }
 
@@ -4619,6 +4633,7 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
         const stageValue = Number.isFinite(updates.stage) ? Number(updates.stage) : null;
         delete updates.targetStage;
         delete updates.stage;
+        delete updates.stageBeforeInactive;
 
         await client.query('BEGIN');
 
@@ -4811,6 +4826,70 @@ app.post('/api/audits', async (req, res) => {
         client.release();
     }
 });
+// Negative stages: -2 = Cancelled; -3 = archived and hidden throughout NGAT.
+app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const scheduleId = Number(req.params.scheduleId);
+        const action = req.body?.action;
+        if (!Number.isSafeInteger(scheduleId) || scheduleId <= 0 ||
+            !['cancel', 'reactivate', 'archive'].includes(action)) {
+            return res.status(400).json({ success: false, error: 'Valid audit and lifecycle action required.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canManageAudit({ audit, userInfo })) {
+            return res.status(404).json({ success: false, error: 'Audit not found.' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+        if (audit.locked || audit.approvedAt) {
+            return res.status(409).json({ success: false, error: 'Audits awaiting approval or already approved cannot be changed.' });
+        }
+
+        let sql;
+        if (action === 'cancel') {
+            if (![1, 2, 3, 4].includes(Number(audit.stage))) {
+                return res.status(409).json({ success: false, error: 'Only active audits can be cancelled.' });
+            }
+            sql = `UPDATE audits_r
+                   SET stagebeforeinactive = stage, stage = -2, updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage BETWEEN 1 AND 4
+                     AND locked = 0 AND approvedat IS NULL`;
+        } else if (action === 'reactivate') {
+            if (Number(audit.stage) !== -2 ||
+                ![1, 2, 3, 4].includes(Number(audit.stageBeforeInactive))) {
+                return res.status(409).json({ success: false, error: 'This audit cannot be reactivated.' });
+            }
+            sql = `UPDATE audits_r
+                   SET stage = stagebeforeinactive, stagebeforeinactive = NULL,
+                       updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage = -2
+                     AND stagebeforeinactive BETWEEN 1 AND 4
+                     AND locked = 0 AND approvedat IS NULL`;
+        } else {
+            sql = `UPDATE audits_r
+                   SET stagebeforeinactive = CASE WHEN stage = -2 THEN stagebeforeinactive ELSE stage END,
+                       stage = -3, updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage <> -3
+                     AND locked = 0 AND approvedat IS NULL`;
+        }
+
+        const changed = await client.query(sql, [scheduleId]);
+        if (changed.rowCount !== 1) {
+            return res.status(409).json({ success: false, error: 'Audit changed. Refresh and try again.' });
+        }
+        res.json({ success: true, action, scheduleId });
+    } catch (error) {
+        console.error('Error changing audit lifecycle:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Get single audit by scheduleId
 app.get('/api/audits/:scheduleId', async (req, res) => {
     try {
@@ -4856,7 +4935,8 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
 
         res.json({
             ...audit,
-            canEdit: canEditAudit({ audit, userInfo })
+            canEdit: canEditAudit({ audit, userInfo }),
+            canManage: canManageAudit({ audit, userInfo })
         });
     } catch (error) {
         console.error('Error fetching audit:', error);
@@ -4878,7 +4958,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         const auditResult = await pool.query(
             `SELECT scheduleid, title, approvedat, CAST(locked AS INT) AS locked, approver, leadauditorid, ${additionalApproversColumn} AS additionalapprovers, additionalauditorids
              FROM audits_r
-             WHERE scheduleid = $1`,
+             WHERE scheduleid = $1 AND stage <> -3`,
             [parseInt(scheduleId)]
         );
 
