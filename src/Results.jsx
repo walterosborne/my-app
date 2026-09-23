@@ -39,6 +39,28 @@ import {
   searchRoster
 } from './assets/data/apiData';
 
+// Shared, keyboard-accessible heading for every Conduct Audit accordion.
+const CollapseHeading = ({ title, collapsed, onToggle, size }) => (
+  <button
+    type="button"
+    onClick={onToggle}
+    aria-expanded={!collapsed}
+    style={{
+      display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+      padding: '4px 0', marginBottom: '5px',
+      border: 0, background: 'transparent', color: 'inherit',
+      textAlign: 'left', cursor: 'pointer'
+    }}
+  >
+    <span aria-hidden="true" style={{ fontSize: size === 'small' ? '14px' : '18px' }}>
+      {collapsed ? '▶' : '▼'}
+    </span>
+    <span className="sectiontitle" style={{
+      margin: 0, fontSize: size === 'small' ? '16px' : undefined
+    }}>{title}</span>
+  </button>
+);
+
 const findingTypeReverseMap = {
   1: 'Nonconformity',
   2: 'Conformity',
@@ -1744,19 +1766,15 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             </Box>
             <div className='section'>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                <div
-                  onClick={() => setObjectiveEvidenceCollapsed((current) => !current)}
-                  style={{
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px'
-                  }}
-                >
-                  <span style={{ fontSize: '18px' }}>
-                    {objectiveEvidenceCollapsed ? '▶' : '▼'}
-                  </span>
-                  <label className='sectiontitle' style={{ margin: 0, cursor: 'pointer' }}>My Objective Evidence</label>
+                <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+                  <CollapseHeading
+                    title="My Objective Evidence"
+                    collapsed={objectiveEvidenceCollapsed}
+                    onToggle={() => {
+                      objectiveEvidenceTouchedRef.current = true;
+                      setObjectiveEvidenceCollapsed((current) => !current);
+                    }}
+                  />
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginLeft: 'auto' }}>
                   <label className="admin-include-archived">
@@ -1957,7 +1975,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   <div style={readOnlyStyle}>
                   {!isCuiQuestionsBlocked && (
                     <div className="admin-edit-table-wrapper" style={{ marginTop: '12px' }}>
-                      <p className="admin-editing-label">Existing Findings and Nonconformities</p>
+                      <CollapseHeading
+                        title="Existing Findings and Nonconformities"
+                        collapsed={collapsedAuditSections.findings ?? true}
+                        onToggle={() => setCollapsedAuditSections((current) => ({ ...current, findings: !(current.findings ?? true) }))}
+                        size="small"
+                      />
+                      {!(collapsedAuditSections.findings ?? true) && (
                       <div className="admin-edit-table-scroll">
                         <table className="admin-edit-table">
                           <thead>
@@ -1986,10 +2010,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           </tbody>
                         </table>
                       </div>
+                      )}
                     </div>
                   )}
                   <div className='section'>
-                    <label className='sectiontitle'>Overview</label>
+                    <CollapseHeading
+                      title="Overview"
+                      collapsed={collapsedAuditSections.overview ?? true}
+                      onToggle={() => setCollapsedAuditSections((current) => ({ ...current, overview: !(current.overview ?? true) }))}
+                    />
+                    {!(collapsedAuditSections.overview ?? true) && (
                     <div className='sectionrow'>
                       <div className="fieldboxwhole">
                         <label>Record what occurred during your audit.</label>
@@ -2001,10 +2031,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                         />
                       </div>
                     </div>
+                    )}
                   </div>
                   <div className='section'>
-                    <label className='sectiontitle'>Process Evaluation (PE) Introduction</label>
-
+                    <CollapseHeading
+                      title="Process Evaluation (PE) Introduction"
+                      collapsed={collapsedAuditSections.introduction ?? true}
+                      onToggle={() => setCollapsedAuditSections((current) => ({ ...current, introduction: !(current.introduction ?? true) }))}
+                    />
+                    {!(collapsedAuditSections.introduction ?? true) && (
+                    <>
                     <div className='sectionrow'>
                       <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
                         <label>Standard(s)<label style={{ color: 'red' }}>*</label></label>
@@ -2202,7 +2238,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                         {errors.auditorsTime && <p className='fielderror'>{errors.auditorsTime.message}</p>}
                       </div>
                     </div>
-
+                    </>
+                    )}
                   </div>
                   {isCuiQuestionsBlocked ? (
                     <>
@@ -2216,13 +2253,28 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                   ) : (
                     <>
                       <div className='section'>
-                        <label className='sectiontitle'>Process Evaluation Questions</label>
+                        <CollapseHeading
+                          title="Process Evaluation Questions"
+                          collapsed={collapsedAuditSections.peqs ?? true}
+                          onToggle={() => setCollapsedAuditSections((current) => ({ ...current, peqs: !(current.peqs ?? true) }))}
+                        />
+                        {!(collapsedAuditSections.peqs ?? true) && (
+                        <>
                         {Array.from({ length: newPEQs }, (_, index) => {
                           // Don't render deleted PEQs
                           if (deletedPEQs.has(index)) return null;
 
                           return (
                             <div key={index} style={{ width: '100%' }}>
+                              <CollapseHeading
+                                title={`Process Evaluation Question ${index + 1}`}
+                                collapsed={collapsedPEQs[index] ?? true}
+                                onToggle={() => setCollapsedPEQs((current) => ({
+                                  ...current, [index]: !(current[index] ?? true)
+                                }))}
+                                size="small"
+                              />
+                              {!(collapsedPEQs[index] ?? true) && (
                               <div className='peq'>
                                 <div className="fieldboxwhole">
                                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
@@ -2404,16 +2456,23 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   </div>
                                 </div>
                               </div>
+                              )}
                             </div>
                           );
                         })}
                         <div className='sectionrow'>
                           <button type='button' onClick={addPEQ} className='button' style={{ backgroundColor: 'green', width: '100%' }}>Add Question</button>
                         </div>
+                        </>
+                        )}
                       </div>
                       <div className='section'>
-                        <label className='sectiontitle'>Every Time Questions</label>
-                        {filteredEveryTimeQuestions.map((question, index) => {
+                        <CollapseHeading
+                          title="Every Time Questions"
+                          collapsed={collapsedAuditSections.etqs ?? true}
+                          onToggle={() => setCollapsedAuditSections((current) => ({ ...current, etqs: !(current.etqs ?? true) }))}
+                        />
+                        {!(collapsedAuditSections.etqs ?? true) && filteredEveryTimeQuestions.map((question, index) => {
                       const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
                       const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
 
@@ -2603,9 +2662,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                         })}
                       </div>
                       <div className='section'>
-                        {Object.keys(standardTextsByStandard).length === 0 ? (
+                        <CollapseHeading
+                          title="Standard Requirements"
+                          collapsed={collapsedAuditSections.standards ?? true}
+                          onToggle={() => setCollapsedAuditSections((current) => ({ ...current, standards: !(current.standards ?? true) }))}
+                        />
+                        {!(collapsedAuditSections.standards ?? true) && (Object.keys(standardTextsByStandard).length === 0 ? (
                           <>
-                            <label className='sectiontitle'>Standard Requirements</label>
                             <p style={{ marginTop: '8px' }}>No standard requirements available for this audit.</p>
                           </>
                         ) : (
@@ -2618,10 +2681,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             key={`standard-${standardId}`}
                             style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
                           >
-                            <label className='sectiontitle' style={{ alignSelf: 'flex-start' }}>
-                              {standardName} Requirements
-                            </label>
-                            {Object.entries(sections).map(([sectionNumValue, questions]) => {
+                            <CollapseHeading
+                              title={`${standardName} Requirements`}
+                              collapsed={collapsedStandardGroups[`standard_${standardId}`] ?? true}
+                              onToggle={() => setCollapsedStandardGroups((current) => ({
+                                ...current, [`standard_${standardId}`]: !(current[`standard_${standardId}`] ?? true)
+                              }))}
+                            />
+                            {!(collapsedStandardGroups[`standard_${standardId}`] ?? true) && Object.entries(sections).map(([sectionNumValue, questions]) => {
                               const sectionNum = Number(sectionNumValue);
                               const sectionKey = `section_${standardId}_${sectionNum}`;
                               const isSectionCollapsed = collapsedSections[sectionKey] ?? true;
@@ -2923,7 +2990,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           </div>
                         );
                           })
-                        )}
+                        ))}
                       </div>
                     </>
                   )}
