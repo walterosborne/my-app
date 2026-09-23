@@ -1275,6 +1275,23 @@ const buildEditAuditNotificationEmail = ({ scheduleId, reviewLink, planLink, aud
     return { subject, body };
 };
 
+const buildCancelledAuditNotificationEmail = ({ scheduleId, reviewLink, auditTitle }) => {
+    const subject = auditTitle
+        ? `Audit ${scheduleId} - ${auditTitle} has been cancelled`
+        : `Audit ${scheduleId} has been cancelled`;
+    const body = buildEmailShell({
+        title: `Audit ${scheduleId} has been cancelled`,
+        lead: auditTitle || `Audit ${scheduleId}`,
+        buttons: [
+            { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' }
+        ],
+        sectionTitle: 'Next Steps',
+        sectionBody: 'Review the cancelled audit details for your records.',
+        footer: 'You are receiving this email because you are listed as an auditor for this audit.'
+    });
+    return { subject, body };
+};
+
 const escapeHtml = (value) => {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -4966,7 +4983,57 @@ app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
         if (changed.rowCount !== 1) {
             return res.status(409).json({ success: false, error: 'Audit changed. Refresh and try again.' });
         }
-        res.json({ success: true, action, scheduleId });
+
+        let emailWarning = null;
+        if (action === 'cancel') {
+            try {
+                const auditorIds = [...new Set([
+                    audit.leadAuditorId,
+                    ...(audit.additionalAuditorIds || [])
+                ].filter(Boolean))];
+
+                if (auditorIds.length > 0) {
+                    const auditorPlaceholders = auditorIds.map((_, index) => `${index + 1}`).join(', ');
+                    const auditorResult = await client.query(
+                        `SELECT DISTINCT myid
+                         FROM auditors_r
+                         WHERE auditorid IN (${auditorPlaceholders}) AND myid IS NOT NULL`,
+                        auditorIds
+                    );
+                    const rosterRows = await getRosterRowsByMyIds(
+                        auditorResult.rows.map((row) => row.myid).filter(Boolean)
+                    );
+                    const { subject, body } = buildCancelledAuditNotificationEmail({
+                        scheduleId,
+                        auditTitle: audit.title,
+                        reviewLink: buildAppRouteUrl(req, `/audit/${scheduleId}`)
+                    });
+
+                    const sentTo = new Set();
+                    let failedCount = 0;
+                    for (const row of rosterRows) {
+                        const recipientEmail = String(row.email || '').trim();
+                        if (!recipientEmail || sentTo.has(recipientEmail.toLowerCase())) continue;
+                        sentTo.add(recipientEmail.toLowerCase());
+                        const result = await queueEmail(client, {
+                            toAddress: recipientEmail,
+                            subject,
+                            body
+                        });
+                        if (result?.success === false) failedCount += 1;
+                    }
+
+                    if (failedCount > 0) {
+                        emailWarning = `Audit cancelled, but ${failedCount} notification email${failedCount === 1 ? '' : 's'} failed. Contact the auditors directly.`;
+                    }
+                }
+            } catch (emailError) {
+                console.error('Audit cancelled, but cancellation notification failed:', emailError);
+                emailWarning = 'Audit cancelled, but notification emails could not be sent. Contact the auditors directly.';
+            }
+        }
+
+        res.json({ success: true, action, scheduleId, emailWarning });
     } catch (error) {
         console.error('Error changing audit lifecycle:', error);
         res.status(500).json({ success: false, error: error.message });
