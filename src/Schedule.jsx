@@ -1157,25 +1157,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxquarter">
-                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
-                              <Controller
-                                name="auditType"
-                                control={control}
-                                rules={{ required: "Audit Type is required" }}
-                                render={({ field }) => (
-                                  <Select
-                                    isClearable
-                                    options={auditTypes}
-                                    styles={customStyles}
-                                    placeholder="Audit Type"
-                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                  />
-                                )}
-                              />
-                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
-                            </div>
-                            <div className="fieldboxquarter">
                               <label>Site(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="site"
@@ -1194,6 +1175,25 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 )}
                               />
                               {errors.site && <p className='fielderror'>{errors.site.message}</p>}
+                            </div>
+                            <div className="fieldboxquarter">
+                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
+                              <Controller
+                                name="auditType"
+                                control={control}
+                                rules={{ required: "Audit Type is required" }}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={auditTypes}
+                                    styles={customStyles}
+                                    placeholder="Audit Type"
+                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                  />
+                                )}
+                              />
+                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
                             </div>
                           </div>
                           <div className='sectionrow'>
