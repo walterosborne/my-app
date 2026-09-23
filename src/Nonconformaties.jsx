@@ -574,9 +574,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           });
 
           // Populate form with saved data
-          if (auditData.auditorstime !== null && auditData.auditorstime !== undefined) {
-            setValue('auditorsTime', auditData.auditorstime);
-          }
           if (auditData.approver !== null && auditData.approver !== undefined) {
             setValue('approver', auditData.approver);
           }
@@ -641,7 +638,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       // Prepare audit data update
       const auditUpdate = {
         scheduleId: selectedAudit.scheduleId,
-        auditorsTime: data.auditorsTime ? parseInt(data.auditorsTime) : null,
         approver: data.approver || null,
         leadAuditor: data.leadAuditor || null,
         additionalApprovers: data.additionalApprovers || [],
@@ -783,12 +779,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   function handleReset() {
     if (loadedAuditData && schedule?.scheduleId) {
       // Restore form to saved state
-      if (loadedAuditData.auditorstime !== null && loadedAuditData.auditorstime !== undefined) {
-        setValue('auditorsTime', loadedAuditData.auditorstime);
-      } else {
-        setValue('auditorsTime', '');
-      }
-
       if (loadedAuditData.approver !== null && loadedAuditData.approver !== undefined) {
         setValue('approver', loadedAuditData.approver);
       } else {
@@ -981,35 +971,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                     </p>
                   )}
                   <div style={readOnlyStyle}>
-                  <div className='section'>
-                    <label className='sectiontitle'>Overview</label>
-                    <div className='sectionrow'>
-                      <div className="fieldboxwhole">
-                        <label>Auditor's Time to Complete Audit (hours)</label>
-                        <input
-                          type="number"
-                          {...register("auditorsTime", {
-                            validate: {
-                              isInteger: (value) => {
-                                if (value === '' || value === null) return true; // Allow empty
-                                return Number.isInteger(Number(value)) || "Please enter a whole number";
-                              },
-                              isNonNegative: (value) => {
-                                if (value === '' || value === null) return true; // Allow empty
-                                return Number(value) >= 0 || "Please enter a non-negative number";
-                              }
-                            }
-                          })}
-                          id='auditorsTime'
-                          className='textfield'
-                          placeholder='Enter a whole number here'
-                          min="0"
-                          step="1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   {/* PEQs */}
                   {nonconformaties.filter(nc => nc.Type === 'PEQ').length > 0 && (
                     <>

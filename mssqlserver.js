@@ -4586,7 +4586,7 @@ const stageColumnGroups = {
     ],
     3: [
         'overview', 'standardIds', 'programIds', 'intervieweeIds', 'startDate',
-        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause', 'cui'
+        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause', 'cui', 'auditorsTime'
     ]
 };
 
@@ -5401,17 +5401,15 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         // Update audit with nonconformities data
         const updateResult = await client.query(
             `UPDATE audits_r SET 
-                auditorstime = $1,
-                approver = $2,
-                leadauditorid = $3,
-                ${additionalApproversColumn} = $4,
-                stage = $5,
-                locked = $6,
-                submittedat = CASE WHEN $6 = 1 THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
+                approver = $1,
+                leadauditorid = $2,
+                ${additionalApproversColumn} = $3,
+                stage = $4,
+                locked = $5,
+                submittedat = CASE WHEN $5 = 1 THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
                 updatedat = CURRENT_TIMESTAMP
-            WHERE scheduleid = $7`,
+            WHERE scheduleid = $6`,
             [
-                audit.auditorsTime,
                 resolvedApproverMyId,
                 audit.leadAuditor,
                 JSON.stringify(resolvedAdditionalApproverIds),
