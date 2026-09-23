@@ -22,7 +22,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -49,7 +48,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -63,7 +61,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, severities] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -72,7 +70,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards(),
@@ -87,7 +84,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -223,12 +219,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const getAuditTypeName = (auditTypeId) => {
     const auditType = auditTypesList.find(at => at.auditTypeId === auditTypeId);
     return auditType ? auditType.auditTypeName : auditTypeId;
-  };
-
-  // Helper function to get status name from statusId
-  const getStatusName = (statusId) => {
-    const status = statusesList.find(s => s.statusId === statusId);
-    return status ? status.statusName : statusId;
   };
 
   // Helper function to get function name(s) from functionId(s)

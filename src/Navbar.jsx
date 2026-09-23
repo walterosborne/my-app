@@ -37,7 +37,7 @@ const Navbar = () => {
         'FOE': foeDropdownItems,
         'Tools': [
             { label: 'Admin Menu', path: '/admin' },
-            { label: 'Audit Statuses', path: '/audit-statuses' },
+            { label: 'Audit Stages', path: '/audit-statuses' },
             { label: 'Calendar', path: '/calendar' },
             { label: 'Metrics', path: '/metrics' },
             { label: 'Risk Analysis', path: '/risk-analysis' }
