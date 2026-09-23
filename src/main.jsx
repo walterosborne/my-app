@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
 import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
+import BackendAvailability from './BackendAvailability.jsx'
 import Home from './Home.jsx'
 import Audit from './Audit.jsx'
 import AllReports from './AllReports.jsx'
@@ -227,6 +228,7 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
       <AppMetadata />
+      <BackendAvailability>
       <AppEnvironmentBanner />
       <AppBootstrapGate>
         <ToastContainer
@@ -271,6 +273,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/tabletest" element={<TableTest />} />
         </Routes>
       </AppBootstrapGate>
+      </BackendAvailability>
     </HashRouter>
   </StrictMode>,
 )
