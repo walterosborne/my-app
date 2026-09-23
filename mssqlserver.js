@@ -2314,8 +2314,7 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         }
 
         const fileIdPlaceholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
-        const filesResult = await pool.queryWithSchema(
-            auditSchema,
+        const filesResult = await pool.query(
             `SELECT fileId, fileName, mimeType, fileData
              FROM auditor_files_r
              WHERE fileId IN (${fileIdPlaceholders})`,
@@ -2343,9 +2342,24 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         });
         archive.pipe(res);
 
+        const usedNames = new Set();
         filesResult.rows.forEach((file) => {
             const safeName = sanitizeFilename(file.filename || `file-${file.fileid}`);
-            archive.append(file.filedata, { name: safeName });
+            let archiveName = safeName;
+            // Evidence from different auditors can have the same filename.
+            // Give ZIP members unique names so neither attachment is lost.
+            if (usedNames.has(archiveName.toLowerCase())) {
+                const dot = safeName.lastIndexOf('.');
+                const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
+                const extension = dot > 0 ? safeName.slice(dot) : '';
+                archiveName = `${stem}-${file.fileid}${extension}`;
+                let suffix = 2;
+                while (usedNames.has(archiveName.toLowerCase())) {
+                    archiveName = `${stem}-${file.fileid}-${suffix++}${extension}`;
+                }
+            }
+            usedNames.add(archiveName.toLowerCase());
+            archive.append(file.filedata, { name: archiveName });
         });
 
         await archive.finalize();
