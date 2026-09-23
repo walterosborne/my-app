@@ -1977,6 +1977,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Select
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               options={standards}
                               styles={customStyles}
                               placeholder="Standard(s)"
@@ -1996,6 +1997,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <AsyncSelect
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               cacheOptions
                               defaultOptions={false}
                               loadOptions={loadRosterOptions}
@@ -2089,6 +2091,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Select
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               options={programs}
                               styles={customStyles}
                               placeholder="Program(s)"
@@ -2295,6 +2298,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         <Select
                                           isClearable
                                           isMulti
+                                          closeMenuOnSelect={false}
                                           options={corporatePrOPOptions}
                                           styles={customStyles}
                                           placeholder="Corporate"
@@ -2313,6 +2317,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         <Select
                                           isClearable
                                           isMulti
+                                          closeMenuOnSelect={false}
                                           options={sectorPrOPOptions}
                                           styles={customStyles}
                                           placeholder="Sector"
@@ -2331,6 +2336,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         <Select
                                           isClearable
                                           isMulti
+                                          closeMenuOnSelect={false}
                                           options={divisionPrOPOptions}
                                           styles={customStyles}
                                           placeholder="Division"
@@ -2349,6 +2355,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         <Select
                                           isClearable
                                           isMulti
+                                          closeMenuOnSelect={false}
                                           options={otherPrOPOptions}
                                           styles={customStyles}
                                           placeholder="Other"
@@ -2372,6 +2379,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                           <Select
                                             isClearable
                                             isMulti
+                                            closeMenuOnSelect={false}
                                             options={objectiveEvidenceOptions}
                                             styles={customStyles}
                                             placeholder="Select files"
@@ -2489,6 +2497,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       <Select
                                         isClearable
                                         isMulti
+                                        closeMenuOnSelect={false}
                                         options={corporatePrOPOptions}
                                         styles={customStyles}
                                         placeholder="Corporate"
@@ -2507,6 +2516,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       <Select
                                         isClearable
                                         isMulti
+                                        closeMenuOnSelect={false}
                                         options={sectorPrOPOptions}
                                         styles={customStyles}
                                         placeholder="Sector"
@@ -2525,6 +2535,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       <Select
                                         isClearable
                                         isMulti
+                                        closeMenuOnSelect={false}
                                         options={divisionPrOPOptions}
                                         styles={customStyles}
                                         placeholder="Division"
@@ -2543,6 +2554,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       <Select
                                         isClearable
                                         isMulti
+                                        closeMenuOnSelect={false}
                                         options={otherPrOPOptions}
                                         styles={customStyles}
                                         placeholder="Other"
@@ -2566,6 +2578,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         <Select
                                           isClearable
                                           isMulti
+                                          closeMenuOnSelect={false}
                                           options={objectiveEvidenceOptions}
                                           styles={customStyles}
                                           placeholder="Select files"
@@ -2791,6 +2804,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             <Select
                                                               isClearable
                                                               isMulti
+                                                              closeMenuOnSelect={false}
                                                               options={corporatePrOPOptions}
                                                               styles={customStyles}
                                                               placeholder="Corporate"
@@ -2809,6 +2823,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             <Select
                                                               isClearable
                                                               isMulti
+                                                              closeMenuOnSelect={false}
                                                               options={sectorPrOPOptions}
                                                               styles={customStyles}
                                                               placeholder="Sector"
@@ -2827,6 +2842,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             <Select
                                                               isClearable
                                                               isMulti
+                                                              closeMenuOnSelect={false}
                                                               options={divisionPrOPOptions}
                                                               styles={customStyles}
                                                               placeholder="Division"
@@ -2845,6 +2861,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             <Select
                                                               isClearable
                                                               isMulti
+                                                              closeMenuOnSelect={false}
                                                               options={otherPrOPOptions}
                                                               styles={customStyles}
                                                               placeholder="Other"
@@ -2868,6 +2885,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                               <Select
                                                                 isClearable
                                                                 isMulti
+                                                                closeMenuOnSelect={false}
                                                                 options={objectiveEvidenceOptions}
                                                                 styles={customStyles}
                                                                 placeholder="Select files"
