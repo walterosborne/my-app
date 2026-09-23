@@ -1145,6 +1145,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={divisions}
                                     styles={customStyles}
                                     placeholder="Division(s)"
@@ -1166,6 +1167,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={sites}
                                     styles={customStyles}
                                     placeholder="Site"
@@ -1205,6 +1207,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 render={({ field }) => (
                                   <Select
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     isClearable
                                     options={businessUnits}
                                     styles={customStyles}
@@ -1225,6 +1228,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 render={({ field }) => (
                                   <Select
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     isClearable
                                     options={operatingUnits}
                                     styles={customStyles}
@@ -1246,6 +1250,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={programs}
                                     styles={customStyles}
                                     placeholder="Program"
@@ -1291,6 +1296,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={additionalAuditors}
                                     styles={customStyles}
                                     placeholder="Additional Auditors"
@@ -1362,6 +1368,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={standardsOptions}
                                     styles={customStyles}
                                     placeholder="Standard(s)"
@@ -1386,6 +1393,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={functions}
                                     styles={customStyles}
                                     placeholder="Function(s)"
