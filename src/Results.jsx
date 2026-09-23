@@ -194,6 +194,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [accessBlock, setAccessBlock] = useState(null);
   const [standardAdditional, setStandardAdditional] = useState({});
   const [deletedStandardQuestions, setDeletedStandardQuestions] = useState({});
+  const [collapsedAuditSections, setCollapsedAuditSections] = useState({});
+  const [collapsedStandardGroups, setCollapsedStandardGroups] = useState({});
+  const [collapsedPEQs, setCollapsedPEQs] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [collapsedSubsections, setCollapsedSubsections] = useState({});
   const [collapsedEveryTimeQuestions, setCollapsedEveryTimeQuestions] = useState({});
@@ -204,7 +207,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [loadedNonconformancesScheduleId, setLoadedNonconformancesScheduleId] = useState(null);
   const [auditorFiles, setAuditorFiles] = useState([]);
   const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
-  const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(false);
+  const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(true);
+  const objectiveEvidenceTouchedRef = useRef(false);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [archivingFileId, setArchivingFileId] = useState(null);
@@ -583,6 +587,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return `etq_${question?.etqId ?? index}`;
   }, []);
 
+  // Objective Evidence belongs to the auditor, not an individual audit.
+  // Pick its initial state once files load without undoing a manual toggle.
+  useEffect(() => {
+    if (!objectiveEvidenceTouchedRef.current) {
+      setObjectiveEvidenceCollapsed(auditorFiles.length === 0);
+    }
+  }, [auditorFiles]);
+
   const getObjectiveEvidenceOptions = useCallback((selectedIds) => {
     const mergedOptions = new Map(fileOptions.map((option) => [String(option.value), option]));
     normalizeFileIds(selectedIds).forEach((fileId) => {
@@ -759,6 +771,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, [selectedAuditId, entryAudits]);
 
   function addPEQ() {
+    setCollapsedAuditSections((current) => ({ ...current, peqs: false }));
+    setCollapsedPEQs((current) => ({ ...current, [newPEQs]: false }));
     setNewPEQs(newPEQs + 1);
   }
   function deletePEQ(index) {
@@ -796,6 +810,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     setDeletedPEQs(new Set());
     setStandardAdditional({});
     setDeletedStandardQuestions({});
+    setCollapsedAuditSections({});
+    setCollapsedStandardGroups({});
+    setCollapsedPEQs({});
     setCollapsedSections({});
     setCollapsedSubsections({});
     setCollapsedEveryTimeQuestions({});
@@ -944,9 +961,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     const sectionDefaults = {};
     const subsectionDefaults = {};
     const everyTimeQuestionDefaults = {};
+    const standardGroupDefaults = {};
+    const peqDefaults = {};
     const scheduleId = Number(audit?.scheduleId);
     const scheduleNCs = auditNCs.filter((nc) => Number(nc.scheduleId) === scheduleId);
 
+    const standardGroupContentById = {};
     Object.entries(groupedStandardTexts).forEach(([standardIdValue, sections]) => {
       const standardId = Number(standardIdValue);
       Object.entries(sections).forEach(([sectionNumValue, questions]) => {
@@ -970,7 +990,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         });
 
         sectionDefaults[sectionKey] = !sectionHasSavedContent;
+        if (sectionHasSavedContent) standardGroupContentById[standardId] = true;
       });
+      standardGroupDefaults[`standard_${standardId}`] = !standardGroupContentById[standardId];
     });
 
     (etqQuestions || []).forEach((question, index) => {
@@ -978,12 +1000,41 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(question, index)] = !hasSavedEveryTimeQuestionContent(etqNc);
     });
 
+    const peqNCs = scheduleNCs.filter((nc) =>
+      nc.type === 'PEQ' || (nc.type === 'ETQ' && !(etqQuestions || []).some((q) => q.question === nc.question))
+    );
+    peqNCs.forEach((nc, index) => {
+      peqDefaults[index] = !(hasFieldValue(nc.question) || hasSavedFindingMetadata(nc));
+    });
+
+    const introductionFields = [
+      audit?.startDate, audit?.intervieweeIds, audit?.cui,
+      audit?.evaluator, audit?.relatedItems, audit?.programManager,
+      audit?.maLeadManager, audit?.auditorsTime ?? audit?.auditorstime,
+      audit?.delayCause, audit?.peIntroduction
+    ];
+    const etqHasContent = (etqQuestions || []).some((question) =>
+      scheduleNCs.some((nc) => nc.type === 'ETQ' && nc.question === question.question
+        && hasSavedEveryTimeQuestionContent(nc))
+    );
+    const auditSectionDefaults = {
+      overview: !hasFieldValue(audit?.overview),
+      introduction: !introductionFields.some(hasFieldValue),
+      peqs: !peqNCs.some((nc) => hasFieldValue(nc.question) || hasSavedFindingMetadata(nc)),
+      etqs: !etqHasContent,
+      standards: !Object.values(standardGroupContentById).some(Boolean),
+      findings: !scheduleNCs.some((nc) => hasFieldValue(nc.question) || hasSavedFindingMetadata(nc))
+    };
+
     return {
+      auditSectionDefaults,
+      standardGroupDefaults,
+      peqDefaults,
       sectionDefaults,
       subsectionDefaults,
       everyTimeQuestionDefaults
     };
-  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent]);
+  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent, hasSavedFindingMetadata, hasFieldValue]);
 
   useEffect(() => {
     const nextSectionDefaults = {};
@@ -1076,6 +1127,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
       const groupedStandardTexts = buildStandardTextsByStandard(selectedAudit?.standardIds || []);
       const {
+        auditSectionDefaults,
+        standardGroupDefaults,
+        peqDefaults,
         sectionDefaults,
         subsectionDefaults,
         everyTimeQuestionDefaults
@@ -1085,6 +1139,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
       setDeletedStandardQuestions({});
+      setCollapsedAuditSections(auditSectionDefaults);
+      setCollapsedStandardGroups(standardGroupDefaults);
+      setCollapsedPEQs(peqDefaults);
       setCollapsedSections(sectionDefaults);
       setCollapsedSubsections(subsectionDefaults);
       setCollapsedEveryTimeQuestions(everyTimeQuestionDefaults);
