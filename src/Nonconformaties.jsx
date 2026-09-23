@@ -1269,6 +1269,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                             <AsyncSelect
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               cacheOptions
                               defaultOptions={false}
                               loadOptions={loadRosterOptions}
