@@ -201,6 +201,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
   const [nonconformances, setNonconformances] = useState([]);
+  const [loadedNonconformancesScheduleId, setLoadedNonconformancesScheduleId] = useState(null);
   const [auditorFiles, setAuditorFiles] = useState([]);
   const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
   const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(false);
@@ -650,12 +651,14 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         setAccessBlock(null);
         setEveryTimeQuestionsList([]);
         setNonconformances([]);
+        setLoadedNonconformancesScheduleId(null);
         return;
       }
 
       setAccessBlock(null);
       setEveryTimeQuestionsList([]);
       setNonconformances([]);
+      setLoadedNonconformancesScheduleId(null);
 
       try {
         const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
@@ -713,10 +716,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         }
 
         setNonconformances(converted);
+        setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       } catch (error) {
         if (cancelled) return;
         console.error('Error fetching nonconformances:', error);
         setNonconformances([]);
+        setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       }
     }
     fetchNonconformances();
@@ -1051,6 +1056,12 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     if (loading) {
       return;
     }
+    // Wait for this audit's saved questions before choosing initial expansion.
+    // An empty in-flight response must not make previously answered standards appear empty.
+    if (schedule && selectedAudit
+      && loadedNonconformancesScheduleId !== Number(selectedAudit.scheduleId)) {
+      return;
+    }
     if (schedule && selectedAudit) {
       if (skipNextFormResetRef.current > 0) {
         skipNextFormResetRef.current -= 1;
@@ -1082,7 +1093,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
+  }, [schedule, selectedAudit, nonconformances, loadedNonconformancesScheduleId, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
 
   useEffect(() => {
     if (!isDelayed) {
@@ -2556,7 +2567,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             {Object.entries(sections).map(([sectionNumValue, questions]) => {
                               const sectionNum = Number(sectionNumValue);
                               const sectionKey = `section_${standardId}_${sectionNum}`;
-                              const isSectionCollapsed = collapsedSections[sectionKey];
+                              const isSectionCollapsed = collapsedSections[sectionKey] ?? true;
 
                               return (
                                 <div key={`${standardId}_${sectionNum}`} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -2579,7 +2590,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   </div>
                                   {!isSectionCollapsed && questions.map((question, qIndex) => {
                                     const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
-                                    const isSubsectionCollapsed = collapsedSubsections[subsectionKey];
+                                    const isSubsectionCollapsed = collapsedSubsections[subsectionKey] ?? true;
                                     const textKey = `text_${standardId}_${sectionNum}_${question.subsection}`;
                                     const isTextExpanded = expandedTexts[textKey];
                                     const maxLength = 200;
