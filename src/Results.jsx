@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import Select from "react-select"
@@ -273,7 +274,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+    errorToast(accessBlock.message || 'You do not have access to this audit.', {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -396,7 +397,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleToggleAuditorFileArchived = useCallback(async (file) => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
 
@@ -407,7 +408,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
       toast.success(nextActive ? 'File restored.' : 'File archived.');
     } catch (error) {
-      toast.error(error.message || 'Failed to update file status.');
+      errorToast(error.message || 'Failed to update file status.');
     } finally {
       setArchivingFileId(null);
     }
@@ -448,11 +449,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleFileUpload = async () => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     if (uploadFiles.length === 0) {
-      toast.error('Please select at least one file to upload.');
+      errorToast('Please select at least one file to upload.');
       return;
     }
     const selectedNameCounts = uploadFiles.reduce((counts, file) => {
@@ -466,7 +467,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .filter(([, count]) => count > 1)
       .map(([name]) => name);
     if (duplicateSelectedNames.length > 0) {
-      toast.error(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
+      errorToast(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
       return;
     }
     const existingFileNames = new Set(
@@ -476,7 +477,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .map((file) => file.name)
       .filter((name) => existingFileNames.has(String(name || '').trim().toLowerCase()));
     if (duplicateExistingNames.length > 0) {
-      toast.error(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
+      errorToast(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
       return;
     }
     if (isUploadTooLarge) {
@@ -484,7 +485,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const oversizedMessage = oversizedNames.length === 1
         ? `"${oversizedNames[0]}" exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.`
         : `${oversizedNames.length} selected files exceed the NGAT upload limit. Please choose files smaller than 50MB and try again.`;
-      toast.error(oversizedMessage, {
+      errorToast(oversizedMessage, {
         autoClose: false,
         closeOnClick: true,
         closeButton: true,
@@ -508,7 +509,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
     } catch (error) {
       if (error?.persistToast) {
-        toast.error(error.message || 'Failed to upload file.', {
+        errorToast(error.message || 'Failed to upload file.', {
           autoClose: false,
           closeOnClick: true,
           closeButton: true,
@@ -518,7 +519,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           style: { borderLeft: '4px solid #d32f2f' }
         });
       } else {
-        toast.error(error.message || 'Failed to upload file.');
+        errorToast(error.message || 'Failed to upload file.');
       }
     } finally {
       setUploadingFile(false);
@@ -760,8 +761,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, [selectedAuditId, entryAudits]);
 
   function addPEQ() {
-    setCollapsedPEQs((prev) => ({ ...prev, [newPEQs]: false }));
-    setNewPEQs(newPEQs + 1);
+    // A newly added question should open for immediate entry.
+    setCollapsedPEQs((current) => ({ ...current, [newPEQs]: false }));
+    setNewPEQs((current) => current + 1);
   }
   function deletePEQ(index) {
     setDeletedPEQs(prev => new Set([...prev, index]));
@@ -956,6 +958,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       Object.entries(sections).forEach(([sectionNumValue, questions]) => {
         const sectionNum = Number(sectionNumValue);
         const sectionKey = `section_${standardId}_${sectionNum}`;
+
         questions.forEach((question) => {
           const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
           const subsectionHasSavedContent = scheduleNCs.some((nc) =>
@@ -968,7 +971,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
         });
 
-        // Standard section headers remain open; only individual questions auto-collapse.
+        // Keep standard section headings open. Only individual questions
+        // are initially collapsed or expanded based on saved answers.
         sectionDefaults[sectionKey] = false;
       });
     });
@@ -978,21 +982,24 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(question, index)] = !hasSavedEveryTimeQuestionContent(etqNc);
     });
 
-    const knownEtqTexts = new Set((etqQuestions || []).map((question) => question.question));
-    const peqNCs = scheduleNCs.filter((nc) =>
-      nc.type === 'PEQ' || (nc.type === 'ETQ' && !knownEtqTexts.has(nc.question))
-    );
-    peqNCs.forEach((nc, index) => {
+    // Match the same ordering used when the PEQ form is populated: original
+    // PEQs followed by any old ETQs that are now editable as PEQs.
+    const activeEtqQuestions = new Set((etqQuestions || []).map((question) => question.question));
+    const peqs = [
+      ...scheduleNCs.filter((nc) => nc.type === 'PEQ'),
+      ...scheduleNCs.filter((nc) => nc.type === 'ETQ' && !activeEtqQuestions.has(nc.question))
+    ];
+    peqs.forEach((nc, index) => {
       peqDefaults[index] = !(hasFieldValue(nc.question) || hasSavedFindingMetadata(nc));
     });
 
     return {
+      peqDefaults,
       sectionDefaults,
       subsectionDefaults,
-      everyTimeQuestionDefaults,
-      peqDefaults
+      everyTimeQuestionDefaults
     };
-  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent, hasFieldValue, hasSavedFindingMetadata]);
+  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent, hasSavedFindingMetadata, hasFieldValue]);
 
   useEffect(() => {
     const nextSectionDefaults = {};
@@ -1085,10 +1092,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
       const groupedStandardTexts = buildStandardTextsByStandard(selectedAudit?.standardIds || []);
       const {
+        peqDefaults,
         sectionDefaults,
         subsectionDefaults,
-        everyTimeQuestionDefaults,
-        peqDefaults
+        everyTimeQuestionDefaults
       } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, groupedStandardTexts);
 
       setNewPEQs(combinedPeqs.length);
@@ -1262,7 +1269,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function onSubmit(data) {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!selectedAudit) {
@@ -1530,7 +1537,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields';
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -1547,7 +1554,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function unlockAudit() {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!schedule?.scheduleId) {
@@ -1577,7 +1584,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
 
@@ -1642,7 +1649,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form id='results-form' onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
@@ -2180,19 +2187,20 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                               <button
                                 type="button"
                                 aria-expanded={!(collapsedPEQs[index] ?? true)}
-                                onClick={() => setCollapsedPEQs((prev) => ({
-                                  ...prev, [index]: !(prev[index] ?? true)
+                                onClick={() => setCollapsedPEQs((current) => ({
+                                  ...current, [index]: !(current[index] ?? true)
                                 }))}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: '8px',
-                                  width: '100%', padding: '8px',
-                                  marginTop: '10px', backgroundColor: '#f5f5f5',
-                                  color: '#222', border: 0, borderRadius: '4px',
-                                  textAlign: 'left', cursor: 'pointer'
+                                  width: '100%', textAlign: 'left', cursor: 'pointer',
+                                  backgroundColor: '#f5f5f5', color: '#000',
+                                  border: 0, borderRadius: '4px',
+                                  padding: '8px', marginBottom: '8px',
+                                  fontWeight: 'bold'
                                 }}
                               >
                                 <span aria-hidden="true">{(collapsedPEQs[index] ?? true) ? '▶' : '▼'}</span>
-                                <span style={{ fontWeight: 'bold' }}>Process Evaluation Question {index + 1}</span>
+                                <span>Process Evaluation Question {index + 1}</span>
                               </button>
                               {!(collapsedPEQs[index] ?? true) && (
                               <div className='peq'>
@@ -2992,7 +3000,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             </div>
           )}
         </>
-      }
     </>
   )
 }
