@@ -15,9 +15,13 @@ const OperatingUnitsSection = ({
     operatingUnitInput,
     onOperatingUnitInputChange,
     operatingUnitDivisionId,
+    operatingUnitBusinessUnitId,
+    operatingUnitBusinessUnitOptions,
     onDivisionChange,
+    onBusinessUnitChange,
     sortedDivisions,
     onClearDivision,
+    onClearBusinessUnit,
     operatingUnitFieldErrors,
     onSubmit,
     onArchiveToggle,
@@ -25,7 +29,8 @@ const OperatingUnitsSection = ({
     submitting,
     operatingUnitMessage,
     operatingUnitError,
-    getDivisionName
+    getDivisionName,
+    getBusinessUnitName
 }) => (
     <section className="admin-section">
         <div className="admin-section-header">
@@ -81,6 +86,14 @@ const OperatingUnitsSection = ({
                             minWidth: 180,
                             sortable: false,
                             renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'businessUnit',
+                            headerName: 'Business Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            renderCell: ({ row }) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned'
                         },
                         {
                             field: 'status',
@@ -152,6 +165,33 @@ const OperatingUnitsSection = ({
                     </div>
                     {operatingUnitFieldErrors.divisionId && (
                         <p className="admin-field-error">{operatingUnitFieldErrors.divisionId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
+                    <label htmlFor="operating-unit-business-unit" className="admin-label">
+                        Parent Business Unit <span className="admin-required">*</span>
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="operating-unit-business-unit"
+                            value={operatingUnitBusinessUnitId}
+                            onChange={onBusinessUnitChange}
+                            className="admin-input"
+                            disabled={!operatingUnitDivisionId}
+                        >
+                            <option value="" disabled hidden>Select Business Unit</option>
+                            {operatingUnitBusinessUnitOptions.map((unit) => (
+                                <option key={unit.businessUnitId} value={unit.businessUnitId}>
+                                    {unit.businessUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {operatingUnitBusinessUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearBusinessUnit}>&times;</button>
+                        )}
+                    </div>
+                    {operatingUnitFieldErrors.businessUnitId && (
+                        <p className="admin-field-error">{operatingUnitFieldErrors.businessUnitId}</p>
                     )}
                 </div>
                 <div className="admin-button-row">

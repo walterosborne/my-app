@@ -15,12 +15,22 @@ const ProgramsSection = ({
     editingProgram,
     onSelectProgram,
     getDivisionName,
+    getBusinessUnitName,
+    getOperatingUnitName,
     programInput,
     onProgramInputChange,
     programDivisionId,
+    programBusinessUnitId,
+    programOperatingUnitId,
+    programBusinessUnitOptions,
+    programOperatingUnitOptions,
     onDivisionChange,
+    onBusinessUnitChange,
+    onOperatingUnitChange,
     sortedDivisions,
     onClearDivision,
+    onClearBusinessUnit,
+    onClearOperatingUnit,
     auditorOptions,
     selectedAuditorIds,
     onAuditorChange,
@@ -86,6 +96,22 @@ const ProgramsSection = ({
                             minWidth: 180,
                             sortable: false,
                             renderCell: ({ row }) => getDivisionName(row.divisionId)
+                        },
+                        {
+                            field: 'businessUnit',
+                            headerName: 'Business Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            renderCell: ({ row }) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned'
+                        },
+                        {
+                            field: 'operatingUnit',
+                            headerName: 'Operating Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            renderCell: ({ row }) => row.operatingUnitId ? getOperatingUnitName(row.operatingUnitId) : 'Not assigned'
                         },
                         {
                             field: 'status',
@@ -157,6 +183,60 @@ const ProgramsSection = ({
                     </div>
                     {programFieldErrors.divisionId && (
                         <p className="admin-field-error">{programFieldErrors.divisionId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
+                    <label htmlFor="program-business-unit" className="admin-label">
+                        Parent Business Unit <span className="admin-required">*</span>
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="program-business-unit"
+                            value={programBusinessUnitId}
+                            onChange={onBusinessUnitChange}
+                            className="admin-input"
+                            disabled={!programDivisionId}
+                        >
+                            <option value="" disabled hidden>Select Business Unit</option>
+                            {programBusinessUnitOptions.map((unit) => (
+                                <option key={unit.businessUnitId} value={unit.businessUnitId}>
+                                    {unit.businessUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {programBusinessUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearBusinessUnit}>&times;</button>
+                        )}
+                    </div>
+                    {programFieldErrors.businessUnitId && (
+                        <p className="admin-field-error">{programFieldErrors.businessUnitId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
+                    <label htmlFor="program-operating-unit" className="admin-label">
+                        Parent Operating Unit <span className="admin-required">*</span>
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="program-operating-unit"
+                            value={programOperatingUnitId}
+                            onChange={onOperatingUnitChange}
+                            className="admin-input"
+                            disabled={!programDivisionId || !programBusinessUnitId}
+                        >
+                            <option value="" disabled hidden>Select Operating Unit</option>
+                            {programOperatingUnitOptions.map((unit) => (
+                                <option key={unit.operatingUnitId} value={unit.operatingUnitId}>
+                                    {unit.operatingUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {programOperatingUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearOperatingUnit}>&times;</button>
+                        )}
+                    </div>
+                    {programFieldErrors.operatingUnitId && (
+                        <p className="admin-field-error">{programFieldErrors.operatingUnitId}</p>
                     )}
                 </div>
                 <div className="admin-form-row">
