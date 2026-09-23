@@ -1884,6 +1884,37 @@ app.get('/api/nonconformances/:scheduleId', async (req, res) => {
             updatedAt: nc.updatedat
         }));
 
+        // Only the individual audit report requests file metadata. Resolve linked
+        // files across all auditors, including archived files still on a finding.
+        if (req.query.includeEvidenceFiles === 'true') {
+            const fileIds = [...new Set(nonconformances.flatMap((nc) => nc.files)
+                .map(Number)
+                .filter((fileId) => Number.isSafeInteger(fileId) && fileId > 0))];
+
+            const evidenceById = new Map();
+            if (fileIds.length > 0) {
+                const placeholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
+                const filesResult = await pool.query(
+                    `SELECT fileId, fileName, fileSize FROM auditor_files_r
+                     WHERE fileId IN (${placeholders})`,
+                    fileIds
+                );
+                for (const file of filesResult.rows) {
+                    evidenceById.set(Number(file.fileid), {
+                        fileId: Number(file.fileid),
+                        fileName: file.filename,
+                        fileSize: file.filesize
+                    });
+                }
+            }
+
+            for (const nc of nonconformances) {
+                nc.evidenceFiles = [...new Set(nc.files.map(Number))]
+                    .map((fileId) => evidenceById.get(fileId))
+                    .filter(Boolean);
+            }
+        }
+
         res.json(nonconformances);
     } catch (error) {
         console.error('Error fetching nonconformances:', error);
@@ -2179,57 +2210,99 @@ app.post('/api/auditor-files/:fileId/active', async (req, res) => {
 });
 
 // Download all objective evidence files for an audit (zip)
+// Both the audit-wide ZIP and question-specific downloads use the same report
+// access rules; file ownership alone must not grant access to another audit.
+const getObjectiveEvidenceAudit = async (req, res, auditId) => {
+    if (!Number.isSafeInteger(auditId) || auditId <= 0) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    const userInfo = await getCurrentUserInfo(req);
+    const audit = await getAuditForAccessCheck(pool, auditId);
+    let approverScheduleIds = new Set();
+    if (userInfo?.myid) {
+        const approvalsResult = await pool.query(
+            'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+            [auditId, userInfo.myid]
+        );
+        if (approvalsResult.rows.length > 0) {
+            approverScheduleIds.add(auditId);
+        }
+    }
+    if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    if (!hasCuiAccess({ audit, userInfo })) {
+        sendCuiAccessDenied(res, { req, userInfo });
+        return null;
+    }
+    return audit;
+};
+
+// A file may be downloaded only if its ID is linked to this saved question.
+app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        const ncId = Number(req.params.ncId);
+        const fileId = Number(req.params.fileId);
+        if (![auditId, ncId, fileId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+        if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
+
+        const ncResult = await pool.query(
+            'SELECT files FROM nonconformances_r WHERE scheduleId = $1 AND ncId = $2',
+            [auditId, ncId]
+        );
+        const linkedIds = ncResult.rows.length > 0
+            ? parseMaybeJsonArray(ncResult.rows[0].files).map(Number)
+            : [];
+        if (!linkedIds.includes(fileId)) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+
+        const fileResult = await pool.query(
+            'SELECT fileName, mimeType, fileData FROM auditor_files_r WHERE fileId = $1',
+            [fileId]
+        );
+        if (fileResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+        const file = fileResult.rows[0];
+        res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(file.filename)}"`);
+        res.send(file.filedata);
+    } catch (error) {
+        console.error('Error downloading question objective evidence:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to download objective evidence.' });
+    }
+});
+
+// Omit ncId to download all evidence, or pass ncId for one question only.
 app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
     try {
-        const { scheduleId } = req.params;
-        const auditId = parseInt(scheduleId, 10);
-        const auditSchema = getAuditSchemaForRequest(req);
-        const userInfo = await getCurrentUserInfo(req, { auditSchema });
-
-        if (!userInfo || Number.isNaN(auditId)) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
+        const auditId = Number(req.params.scheduleId);
+        const ncId = req.query.ncId === undefined ? null : Number(req.query.ncId);
+        if (ncId !== null && (!Number.isSafeInteger(ncId) || ncId <= 0)) {
+            return res.status(400).json({ success: false, error: 'Valid question ID required.' });
         }
+        if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
 
-        const auditResult = await pool.queryWithSchema(
-            auditSchema,
-            `SELECT *, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
-            [auditId]
+        const ncResult = await pool.query(
+            ncId === null
+                ? 'SELECT ncId, files FROM nonconformances_r WHERE scheduleId = $1'
+                : 'SELECT ncId, files FROM nonconformances_r WHERE scheduleId = $1 AND ncId = $2',
+            ncId === null ? [auditId] : [auditId, ncId]
         );
-        if (auditResult.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
+        if (ncId !== null && ncResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Question not found.' });
         }
-
-        const audit = parseAuditRow(auditResult.rows[0]);
-        let approverScheduleIds = new Set();
-        if (userInfo.myid) {
-            const approvalsResult = await pool.queryWithSchema(
-                auditSchema,
-                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
-                [auditId, userInfo.myid]
-            );
-            if (approvalsResult.rows.length > 0) {
-                approverScheduleIds.add(auditId);
-            }
-        }
-
-        if (!canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
-        }
-        if (!hasCuiAccess({ audit, userInfo })) {
-            return sendCuiAccessDenied(res, { req, userInfo, auditSchema });
-        }
-
-        const ncResult = await pool.queryWithSchema(
-            auditSchema,
-            'SELECT files FROM nonconformances_r WHERE scheduleId = $1',
-            [auditId]
-        );
         const fileIdSet = new Set();
         ncResult.rows.forEach((row) => {
-            const ids = parseMaybeJsonArray(row.files);
-            ids.forEach((id) => {
+            parseMaybeJsonArray(row.files).forEach((id) => {
                 const parsed = Number(id);
-                if (Number.isFinite(parsed)) {
+                if (Number.isSafeInteger(parsed) && parsed > 0) {
                     fileIdSet.add(parsed);
                 }
             });
@@ -2253,7 +2326,9 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
             return res.status(404).json({ success: false, error: 'No objective evidence files found.' });
         }
 
-        const zipName = `audit-${auditId}-objective-evidence.zip`;
+        const zipName = ncId === null
+            ? `audit-${auditId}-objective-evidence.zip`
+            : `audit-${auditId}-question-${ncId}-objective-evidence.zip`;
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
 
