@@ -629,6 +629,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <AsyncSelect
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               cacheOptions
                               defaultOptions={false}
                               loadOptions={loadRosterOptions}
@@ -718,6 +719,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                               <Select
                                 isClearable
                                 isMulti
+                                closeMenuOnSelect={false}
                                 options={safetyEquipmentOptions}
                                 styles={customStyles}
                                 placeholder="Required Equipment"
@@ -740,6 +742,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Select
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               options={trainingRequirementsOptions}
                               styles={customStyles}
                               placeholder="Training Requirements"
