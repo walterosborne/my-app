@@ -235,6 +235,7 @@ const AuditorsSection = ({
                                 </label>
                                 <Select
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     isClearable
                                     options={programOptions}
                                     styles={adminSelectStyles}
