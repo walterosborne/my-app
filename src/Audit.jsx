@@ -15,7 +15,6 @@ import {
     getOperatingUnits,
     getAuditors,
     getAuditTypes,
-    getStatuses,
     getFunctions,
     getIntExt,
     getStandards,
@@ -47,7 +46,6 @@ const Audit = () => {
     const [operatingUnitsList, setOperatingUnitsList] = React.useState([]);
     const [auditorsList, setAuditorsList] = React.useState([]);
     const [auditTypesList, setAuditTypesList] = React.useState([]);
-    const [statusesList, setStatusesList] = React.useState([]);
     const [functionsList, setFunctionsList] = React.useState([]);
     const [intExtList, setIntExtList] = React.useState([]);
     const [standardsList, setStandardsList] = React.useState([]);
@@ -74,7 +72,7 @@ const Audit = () => {
     React.useEffect(() => {
         async function loadAllData() {
             try {
-                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
+                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
                     getAuditsReport(true),
                     getPrograms(),
                     getDivisions(),
@@ -84,7 +82,6 @@ const Audit = () => {
                     getOperatingUnits(),
                     getAuditors(),
                     getAuditTypes(),
-                    getStatuses(),
                     getFunctions(),
                     getIntExt(),
                     getStandards(),
@@ -109,7 +106,6 @@ const Audit = () => {
                 setOperatingUnitsList(operatingUnits);
                 setAuditorsList(auditors);
                 setAuditTypesList(auditTypes);
-                setStatusesList(statuses);
                 setFunctionsList(functions);
                 setIntExtList(intExt);
                 setStandardsList(standards);
@@ -215,12 +211,6 @@ const Audit = () => {
     const getAuditTypeName = (auditTypeId) => {
         const auditType = auditTypesList.find(at => at.auditTypeId === auditTypeId);
         return auditType ? auditType.auditTypeName : auditTypeId;
-    };
-
-    // Helper function to get status name from statusId
-    const getStatusName = (statusId) => {
-        const status = statusesList.find(s => s.statusId === statusId);
-        return status ? status.statusName : statusId;
     };
 
     // Helper function to get function name(s) from functionId(s)
@@ -1058,7 +1048,7 @@ const Audit = () => {
             'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
             'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
             'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-            'Status', 'Function', 'Comment'
+            'Function', 'Comment'
         ];
         const scheduleValues = [
             auditData.scheduleId || '',
@@ -1076,7 +1066,6 @@ const Audit = () => {
             formatDate(auditData.expectedCompletionDate),
             formatSingle(auditData.intExtId, intExtList, 'intExtId', 'intExtName'),
             formatArray(auditData.standardIds, standardsList, 'standardId', 'standardName'),
-            formatSingle(auditData.statusId, statusesList, 'statusId', 'statusName'),
             formatArray(auditData.functionId, functionsList, 'functionId', 'functionName'),
             auditData.comment || ''
         ];
@@ -1326,7 +1315,7 @@ const Audit = () => {
                         <span>${escapeHtml(name)}</span>
                     </div>
                     <div class="approver-cell status-cell">
-                        <div class="approver-cell-label">Status</div>
+                        <div class="approver-cell-label">Decision</div>
                         <span class="approver-status ${statusClass}">${statusLabel}</span>
                     </div>
                     <div class="approver-cell date-cell">
@@ -1908,7 +1897,7 @@ const Audit = () => {
 
                 {(isLocked || isApproved) && (
                     <div className="audit-section">
-                        <h2 className="section-title">Approval Status</h2>
+                        <h2 className="section-title">Approvals</h2>
                         {getApprovalEntries().length === 0 ? (
                             <p>No approvers assigned.</p>
                         ) : (
@@ -1939,12 +1928,6 @@ const Audit = () => {
                                 <div className="info-item">
                                     <label>Audit Type:</label>
                                     <span>{getAuditTypeName(auditData.auditTypeId)}</span>
-                                </div>
-                            )}
-                            {getStatusName(auditData.statusId) && (
-                                <div className="info-item">
-                                    <label>Status:</label>
-                                    <span>{getStatusName(auditData.statusId)}</span>
                                 </div>
                             )}
                             {getFunctionName(auditData.functionId) && (

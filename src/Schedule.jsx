@@ -20,7 +20,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -41,7 +40,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -59,7 +57,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -68,7 +66,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards()
@@ -82,7 +79,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -181,12 +177,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const getAuditTypeName = (auditTypeId) => {
     const auditType = auditTypesList.find(at => at.auditTypeId === auditTypeId);
     return auditType ? auditType.auditTypeName : auditTypeId;
-  };
-
-  // Helper function to get status name from statusId
-  const getStatusName = (statusId) => {
-    const status = statusesList.find(s => s.statusId === statusId);
-    return status ? status.statusName : statusId;
   };
 
   // Helper function to get function name(s) from functionId(s)
@@ -539,11 +529,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     { value: "Standard 3", label: "Standard 3" },
   ];
 
-  const statuses = statusesList.map(s => ({
-    value: s.statusId,
-    label: s.statusName
-  })).sort((a, b) => a.label.localeCompare(b.label));
-
   const activeFunctions = functionsList.filter(f => (f.active ?? 1) === 1);
 
   const functions = activeFunctions.map(f => ({
@@ -640,10 +625,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         const functionIds = normalizeIdArray(selectedAudit.functionId).map((id) => Number(id)).filter((id) => Number.isFinite(id));
         setValue("function", functionIds);
       }
-      // Set status if available
-      if (selectedAudit && selectedAudit.statusId) {
-        setValue("status", selectedAudit.statusId);
-      }
       // Set int/ext if available
       if (selectedAudit && selectedAudit.intExtId) {
         setValue("IntExt", selectedAudit.intExtId);
@@ -701,7 +682,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         intExtId: data.IntExt,
         functionId: data.function || [],
         standardIds: data.standards || [],
-        statusId: data.status,
         stage: computeStage(1),
         expectedStartDate: data.StartDate || null,
         expectedCompletionDate: data.ExpCompDate || null,
@@ -888,7 +868,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Status', 'Function', 'Comment'
+      'Function', 'Comment'
     ];
 
     const values = [
@@ -907,7 +887,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       formData.ExpCompDate || '',
       formatSingle(formData.IntExt, intExtList, 'intExtId', 'intExtName'),
       formatArray(formData.standards, standardsList, 'standardId', 'standardName'),
-      formatSingle(formData.status, statusesList, 'statusId', 'statusName'),
       formatArray(formData.function, functionsList, 'functionId', 'functionName'),
       formData.comment || ''
     ];
@@ -1337,26 +1316,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 )}
                               />
                               {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
-                            </div>
-
-                            <div className="fieldboxthird">
-                              <label>Status<label style={{ color: 'red' }}>*</label></label>
-                              <Controller
-                                name="status"
-                                control={control}
-                                rules={{ required: "Status is required" }}
-                                render={({ field }) => (
-                                  <Select
-                                    isClearable
-                                    options={statuses}
-                                    styles={customStyles}
-                                    placeholder="Status"
-                                    value={field.value ? statuses.find(s => s.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                  />
-                                )}
-                              />
-                              {errors.status && <p className='fielderror'>{errors.status.message}</p>}
                             </div>
 
                             <div className="fieldboxthird">

@@ -1415,7 +1415,6 @@ const AUDIT_SELECT_BASE_COLUMNS = [
     'intextid',
     'functionid',
     'standardids',
-    'statusid',
     'stage',
     'expectedstartdate',
     'expectedcompletiondate',
@@ -1517,7 +1516,6 @@ const parseAuditRow = (row) => {
         intExtId: row.intextid,
         functionId: normalizeNumberArray(row.functionid),
         standardIds: normalizeNumberArray(row.standardids),
-        statusId: row.statusid,
         stage: row.stage,
         expectedStartDate: row.expectedstartdate,
         expectedCompletionDate: row.expectedcompletiondate,
@@ -3370,21 +3368,6 @@ app.put('/api/functions/:functionId', async (req, res) => {
     }
 });
 
-// Get all statuses
-app.get('/api/statuses', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM statuses_r ORDER BY statusId');
-        const data = result.rows.map(row => ({
-            statusId: row.statusid,
-            statusName: row.statusname
-        }));
-        res.json(data);
-    } catch (error) {
-        console.error('Error fetching statuses:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
 // Get all standards
 app.get('/api/standards', async (req, res) => {
     try {
@@ -4578,7 +4561,7 @@ app.get('/api/audits', async (req, res) => {
 const stageColumnGroups = {
     1: [
         'title', 'auditTypeId', 'intExtId', 'functionId', 'standardIds',
-        'statusId', 'expectedStartDate', 'expectedCompletionDate',
+        'expectedStartDate', 'expectedCompletionDate',
         'startDate', 'divisionId', 'programIds', 'sectorId', 'siteIds',
         'businessUnitIds', 'operatingUnitIds', 'leadAuditorId', 'additionalAuditorIds',
         'comment', 'hash'
@@ -4714,7 +4697,7 @@ app.post('/api/audits', async (req, res) => {
             // Insert new audit
             const result = await client.query(
                 `INSERT INTO audits_r (
-                    title, auditTypeId, intExtId, functionId, standardIds, statusId, stage,
+                    title, auditTypeId, intExtId, functionId, standardIds, stage,
                     expectedStartDate, expectedCompletionDate, startDate,
                     divisionId, programIds, sectorId, siteIds, businessUnitIds, operatingUnitIds,
                     leadAuditorId, additionalAuditorIds, comment, scope, safety,
@@ -4722,14 +4705,14 @@ app.post('/api/audits', async (req, res) => {
                     famaIds, intervieweeIds, specialConsiderations, overview, evaluator, relatedItems,
                     programManager, maLeadManager, cui, delayCause, hash
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                    $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                    $27, $28, $29, $30, $31, $32, $33, $34, $35
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+                    $26, $27, $28, $29, $30, $31, $32, $33, $34
                 );
                 SELECT CAST(SCOPE_IDENTITY() AS INT) AS scheduleId;`,
                 [
                     audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
-                    JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
+                    JSON.stringify(audit.standardIds), audit.stage,
                     audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
                     normalizeAuditArrayForStorage(audit.divisionId), JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
                     JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,

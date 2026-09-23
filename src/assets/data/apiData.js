@@ -110,10 +110,6 @@ export async function getAuditTypes() {
     return await fetchData('audit-types');
 }
 
-export async function getStatuses() {
-    return await fetchData('statuses');
-}
-
 export async function getFunctions() {
     return await fetchData('functions');
 }
