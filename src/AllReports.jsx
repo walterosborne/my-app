@@ -757,6 +757,7 @@ const AllReports = () => {
               <label>Division</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={divisionOptions}
@@ -770,6 +771,7 @@ const AllReports = () => {
               <label>Program(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={programOptions}
@@ -783,6 +785,7 @@ const AllReports = () => {
               <label>Site(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={siteOptions}
@@ -809,6 +812,7 @@ const AllReports = () => {
               <label>Function</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={functionOptions}
@@ -824,6 +828,7 @@ const AllReports = () => {
                   <label>Business Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={businessUnitOptions}
@@ -837,6 +842,7 @@ const AllReports = () => {
                   <label>Operating Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={operatingUnitOptions}
@@ -863,6 +869,7 @@ const AllReports = () => {
                   <label>Additional Auditors</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={auditorOptions}
@@ -889,6 +896,7 @@ const AllReports = () => {
                   <label>Standard(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={standardsOptions}
