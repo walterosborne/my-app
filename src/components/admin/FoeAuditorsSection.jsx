@@ -150,6 +150,7 @@ const FoeAuditorsSection = ({
                     </label>
                     <Select
                         isMulti
+                        closeMenuOnSelect={false}
                         isClearable
                         options={approvedSiteOptions}
                         styles={adminSelectStyles}
