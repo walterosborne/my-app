@@ -3440,29 +3440,44 @@ const validateOrgHierarchy = async (db, {
     if (requireBusinessUnit && businessUnits.length === 0) return 'Business Unit is required.';
     if (requireOperatingUnit && operatingUnits.length === 0) return 'Operating Unit is required.';
 
+    for (const id of divisions) {
+        const result = await db.query(
+            'SELECT divisionid FROM divisions_r WHERE divisionid = $1', [id]
+        );
+        if (!result.rows.length) return `Division ${id} does not exist.`;
+    }
+
+    const buById = new Map();
     for (const id of businessUnits) {
         const result = await db.query(
             'SELECT businessunitid, divisionid FROM business_units_r WHERE businessunitid = $1',
             [id]
         );
-        const unit = result.rows[0];
-        if (!unit) return `Business Unit ${id} does not exist.`;
-        if (!divisions.includes(Number(unit.divisionid))) {
+        const bu = result.rows[0];
+        if (!bu) return `Business Unit ${id} does not exist.`;
+        if (!divisions.includes(Number(bu.divisionid))) {
             return `Business Unit ${id} must belong to a selected Division.`;
         }
+        buById.set(id, bu);
     }
+
+    const ouById = new Map();
     for (const id of operatingUnits) {
         const result = await db.query(
             'SELECT operatingunitid, divisionid, businessunitid FROM operating_units_r WHERE operatingunitid = $1',
             [id]
         );
-        const unit = result.rows[0];
-        if (!unit) return `Operating Unit ${id} does not exist.`;
-        if (!divisions.includes(Number(unit.divisionid))
-            || !businessUnits.includes(Number(unit.businessunitid))) {
-            return `Operating Unit ${id} must belong to a selected Business Unit and Division. If this is an older OU, assign its parent BU in Admin first.`;
+        const ou = result.rows[0];
+        if (!ou) return `Operating Unit ${id} does not exist.`;
+        const parentBU = buById.get(Number(ou.businessunitid));
+        if (!divisions.includes(Number(ou.divisionid))
+            || !parentBU
+            || Number(parentBU.divisionid) !== Number(ou.divisionid)) {
+            return `Operating Unit ${id} must belong to a selected Business Unit in the same Division. If this is an older OU, assign its parent BU in Admin first.`;
         }
+        ouById.set(id, ou);
     }
+
     for (const id of programs) {
         const result = await db.query(
             'SELECT programid, divisionid, businessunitid, operatingunitid FROM programs_r WHERE programid = $1',
@@ -3470,10 +3485,14 @@ const validateOrgHierarchy = async (db, {
         );
         const program = result.rows[0];
         if (!program) return `Program ${id} does not exist.`;
+        const parentBU = buById.get(Number(program.businessunitid));
+        const parentOU = ouById.get(Number(program.operatingunitid));
         if (!divisions.includes(Number(program.divisionid))
-            || !businessUnits.includes(Number(program.businessunitid))
-            || !operatingUnits.includes(Number(program.operatingunitid))) {
-            return `Program ${id} must match a selected Division, Business Unit, and Operating Unit. Existing programs without assigned parents must be corrected in Admin before submitting a new audit.`;
+            || !parentBU || !parentOU
+            || Number(parentBU.divisionid) !== Number(program.divisionid)
+            || Number(parentOU.divisionid) !== Number(program.divisionid)
+            || Number(parentOU.businessunitid) !== Number(program.businessunitid)) {
+            return `Program ${id} must match a selected Division, Business Unit, and Operating Unit with aligned parents. Correct older program/OU assignments in Admin before submitting.`;
         }
     }
     return null;
@@ -4844,9 +4863,9 @@ app.post('/api/audits', async (req, res) => {
             }
         }
 
-        // Other audit stages (Planning, Results and Approvals) remain editable for old,
-        // mismatched audits; Schedule creation/resubmission must have aligned selections.
-        if (isNewAudit || Number(audit.targetStage) === 1) {
+        // GET/report paths never validate historical rows. Only submissions which write
+        // the audit's Schedule or program selection require aligned hierarchy.
+        if (isNewAudit || [1, 3].includes(Number(audit.targetStage))) {
             const hierarchyError = await validateOrgHierarchy(client, {
                 divisionIds: audit.divisionId,
                 businessUnitIds: audit.businessUnitIds,
