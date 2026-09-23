@@ -1440,40 +1440,42 @@ const AdminMenu = () => {
 
     const handleOperatingUnitSubmit = React.useCallback(async () => {
         const errors = {};
-        if (!operatingUnitInput.trim()) {
-            errors.operatingUnitName = 'Operating unit is required.';
-        }
-        if (!operatingUnitDivisionId) {
-            errors.divisionId = 'Division is required.';
+        if (!operatingUnitInput.trim()) errors.operatingUnitName = 'Operating unit is required.';
+        if (!operatingUnitDivisionId) errors.divisionId = 'Division is required.';
+        if (!operatingUnitBusinessUnitId) {
+            errors.businessUnitId = 'Business Unit is required.';
+        } else {
+            const bu = businessUnitsList.find((unit) =>
+                Number(unit.businessUnitId) === Number(operatingUnitBusinessUnitId));
+            if (!bu || Number(bu.divisionId) !== Number(operatingUnitDivisionId)) {
+                errors.businessUnitId = 'Business Unit must belong to the selected Division.';
+            }
         }
         if (Object.keys(errors).length > 0) {
             setOperatingUnitFieldErrors(errors);
-            const msg = 'Please fill out all required fields.';
+            const msg = 'Please correct the required organization fields.';
             toast.error(msg, TOAST_OPTIONS);
             setOperatingUnitError(msg);
             setOperatingUnitMessage('');
             return;
         }
-
         const payload = {
             operatingUnitName: operatingUnitInput.trim(),
             divisionId: Number(operatingUnitDivisionId),
+            businessUnitId: Number(operatingUnitBusinessUnitId),
             active: editingOperatingUnit?.active ?? 1
         };
-
         setOperatingUnitSubmitting(true);
         setOperatingUnitError('');
         setOperatingUnitMessage('');
         setOperatingUnitFieldErrors({});
-
         try {
             const endpoint = isOperatingUnitEditMode && editingOperatingUnit
                 ? `${API_BASE}/operating-units/${editingOperatingUnit.operatingUnitId}`
                 : `${API_BASE}/operating-units`;
             const method = isOperatingUnitEditMode && editingOperatingUnit ? 'PUT' : 'POST';
             const response = await fetch(endpoint, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
+                method, headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
@@ -1484,19 +1486,16 @@ const AdminMenu = () => {
             const successMsg = isOperatingUnitEditMode && editingOperatingUnit
                 ? 'Operating unit updated successfully.'
                 : 'Operating unit added successfully.';
-            if (isOperatingUnitEditMode && editingOperatingUnit) {
-                setOperatingUnitsList((prev) =>
-                    prev.map((unit) =>
-                        unit.operatingUnitId === editingOperatingUnit.operatingUnitId ? saved : unit
-                    )
-                );
-            } else {
-                setOperatingUnitsList((prev) => [...prev, saved]);
-            }
+            setOperatingUnitsList((prev) =>
+                isOperatingUnitEditMode && editingOperatingUnit
+                    ? prev.map((unit) => unit.operatingUnitId === editingOperatingUnit.operatingUnitId ? saved : unit)
+                    : [...prev, saved]
+            );
             setOperatingUnitMessage(successMsg);
             toast.success('Submitted!', SUCCESS_TOAST_OPTIONS);
             setOperatingUnitInput('');
             setOperatingUnitDivisionId('');
+            setOperatingUnitBusinessUnitId('');
             setEditingOperatingUnit(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save operating unit.';
@@ -1506,22 +1505,19 @@ const AdminMenu = () => {
         } finally {
             setOperatingUnitSubmitting(false);
         }
-    }, [operatingUnitInput, operatingUnitDivisionId, editingOperatingUnit, isOperatingUnitEditMode, normalizeOperatingUnitRow]);
+    }, [operatingUnitInput, operatingUnitDivisionId, operatingUnitBusinessUnitId, businessUnitsList,
+        editingOperatingUnit, isOperatingUnitEditMode, normalizeOperatingUnitRow]);
 
     const handleOperatingUnitArchive = React.useCallback(async () => {
         if (!editingOperatingUnit) return;
         const newActive = editingOperatingUnit.active === 1 ? 0 : 1;
         setOperatingUnitSubmitting(true);
         try {
-            const payload = {
-                operatingUnitName: operatingUnitInput.trim() || editingOperatingUnit.operatingUnitName,
-                divisionId: Number(operatingUnitDivisionId || editingOperatingUnit.divisionId),
-                active: newActive
-            };
-            const response = await fetch(`${API_BASE}/operating-units/${editingOperatingUnit.operatingUnitId}`, {
-                method: 'PUT',
+            // Only toggle active: do not resubmit a legacy OU's missing/incorrect parents.
+            const response = await fetch(`${API_BASE}/operating-units/${editingOperatingUnit.operatingUnitId}/active`, {
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ active: newActive })
             });
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => null);
@@ -1529,13 +1525,11 @@ const AdminMenu = () => {
             }
             const saved = normalizeOperatingUnitRow(await response.json());
             setOperatingUnitsList((prev) =>
-                prev.map((unit) =>
-                    unit.operatingUnitId === saved.operatingUnitId ? saved : unit
-                )
-            );
+                prev.map((unit) => unit.operatingUnitId === saved.operatingUnitId ? saved : unit));
             setEditingOperatingUnit(saved);
             setOperatingUnitInput(saved.operatingUnitName || '');
             setOperatingUnitDivisionId(saved.divisionId ?? '');
+            setOperatingUnitBusinessUnitId(saved.businessUnitId ?? '');
             const successMsg = saved.active === 1 ? 'Operating unit reactivated.' : 'Operating unit archived.';
             setOperatingUnitMessage(successMsg);
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
@@ -1547,7 +1541,7 @@ const AdminMenu = () => {
         } finally {
             setOperatingUnitSubmitting(false);
         }
-    }, [operatingUnitInput, operatingUnitDivisionId, editingOperatingUnit, normalizeOperatingUnitRow]);
+    }, [editingOperatingUnit, normalizeOperatingUnitRow]);
 
     const handleDelayCauseSubmit = React.useCallback(async () => {
         const errors = {};
@@ -1870,41 +1864,54 @@ const AdminMenu = () => {
 
     const handleProgramSubmit = React.useCallback(async () => {
         const errors = {};
-        if (!programInput.trim()) {
-            errors.programName = 'Program is required.';
+        if (!programInput.trim()) errors.programName = 'Program is required.';
+        if (!programDivisionId) errors.divisionId = 'Division is required.';
+        if (!programBusinessUnitId) {
+            errors.businessUnitId = 'Business Unit is required.';
+        } else {
+            const bu = businessUnitsList.find((unit) =>
+                Number(unit.businessUnitId) === Number(programBusinessUnitId));
+            if (!bu || Number(bu.divisionId) !== Number(programDivisionId)) {
+                errors.businessUnitId = 'Business Unit must belong to the selected Division.';
+            }
         }
-        if (!programDivisionId) {
-            errors.divisionId = 'Division is required.';
+        if (!programOperatingUnitId) {
+            errors.operatingUnitId = 'Operating Unit is required.';
+        } else {
+            const ou = operatingUnitsList.find((unit) =>
+                Number(unit.operatingUnitId) === Number(programOperatingUnitId));
+            if (!ou || Number(ou.divisionId) !== Number(programDivisionId)
+                || Number(ou.businessUnitId) !== Number(programBusinessUnitId)) {
+                errors.operatingUnitId = 'Operating Unit must belong to the selected Business Unit and Division.';
+            }
         }
         if (Object.keys(errors).length > 0) {
             setProgramFieldErrors(errors);
-            const msg = 'Please fill out all required fields.';
+            const msg = 'Please correct the required organization fields.';
             toast.error(msg, TOAST_OPTIONS);
             setProgramError(msg);
             setProgramMessage('');
             return;
         }
-
         const payload = {
             programName: programInput.trim(),
             divisionId: Number(programDivisionId),
+            businessUnitId: Number(programBusinessUnitId),
+            operatingUnitId: Number(programOperatingUnitId),
             auditorIds: programAuditorIds.map(Number),
             active: editingProgram?.active ?? 1
         };
-
         setProgramSubmitting(true);
         setProgramError('');
         setProgramMessage('');
         setProgramFieldErrors({});
-
         try {
             const endpoint = isProgramEditMode && editingProgram
                 ? `${API_BASE}/programs/${editingProgram.programId}`
                 : `${API_BASE}/programs`;
             const method = isProgramEditMode && editingProgram ? 'PUT' : 'POST';
             const response = await fetch(endpoint, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
+                method, headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             if (!response.ok) {
@@ -1932,23 +1939,20 @@ const AdminMenu = () => {
         } finally {
             setProgramSubmitting(false);
         }
-    }, [programInput, programDivisionId, editingProgram, isProgramEditMode, programAuditorIds, reloadAuditorsAndPrograms]);
+    }, [programInput, programDivisionId, programBusinessUnitId, programOperatingUnitId,
+        businessUnitsList, operatingUnitsList, editingProgram, isProgramEditMode,
+        programAuditorIds, reloadAuditorsAndPrograms]);
 
     const handleProgramArchive = React.useCallback(async () => {
         if (!editingProgram) return;
         const newActive = editingProgram.active === 1 ? 0 : 1;
         setProgramSubmitting(true);
         try {
-            const payload = {
-                programName: programInput.trim() || editingProgram.programName,
-                divisionId: Number(programDivisionId || editingProgram.divisionId),
-                auditorIds: programAuditorIds.map(Number),
-                active: newActive
-            };
-            const response = await fetch(`${API_BASE}/programs/${editingProgram.programId}`, {
-                method: 'PUT',
+            // Leave the historic hierarchy and auditor assignments untouched.
+            const response = await fetch(`${API_BASE}/programs/${editingProgram.programId}/active`, {
+                method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ active: newActive })
             });
             if (!response.ok) {
                 const errorBody = await response.json().catch(() => null);
@@ -1960,6 +1964,8 @@ const AdminMenu = () => {
             setEditingProgram(refreshedProgram);
             setProgramInput(refreshedProgram.programName || '');
             setProgramDivisionId(refreshedProgram.divisionId ?? '');
+            setProgramBusinessUnitId(refreshedProgram.businessUnitId ?? '');
+            setProgramOperatingUnitId(refreshedProgram.operatingUnitId ?? '');
             setProgramAuditorIds(refreshedProgram.auditorIds ?? []);
             const successMsg = refreshedProgram.active === 1 ? 'Program reactivated.' : 'Program archived.';
             setProgramMessage(successMsg);
@@ -1972,7 +1978,7 @@ const AdminMenu = () => {
         } finally {
             setProgramSubmitting(false);
         }
-    }, [programInput, programDivisionId, editingProgram, normalizeProgramRow, programAuditorIds, reloadAuditorsAndPrograms]);
+    }, [editingProgram, normalizeProgramRow, reloadAuditorsAndPrograms]);
 
     const handleDivisionSubmit = React.useCallback(async () => {
         const errors = {};
