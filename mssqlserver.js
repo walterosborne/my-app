@@ -4857,7 +4857,7 @@ app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
             sql = `UPDATE audits_r
                    SET stagebeforeinactive = stage, stage = -2, updatedat = CURRENT_TIMESTAMP
                    WHERE scheduleid = $1 AND stage BETWEEN 1 AND 4
-                     AND locked = 0 AND approvedat IS NULL`;
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
         } else if (action === 'reactivate') {
             if (Number(audit.stage) !== -2 ||
                 ![1, 2, 3, 4].includes(Number(audit.stageBeforeInactive))) {
@@ -4868,13 +4868,13 @@ app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
                        updatedat = CURRENT_TIMESTAMP
                    WHERE scheduleid = $1 AND stage = -2
                      AND stagebeforeinactive BETWEEN 1 AND 4
-                     AND locked = 0 AND approvedat IS NULL`;
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
         } else {
             sql = `UPDATE audits_r
                    SET stagebeforeinactive = CASE WHEN stage = -2 THEN stagebeforeinactive ELSE stage END,
                        stage = -3, updatedat = CURRENT_TIMESTAMP
                    WHERE scheduleid = $1 AND stage <> -3
-                     AND locked = 0 AND approvedat IS NULL`;
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
         }
 
         const changed = await client.query(sql, [scheduleId]);
