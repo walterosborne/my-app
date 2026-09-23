@@ -153,7 +153,7 @@ const ProgramsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="program-division" className="admin-label">
-                        Parent Division <span className="admin-required">*</span>
+                        Parent Division
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -187,7 +187,7 @@ const ProgramsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="program-business-unit" className="admin-label">
-                        Parent Business Unit <span className="admin-required">*</span>
+                        Parent Business Unit
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -195,7 +195,6 @@ const ProgramsSection = ({
                             value={programBusinessUnitId}
                             onChange={onBusinessUnitChange}
                             className="admin-input"
-                            disabled={!programDivisionId}
                         >
                             <option value="" disabled hidden>Select Business Unit</option>
                             {programBusinessUnitOptions.map((unit) => (
@@ -214,7 +213,7 @@ const ProgramsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="program-operating-unit" className="admin-label">
-                        Parent Operating Unit <span className="admin-required">*</span>
+                        Parent Operating Unit
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -222,7 +221,6 @@ const ProgramsSection = ({
                             value={programOperatingUnitId}
                             onChange={onOperatingUnitChange}
                             className="admin-input"
-                            disabled={!programDivisionId || !programBusinessUnitId}
                         >
                             <option value="" disabled hidden>Select Operating Unit</option>
                             {programOperatingUnitOptions.map((unit) => (

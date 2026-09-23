@@ -135,7 +135,7 @@ const OperatingUnitsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="operating-unit-division" className="admin-label">
-                        Parent Division <span className="admin-required">*</span>
+                        Parent Division
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -169,7 +169,7 @@ const OperatingUnitsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="operating-unit-business-unit" className="admin-label">
-                        Parent Business Unit <span className="admin-required">*</span>
+                        Parent Business Unit
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -177,7 +177,6 @@ const OperatingUnitsSection = ({
                             value={operatingUnitBusinessUnitId}
                             onChange={onBusinessUnitChange}
                             className="admin-input"
-                            disabled={!operatingUnitDivisionId}
                         >
                             <option value="" disabled hidden>Select Business Unit</option>
                             {operatingUnitBusinessUnitOptions.map((unit) => (

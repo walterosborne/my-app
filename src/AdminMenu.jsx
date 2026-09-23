@@ -3094,6 +3094,8 @@ const AdminMenu = () => {
                         onReset={() => {
                             setProgramInput('');
                             setProgramDivisionId('');
+                            setProgramBusinessUnitId('');
+                            setProgramOperatingUnitId('');
                             setProgramAuditorIds([]);
                             setEditingProgram(null);
                             setProgramError('');
@@ -3577,6 +3579,7 @@ const AdminMenu = () => {
                         onReset={() => {
                             setOperatingUnitInput('');
                             setOperatingUnitDivisionId('');
+                            setOperatingUnitBusinessUnitId('');
                             setEditingOperatingUnit(null);
                             setOperatingUnitError('');
                             setOperatingUnitMessage('');
