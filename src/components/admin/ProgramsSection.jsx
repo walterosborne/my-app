@@ -243,6 +243,7 @@ const ProgramsSection = ({
                     </label>
                     <Select
                         isMulti
+                        closeMenuOnSelect={false}
                         isClearable
                         options={auditorOptions}
                         styles={adminSelectStyles}
