@@ -800,6 +800,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const buildResultsFormValues = useCallback((audit, auditNCs, etqQuestions) => {
     const values = {
       overview: audit?.overview || '',
+      auditorsTime: audit?.auditorsTime ?? audit?.auditorstime ?? '',
       cui: audit?.cui ?? null,
       standards: audit?.standardIds || [],
       programs: audit?.programIds || [],
@@ -1406,6 +1407,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         body: JSON.stringify({
           ...selectedAudit,
           overview: data.overview,
+          auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
           cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
           standardIds: data.standards || [],
           programIds: data.programs || [],
@@ -1454,6 +1456,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           return {
             ...current,
             overview: data.overview,
+            auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
+            auditorstime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
             cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
             standardIds: data.standards || [],
             programIds: data.programs || [],
@@ -2102,6 +2106,32 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           id='maLeadManager'
                           className='textfield'
                         />
+                      </div>
+                    </div>
+                    <div className='sectionrow'>
+                      <div className="fieldboxwhole">
+                        <label>Auditor's Time to Complete Audit (hours)</label>
+                        <input
+                          type="number"
+                          {...register("auditorsTime", {
+                            validate: {
+                              isInteger: (value) => {
+                                if (value === '' || value === null) return true;
+                                return Number.isInteger(Number(value)) || "Please enter a whole number";
+                              },
+                              isNonNegative: (value) => {
+                                if (value === '' || value === null) return true;
+                                return Number(value) >= 0 || "Please enter a non-negative number";
+                              }
+                            }
+                          })}
+                          id='auditorsTime'
+                          className='textfield'
+                          placeholder='Enter a whole number here'
+                          min="0"
+                          step="1"
+                        />
+                        {errors.auditorsTime && <p className='fielderror'>{errors.auditorsTime.message}</p>}
                       </div>
                     </div>
 
