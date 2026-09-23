@@ -4797,7 +4797,8 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
                 divisionIds: updates.divisionId ?? audit.divisionId,
                 businessUnitIds: updates.businessUnitIds ?? audit.businessUnitIds,
                 operatingUnitIds: updates.operatingUnitIds ?? audit.operatingUnitIds,
-                programIds: updates.programIds ?? audit.programIds
+                programIds: updates.programIds ?? audit.programIds,
+                requireDivision: targetStage === 1
             });
             if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         }
@@ -4870,7 +4871,8 @@ app.post('/api/audits', async (req, res) => {
                 divisionIds: audit.divisionId,
                 businessUnitIds: audit.businessUnitIds,
                 operatingUnitIds: audit.operatingUnitIds,
-                programIds: audit.programIds
+                programIds: audit.programIds,
+                requireDivision: isNewAudit || Number(audit.targetStage) === 1
             });
             if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         }
