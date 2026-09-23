@@ -84,6 +84,7 @@ const AllReports = () => {
   const [causesList, setCausesList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
+  const [includeCancelledAudits, setIncludeCancelledAudits] = useState(false);
   const [sectorFilter, setSectorFilter] = useState(null);
   const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
@@ -230,13 +231,34 @@ const AllReports = () => {
   const intExtOptions = useMemo(() => buildSortedOptions(intExtList, 'intExtId', 'intExtName'), [intExtList]);
   const standardsOptions = useMemo(() => buildSortedOptions(standardsList, 'standardId', 'standardName'), [standardsList]);
 
+  // Cancellation is the visible stage; the saved previous stage tells the
+  // workbook which Planning/Results/finding sheets have applicable data.
   const getStageValue = (audit) => {
     const stage = Number(audit?.stage);
+    if (stage === -2) {
+      const previousStage = Number(audit?.stageBeforeInactive);
+      return Number.isInteger(previousStage) && previousStage >= 1 && previousStage <= 4
+        ? previousStage
+        : 0;
+    }
     return Number.isNaN(stage) ? 0 : stage;
+  };
+
+  const getStageLabel = (audit) => {
+    const stage = Number(audit?.stage);
+    if (stage === -2) return 'Cancelled';
+    if (stage === -1) return 'Historical';
+    if (audit?.approvedAt) return 'Approved';
+    if (Number(audit?.locked) === 1) return 'Pending Approval';
+    if (stage === 1) return 'Planning';
+    if (stage === 2) return 'Conduct Audit';
+    if (stage === 3 || stage === 4) return 'Nonconformities';
+    return 'Unknown';
   };
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
+      if (!includeCancelledAudits && Number(audit?.stage) === -2) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -285,6 +307,7 @@ const AllReports = () => {
   }, [
     audits,
     titleFilter,
+    includeCancelledAudits,
     sectorFilter,
     divisionFilter,
     programFilter,
@@ -311,6 +334,7 @@ const AllReports = () => {
     id: audit.scheduleId,
     scheduleId: audit.scheduleId,
     title: audit.title,
+    stage: getStageLabel(audit),
     division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
@@ -323,6 +347,7 @@ const AllReports = () => {
   const columns = [
     { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
     { field: 'title', headerName: 'Title', width: 260 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
     { field: 'division', headerName: 'Division', width: 160 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
@@ -441,7 +466,7 @@ const AllReports = () => {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Function', 'Comment',
+      'Function', 'Comment', 'Stage',
       'Submission Date', 'Approval Date'
     ];
     const scheduleRows = exportAudits.map((audit) => ([
@@ -462,6 +487,7 @@ const AllReports = () => {
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
       formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
       audit.comment || '',
+      getStageLabel(audit),
       formatDateForInput(audit.submittedAt),
       formatDateForInput(audit.approvedAt)
     ]));
@@ -701,6 +727,17 @@ const AllReports = () => {
                 value={titleFilter}
                 onChange={(event) => setTitleFilter(event.target.value)}
               />
+            </div>
+
+            <div className="filter-field filter-field--checkbox">
+              <label className="cancelled-checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={includeCancelledAudits}
+                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
+                />
+                <span>Include cancelled audits</span>
+              </label>
             </div>
 
             <div className="filter-field">
