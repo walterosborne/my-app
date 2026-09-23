@@ -1472,6 +1472,7 @@ const ThirtySixtyNinety = () => {
               <label>Division</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={divisionOptions}
@@ -1485,6 +1486,7 @@ const ThirtySixtyNinety = () => {
               <label>Program(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={programOptions}
@@ -1498,6 +1500,7 @@ const ThirtySixtyNinety = () => {
               <label>Site(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={siteOptions}
@@ -1524,6 +1527,7 @@ const ThirtySixtyNinety = () => {
               <label>Function</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={functionOptions}
@@ -1539,6 +1543,7 @@ const ThirtySixtyNinety = () => {
                   <label>Business Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={businessUnitOptions}
@@ -1552,6 +1557,7 @@ const ThirtySixtyNinety = () => {
                   <label>Operating Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={operatingUnitOptions}
@@ -1578,6 +1584,7 @@ const ThirtySixtyNinety = () => {
                   <label>Additional Auditors</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={auditorOptions}
@@ -1604,6 +1611,7 @@ const ThirtySixtyNinety = () => {
                   <label>Standard(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={standardsOptions}
