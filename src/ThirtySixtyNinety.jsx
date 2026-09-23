@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Select from 'react-select';
@@ -995,7 +996,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'planned-vs-completed') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1043,7 +1044,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'rollup-results') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1103,7 +1104,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'rollup-schedule') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1159,7 +1160,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'clauses-audited') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1213,7 +1214,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'processes-audited') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1267,7 +1268,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'schedule-comments') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1319,7 +1320,7 @@ const ThirtySixtyNinety = () => {
 
     const exportAudits = sortedFilteredAudits;
     if (exportAudits.length === 0) {
-      toast.error('No audits match the selected filters.');
+      errorToast('No audits match the selected filters.');
       return;
     }
 

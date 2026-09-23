@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -58,7 +59,7 @@ const Entry = () => {
         if (!auditId) return;
         if (!hasAccessToRequestedAudit && !accessErrorShown) {
             setTimeout(() => {
-                toast.error('You either do not have access to audit ' + auditId + ' or it does not exist.');
+                errorToast('You either do not have access to audit ' + auditId + ' or it does not exist.');
             }, 0);
             setAccessErrorShown(true);
         }

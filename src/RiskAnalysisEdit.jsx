@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
@@ -353,7 +354,7 @@ function RiskAnalysisEdit() {
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      toast.error('Please fill out all required fields.', TOAST_OPTIONS);
+      errorToast('Please fill out all required fields.', TOAST_OPTIONS);
       return;
     }
 
@@ -393,7 +394,7 @@ function RiskAnalysisEdit() {
       }
     } catch (error) {
       const message = error.message || 'Failed to save risk analysis.';
-      toast.error(message, TOAST_OPTIONS);
+      errorToast(message, TOAST_OPTIONS);
     } finally {
       setSubmitting(false);
     }
@@ -421,7 +422,7 @@ function RiskAnalysisEdit() {
       setAssignmentResetKey((value) => value + 1);
       toast.success('Deleted!', SUCCESS_TOAST_OPTIONS);
     } catch (error) {
-      toast.error(error.message || 'Failed to delete risk analysis.', TOAST_OPTIONS);
+      errorToast(error.message || 'Failed to delete risk analysis.', TOAST_OPTIONS);
     } finally {
       setSubmitting(false);
     }

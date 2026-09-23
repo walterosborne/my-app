@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
@@ -61,12 +62,12 @@ const ImprovementRequest = () => {
             }
             toast.success('Submitted!');
             if (result?.emailWarning) {
-                toast.error(result.emailWarning);
+                errorToast(result.emailWarning);
             }
             setRequestSubmitted(true);
         } catch (error) {
             console.error('Error submitting improvement request:', error);
-            toast.error(error.message || 'Submission failed.');
+            errorToast(error.message || 'Submission failed.');
         } finally {
             setIsSubmitting(false);
         }

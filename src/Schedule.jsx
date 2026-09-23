@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
@@ -659,7 +660,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   async function onSubmit(data) {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -726,7 +727,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
         toast.success('Submitted!');
         if (result.emailWarning) {
-          toast.error(result.emailWarning);
+          errorToast(result.emailWarning);
         }
         setSubmitted(true);
         setSubmittedScheduleId(finalScheduleId);
@@ -743,7 +744,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
     }
     catch (error) {
-      toast.error(`Error: ${error.message}`);
+      errorToast(`Error: ${error.message}`);
       setError("root",
         { message: error.message }
       )
@@ -751,7 +752,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   }
   async function unlockAudit() {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -782,7 +783,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
   function handleReset() {
@@ -825,7 +826,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields';
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -952,7 +953,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         )}
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
@@ -1451,7 +1452,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
           </ form>
         </>
-      }
     </>
   )
 }

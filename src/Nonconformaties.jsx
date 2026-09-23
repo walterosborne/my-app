@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
@@ -307,7 +308,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+    errorToast(accessBlock.message || 'You do not have access to this audit.', {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -627,7 +628,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   async function onSubmit(data, lockedValue = false) {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -704,7 +705,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
         toast.success(lockedValue ? 'Nonconformities submitted successfully!' : 'Changes saved successfully!');
         if (result.emailWarning) {
-          toast.error(result.emailWarning);
+          errorToast(result.emailWarning);
         }
 
         // Reload the audit data to refresh the form
@@ -742,7 +743,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   async function unlockAudit() {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -772,7 +773,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
 
@@ -865,7 +866,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form onSubmit={handleSubmit(onSubmit)} style={{ width: '100%' }}>
@@ -1302,7 +1303,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               ) : null}
           </ form>
         </>
-      }
     </>
   )
 }

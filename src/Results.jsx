@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import Select from "react-select"
@@ -273,7 +274,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+    errorToast(accessBlock.message || 'You do not have access to this audit.', {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -396,7 +397,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleToggleAuditorFileArchived = useCallback(async (file) => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
 
@@ -407,7 +408,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
       toast.success(nextActive ? 'File restored.' : 'File archived.');
     } catch (error) {
-      toast.error(error.message || 'Failed to update file status.');
+      errorToast(error.message || 'Failed to update file status.');
     } finally {
       setArchivingFileId(null);
     }
@@ -448,11 +449,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleFileUpload = async () => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     if (uploadFiles.length === 0) {
-      toast.error('Please select at least one file to upload.');
+      errorToast('Please select at least one file to upload.');
       return;
     }
     const selectedNameCounts = uploadFiles.reduce((counts, file) => {
@@ -466,7 +467,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .filter(([, count]) => count > 1)
       .map(([name]) => name);
     if (duplicateSelectedNames.length > 0) {
-      toast.error(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
+      errorToast(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
       return;
     }
     const existingFileNames = new Set(
@@ -476,7 +477,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .map((file) => file.name)
       .filter((name) => existingFileNames.has(String(name || '').trim().toLowerCase()));
     if (duplicateExistingNames.length > 0) {
-      toast.error(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
+      errorToast(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
       return;
     }
     if (isUploadTooLarge) {
@@ -484,7 +485,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const oversizedMessage = oversizedNames.length === 1
         ? `"${oversizedNames[0]}" exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.`
         : `${oversizedNames.length} selected files exceed the NGAT upload limit. Please choose files smaller than 50MB and try again.`;
-      toast.error(oversizedMessage, {
+      errorToast(oversizedMessage, {
         autoClose: false,
         closeOnClick: true,
         closeButton: true,
@@ -508,7 +509,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
     } catch (error) {
       if (error?.persistToast) {
-        toast.error(error.message || 'Failed to upload file.', {
+        errorToast(error.message || 'Failed to upload file.', {
           autoClose: false,
           closeOnClick: true,
           closeButton: true,
@@ -518,7 +519,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           style: { borderLeft: '4px solid #d32f2f' }
         });
       } else {
-        toast.error(error.message || 'Failed to upload file.');
+        errorToast(error.message || 'Failed to upload file.');
       }
     } finally {
       setUploadingFile(false);
@@ -1268,7 +1269,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function onSubmit(data) {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!selectedAudit) {
@@ -1536,7 +1537,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields';
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -1553,7 +1554,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function unlockAudit() {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!schedule?.scheduleId) {
@@ -1583,7 +1584,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
 
@@ -1648,7 +1649,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form id='results-form' onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
@@ -2999,7 +3000,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             </div>
           )}
         </>
-      }
     </>
   )
 }

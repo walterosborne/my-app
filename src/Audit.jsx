@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './Audit.css';
@@ -832,13 +833,13 @@ const Audit = () => {
     React.useEffect(() => {
         if (loading) return;
         if (isCuiAccessDenied && !accessErrorShown) {
-            toast.error('This audit is marked CUI. You are not CUI approved and cannot view it.');
+            errorToast('This audit is marked CUI. You are not CUI approved and cannot view it.');
             setAccessErrorShown(true);
             return;
         }
         if (!id) return;
         if (auditNotFound && !accessErrorShown) {
-            toast.error('You either do not have access to this audit or it does not exist.');
+            errorToast('You either do not have access to this audit or it does not exist.');
             setAccessErrorShown(true);
         }
     }, [auditNotFound, accessErrorShown, id, isCuiAccessDenied, loading]);
@@ -1643,10 +1644,10 @@ const Audit = () => {
             }
 
             if (result.emailWarning) {
-                toast.error(result.emailWarning);
+                errorToast(result.emailWarning);
             }
         } catch (error) {
-            toast.error(error.message || 'Failed to send approval reminders.');
+            errorToast(error.message || 'Failed to send approval reminders.');
         } finally {
             setNudgingApprovers(false);
         }
@@ -1692,7 +1693,7 @@ const Audit = () => {
 
             toast.success('Submission undone successfully.');
         } catch (error) {
-            toast.error(`Failed to undo submission: ${error.message}`);
+            errorToast(`Failed to undo submission: ${error.message}`);
         } finally {
             setUnlockingSubmission(false);
         }
@@ -1700,7 +1701,7 @@ const Audit = () => {
 
     const handleDownloadObjectiveEvidence = async () => {
         if (!auditData?.scheduleId) {
-            toast.error('No audit selected.');
+            errorToast('No audit selected.');
             return;
         }
         setDownloadingObjectiveEvidence(true);
@@ -1739,7 +1740,7 @@ const Audit = () => {
             link.remove();
             window.URL.revokeObjectURL(objectUrl);
         } catch (error) {
-            toast.error(error.message || 'Failed to download objective evidence.');
+            errorToast(error.message || 'Failed to download objective evidence.');
         } finally {
             setDownloadingObjectiveEvidence(false);
         }
@@ -1772,7 +1773,7 @@ const Audit = () => {
                 toast.success(action === 'cancel' ? 'Audit cancelled.' : 'Audit reactivated.');
             }
         } catch (error) {
-            toast.error(error.message || 'Failed to change audit stage.');
+            errorToast(error.message || 'Failed to change audit stage.');
         } finally {
             setChangingLifecycle(false);
         }

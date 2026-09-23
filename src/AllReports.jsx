@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
@@ -400,7 +401,7 @@ const AllReports = () => {
   const handleExport = async () => {
     const exportAudits = sortedFilteredAudits;
     if (exportAudits.length === 0) {
-      toast.error('No audits match the selected filters.');
+      errorToast('No audits match the selected filters.');
       return;
     }
 

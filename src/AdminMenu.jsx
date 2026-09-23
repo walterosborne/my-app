@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { toast } from 'react-toastify';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -1070,14 +1071,14 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setSubmissionError(msg);
             setSubmissionMessage('');
             return;
         }
 
         if (sectionMessage) {
-            toast.error(sectionMessage, TOAST_OPTIONS);
+            errorToast(sectionMessage, TOAST_OPTIONS);
             setSubmissionError(sectionMessage);
             setSubmissionMessage('');
             return;
@@ -1134,7 +1135,7 @@ const AdminMenu = () => {
             setEditingAuditor(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save auditor.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSubmissionError(errMsg);
             setSubmissionMessage('');
         } finally {
@@ -1193,7 +1194,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update auditor.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSubmissionError(errMsg);
             setSubmissionMessage('');
         } finally {
@@ -1209,7 +1210,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setAuditTypeFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setAuditTypeError(msg);
             setAuditTypeMessage('');
             return;
@@ -1258,7 +1259,7 @@ const AdminMenu = () => {
             setEditingAuditType(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save audit type.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setAuditTypeError(errMsg);
             setAuditTypeMessage('');
         } finally {
@@ -1297,7 +1298,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update audit type.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setAuditTypeError(errMsg);
             setAuditTypeMessage('');
         } finally {
@@ -1316,7 +1317,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setBusinessUnitFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setBusinessUnitError(msg);
             setBusinessUnitMessage('');
             return;
@@ -1367,7 +1368,7 @@ const AdminMenu = () => {
             setEditingBusinessUnit(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save business unit.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setBusinessUnitError(errMsg);
             setBusinessUnitMessage('');
         } finally {
@@ -1408,7 +1409,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update business unit.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setBusinessUnitError(errMsg);
             setBusinessUnitMessage('');
         } finally {
@@ -1422,7 +1423,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setOperatingUnitFieldErrors(errors);
             const msg = 'Operating Unit name is required.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setOperatingUnitError(msg);
             setOperatingUnitMessage('');
             return;
@@ -1467,7 +1468,7 @@ const AdminMenu = () => {
             setEditingOperatingUnit(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save operating unit.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setOperatingUnitError(errMsg);
             setOperatingUnitMessage('');
         } finally {
@@ -1503,7 +1504,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update operating unit.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setOperatingUnitError(errMsg);
             setOperatingUnitMessage('');
         } finally {
@@ -1519,7 +1520,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setDelayCauseFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setDelayCauseError(msg);
             setDelayCauseMessage('');
             return;
@@ -1568,7 +1569,7 @@ const AdminMenu = () => {
             setEditingDelayCause(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save delay cause.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setDelayCauseError(errMsg);
             setDelayCauseMessage('');
         } finally {
@@ -1607,7 +1608,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update delay cause.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setDelayCauseError(errMsg);
             setDelayCauseMessage('');
         } finally {
@@ -1626,7 +1627,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setEveryTimeQuestionFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setEveryTimeQuestionError(msg);
             setEveryTimeQuestionMessage('');
             return;
@@ -1677,7 +1678,7 @@ const AdminMenu = () => {
             setEditingEveryTimeQuestion(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save question.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setEveryTimeQuestionError(errMsg);
             setEveryTimeQuestionMessage('');
         } finally {
@@ -1718,7 +1719,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update question.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setEveryTimeQuestionError(errMsg);
             setEveryTimeQuestionMessage('');
         } finally {
@@ -1734,7 +1735,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setFunctionFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setFunctionError(msg);
             setFunctionMessage('');
             return;
@@ -1783,7 +1784,7 @@ const AdminMenu = () => {
             setEditingFunction(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save function.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setFunctionError(errMsg);
             setFunctionMessage('');
         } finally {
@@ -1822,7 +1823,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update function.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setFunctionError(errMsg);
             setFunctionMessage('');
         } finally {
@@ -1836,7 +1837,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setProgramFieldErrors(errors);
             const msg = 'Program name is required.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setProgramError(msg);
             setProgramMessage('');
             return;
@@ -1881,7 +1882,7 @@ const AdminMenu = () => {
             setEditingProgram(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save program.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setProgramError(errMsg);
             setProgramMessage('');
         } finally {
@@ -1920,7 +1921,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update program.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setProgramError(errMsg);
             setProgramMessage('');
         } finally {
@@ -1939,7 +1940,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setDivisionFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setDivisionError(msg);
             setDivisionMessage('');
             return;
@@ -1990,7 +1991,7 @@ const AdminMenu = () => {
             setEditingDivision(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save division.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setDivisionError(errMsg);
             setDivisionMessage('');
         } finally {
@@ -2031,7 +2032,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update division.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setDivisionError(errMsg);
             setDivisionMessage('');
         } finally {
@@ -2059,7 +2060,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setSiteFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setSiteError(msg);
             setSiteMessage('');
             return;
@@ -2116,7 +2117,7 @@ const AdminMenu = () => {
             setEditingSite(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save site.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSiteError(errMsg);
             setSiteMessage('');
         } finally {
@@ -2163,7 +2164,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update site.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSiteError(errMsg);
             setSiteMessage('');
         } finally {
@@ -2288,7 +2289,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setPropFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setPropError(msg);
             setPropMessage('');
             return;
@@ -2354,7 +2355,7 @@ const AdminMenu = () => {
             setEditingProp(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save PrOP.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setPropError(errMsg);
             setPropMessage('');
         } finally {
@@ -2445,7 +2446,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update PrOP.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setPropError(errMsg);
             setPropMessage('');
         } finally {
@@ -2461,7 +2462,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setTrainingRequirementFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setTrainingRequirementError(msg);
             setTrainingRequirementMessage('');
             return;
@@ -2512,7 +2513,7 @@ const AdminMenu = () => {
             setEditingTrainingRequirement(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save training requirement.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setTrainingRequirementError(errMsg);
             setTrainingRequirementMessage('');
         } finally {
@@ -2551,7 +2552,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update training requirement.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setTrainingRequirementError(errMsg);
             setTrainingRequirementMessage('');
         } finally {
@@ -2567,7 +2568,7 @@ const AdminMenu = () => {
         if (Object.keys(errors).length > 0) {
             setSafetyEquipmentFieldErrors(errors);
             const msg = 'Please fill out all required fields.';
-            toast.error(msg, TOAST_OPTIONS);
+            errorToast(msg, TOAST_OPTIONS);
             setSafetyEquipmentError(msg);
             setSafetyEquipmentMessage('');
             return;
@@ -2618,7 +2619,7 @@ const AdminMenu = () => {
             setEditingSafetyEquipment(null);
         } catch (error) {
             const errMsg = error.message || 'Failed to save safety equipment.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSafetyEquipmentError(errMsg);
             setSafetyEquipmentMessage('');
         } finally {
@@ -2657,7 +2658,7 @@ const AdminMenu = () => {
             toast.success(successMsg, SUCCESS_TOAST_OPTIONS);
         } catch (error) {
             const errMsg = error.message || 'Failed to update safety equipment.';
-            toast.error(errMsg, TOAST_OPTIONS);
+            errorToast(errMsg, TOAST_OPTIONS);
             setSafetyEquipmentError(errMsg);
             setSafetyEquipmentMessage('');
         } finally {

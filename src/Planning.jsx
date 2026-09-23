@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from 'react-select'
@@ -348,7 +349,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   async function unlockAudit() {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`)
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`)
       return
     }
     try {
@@ -375,18 +376,18 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit')
       }
     } catch (error) {
-      toast.error(`Failed to unlock audit: ${error.message}`)
+      errorToast(`Failed to unlock audit: ${error.message}`)
     }
   }
 
   async function onSubmit(data) {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`)
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`)
       return
     }
     try {
       if (!selectedAudit?.scheduleId) {
-        toast.error('Please select an audit from the table')
+        errorToast('Please select an audit from the table')
         return
       }
 
@@ -485,7 +486,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         await reloadAudits()
       }
     } catch (error) {
-      toast.error(`Error: ${error.message}`)
+      errorToast(`Error: ${error.message}`)
       setError('root', { message: error.message })
     }
   }
@@ -510,7 +511,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields'
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     })
@@ -542,7 +543,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
         )}
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
-      {errors.root ? <p className='error'>{errors.root.message}</p> : (
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           <form onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
             <Box sx={{ height: 400, width: '100%', marginTop: '10px' }}>
@@ -856,7 +857,6 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
             ) : null}
           </form>
         </>
-      )}
     </>
   )
 }
