@@ -10,7 +10,7 @@ Defaults to dev. To deliberately target production, change BOTH
 @TargetSchema to N'dbo' and @AllowDbo to 1 after change review.
 
 Run in the NGAT audit database. Re-runnable; fails and rolls back if any
-legacy type has zero or multiple matching standards.
+legacy type has zero or multiple matching standards (except ISO9001 -> 5).
 */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -68,6 +68,13 @@ DECLARE @Sql NVARCHAR(MAX) = N'
         WHERE UPPER(LTRIM(RTRIM(s.standardName))) =
               UPPER(LTRIM(RTRIM(legacy.old_type)))
     ) AS matches;
+
+    -- Explicit legacy exception: ISO9001 is standard ID 5 in NGAT.
+    -- Apply only to that exact legacy name; other types still require a unique match.
+    UPDATE #LegacyTypeMapping
+       SET standard_id = 5,
+           matching_standards = 1
+     WHERE UPPER(LTRIM(RTRIM(old_type))) = N''ISO9001'';
 
     SELECT @SchemaName AS schema_name, old_type, standard_id,
            matching_standards, question_count,
