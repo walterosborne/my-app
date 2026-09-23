@@ -73,7 +73,38 @@ app.use('/api', async (req, res, next) => {
     catch (error) { res.status(error.status || 502).json({ error: error.message || 'Identity resolution failed.' }); }
 });
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'ngat' }));
-app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'ngat' }));
+// This endpoint checks end-to-end service availability for the browser banner.
+// It is separate from /healthz: database outages must NOT restart a healthy Node pod.
+const serviceHealth = { checkedAt: 0, ok: false, pending: null };
+app.get('/api/health', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!serviceHealth.pending && Date.now() - serviceHealth.checkedAt >= 10000) {
+        serviceHealth.pending = (async () => {
+            let timeoutId;
+            try {
+                await Promise.race([
+                    Promise.all([
+                        pool.query('SELECT 1 AS ok'),
+                        rosterPool.query('SELECT 1 AS ok')
+                    ]),
+                    new Promise((_, reject) => {
+                        timeoutId = setTimeout(() => reject(new Error('Health check timed out')), 4000);
+                    })
+                ]);
+                serviceHealth.ok = true;
+            } catch (error) {
+                serviceHealth.ok = false;
+                console.warn('[NGAT HEALTH] Service dependency check failed:', error?.message || error);
+            } finally {
+                clearTimeout(timeoutId);
+                serviceHealth.checkedAt = Date.now();
+                serviceHealth.pending = null;
+            }
+        })();
+    }
+    if (serviceHealth.pending) await serviceHealth.pending;
+    res.status(serviceHealth.ok ? 200 : 503).json({ ok: serviceHealth.ok, service: 'ngat' });
+});
 
 const sqlConfig = {
     server: auditDbServer,
