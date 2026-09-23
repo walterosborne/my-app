@@ -213,7 +213,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     ids: new Set()
   });
   const entryAudits = useMemo(() => {
-    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+    return allAudits.filter((audit) => ![-1, -2].includes(Number(audit?.stage)));
   }, [allAudits]);
   const isSameSelectionModel = (nextModel, currentModel) => {
     if (!nextModel || !currentModel) return false;

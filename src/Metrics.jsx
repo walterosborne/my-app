@@ -48,6 +48,7 @@ const STAGE_LABELS = [
   'Pending Approval',
   'Approved',
   'Historical',
+  'Cancelled',
   'Unknown Stage'
 ];
 
@@ -534,6 +535,7 @@ const Metrics = () => {
     const locked = Number(audit?.locked) === 1;
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (approved) return 'Approved';
     if (locked) return 'Pending Approval';
     switch (stage) {
@@ -681,7 +683,7 @@ const Metrics = () => {
         }
       }
 
-      if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && Number(audit.stage) !== -1) {
+      if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && ![-1, -2].includes(Number(audit.stage))) {
         return false;
       }
 

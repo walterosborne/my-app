@@ -75,6 +75,7 @@ const AuditStatuses = () => {
   const getStageLabel = (audit) => {
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (audit?.approvedAt) return 'Approved';
     if (Number(audit?.locked) === 1) return 'Pending Approval';
     switch (stage) {
@@ -109,6 +110,7 @@ const AuditStatuses = () => {
     if (!currentUser?.auditorId) return [];
     const auditorId = Number(currentUser.auditorId);
     return sortedAudits.filter((audit) => {
+      if (Number(audit.stage) === -2) return false;
       if (!includeCompleted && isAuditCompleted(audit)) {
         return false;
       }
@@ -122,6 +124,7 @@ const AuditStatuses = () => {
     const myId = currentUser.myId || null;
     const auditorId = currentUser.auditorId ? Number(currentUser.auditorId) : null;
     return sortedAudits.filter((audit) => {
+      if (Number(audit.stage) === -2) return false;
       const completed = isAuditCompleted(audit);
       if (!includeCompleted && completed) {
         return false;

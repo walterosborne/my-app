@@ -314,6 +314,7 @@ const ThirtySixtyNinety = () => {
   const getStageLabel = (audit) => {
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (audit?.approvedAt) return 'Approved';
     if (Number(audit?.locked) === 1) return 'Pending Approval';
     switch (stage) {
@@ -430,7 +431,8 @@ const ThirtySixtyNinety = () => {
     { key: 'stageNonconformities', label: 'Nonconformities' },
     { key: 'stagePending', label: 'Pending Approval' },
     { key: 'stageApproved', label: 'Approved' },
-    { key: 'stageHistorical', label: 'Historical' }
+    { key: 'stageHistorical', label: 'Historical' },
+    { key: 'stageCancelled', label: 'Cancelled' }
   ];
 
   const findingColumns = [
@@ -555,6 +557,7 @@ const ThirtySixtyNinety = () => {
                   stagePending: 0,
                   stageApproved: 0,
                   stageHistorical: 0,
+                  stageCancelled: 0,
                   findingNonconformities: 0,
                   findingConformities: 0,
                   findingOfis: 0,
@@ -569,6 +572,7 @@ const ThirtySixtyNinety = () => {
               else if (stageLabel === 'Pending Approval') group.stagePending += 1;
               else if (stageLabel === 'Approved') group.stageApproved += 1;
               else if (stageLabel === 'Historical') group.stageHistorical += 1;
+              else if (stageLabel === 'Cancelled') group.stageCancelled += 1;
 
               group.findingNonconformities += findingCounts.nonconformities;
               group.findingConformities += findingCounts.conformities;

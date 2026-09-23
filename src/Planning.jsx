@@ -154,7 +154,7 @@ function Planning({ selectedAuditId, allAudits = [], reloadAudits }) {
   })
 
   const entryAudits = useMemo(() => {
-    return allAudits.filter((audit) => Number(audit?.stage) !== -1)
+    return allAudits.filter((audit) => ![-1, -2].includes(Number(audit?.stage)))
   }, [allAudits])
 
   const selectedSchedule = selectedAudit ? {
