@@ -435,9 +435,20 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const activeProgramsList = programsList.filter(p => (p.active ?? 1) === 1);
 
-  const filteredProgramsList = parsedDivisionIds.length > 0
-    ? activeProgramsList.filter(p => p.divisionId == null || parsedDivisionIds.includes(Number(p.divisionId)))
-    : activeProgramsList;
+  // A missing parent assignment leaves that particular hierarchy level unrestricted,
+  // matching the existing Division-based schedule filters.
+  const matchesSelectedParent = (parentId, selectedIds) => (
+    selectedIds.length === 0 || parentId == null || selectedIds.includes(Number(parentId))
+  );
+
+  const selectedBusinessUnitIds = normalizeIdArray(selectedBusinessUnits).map(Number).filter(Number.isFinite);
+  const selectedOperatingUnitIds = normalizeIdArray(selectedOperatingUnits).map(Number).filter(Number.isFinite);
+
+  const filteredProgramsList = activeProgramsList.filter(p =>
+    matchesSelectedParent(p.divisionId, parsedDivisionIds) &&
+    matchesSelectedParent(p.businessUnitId, selectedBusinessUnitIds) &&
+    matchesSelectedParent(p.operatingUnitId, selectedOperatingUnitIds)
+  );
 
   const activeSitesList = sitesList.filter(s => (s.active ?? 1) === 1);
 
@@ -449,9 +460,52 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     ? businessUnitsList.filter(bu => bu.divisionId == null || parsedDivisionIds.includes(Number(bu.divisionId)))
     : businessUnitsList;
 
-  const filteredOperatingUnitsList = parsedDivisionIds.length > 0
-    ? operatingUnitsList.filter(ou => ou.divisionId == null || parsedDivisionIds.includes(Number(ou.divisionId)))
-    : operatingUnitsList;
+  const filteredOperatingUnitsList = operatingUnitsList.filter(ou =>
+    matchesSelectedParent(ou.divisionId, parsedDivisionIds) &&
+    matchesSelectedParent(ou.businessUnitId, selectedBusinessUnitIds)
+  );
+
+  // Prune child selections when Division/Business Unit/Operating Unit changes.
+  // Use the *eligible* Operating Units when pruning Programs so a stale OU
+  // cannot keep an incompatible Program selected during the same update.
+  useEffect(() => {
+    if (loading || parsedDivisionIds.length === 0) return;
+
+    const eligibleOperatingUnitIds = new Set(
+      filteredOperatingUnitsList
+        .filter(ou => (ou.active ?? 1) === 1)
+        .map(ou => Number(ou.operatingUnitId))
+    );
+    const nextOperatingUnits = selectedOperatingUnits
+      .map(Number)
+      .filter(id => eligibleOperatingUnitIds.has(id));
+    if (!areArraysEqual(selectedOperatingUnits, nextOperatingUnits)) {
+      setValue('operatingUnit', nextOperatingUnits);
+    }
+
+    const eligibleProgramIds = new Set(
+      activeProgramsList.filter(program =>
+        matchesSelectedParent(program.divisionId, parsedDivisionIds) &&
+        matchesSelectedParent(program.businessUnitId, selectedBusinessUnitIds) &&
+        matchesSelectedParent(program.operatingUnitId, nextOperatingUnits)
+      ).map(program => Number(program.programId))
+    );
+    const nextPrograms = selectedPrograms
+      .map(Number)
+      .filter(id => eligibleProgramIds.has(id));
+    if (!areArraysEqual(selectedPrograms, nextPrograms)) {
+      setValue('program', nextPrograms);
+    }
+  }, [
+    loading,
+    parsedDivisionIds,
+    selectedBusinessUnits,
+    selectedOperatingUnits,
+    selectedPrograms,
+    operatingUnitsList,
+    programsList,
+    setValue
+  ]);
 
   // Convert programsList to react-select format
   const programOptions = filteredProgramsList.map(p => ({
@@ -1103,25 +1157,24 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxquarter">
-                              <label>Program(s)</label>
+                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
                               <Controller
-                                name="program"
+                                name="auditType"
                                 control={control}
+                                rules={{ required: "Audit Type is required" }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
-                                    isMulti
-                                    options={programs}
+                                    options={auditTypes}
                                     styles={customStyles}
-                                    placeholder="Program"
-                                    value={field.value ? programs.filter(p => field.value.includes(p.value)) : []}
-                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
+                                    placeholder="Audit Type"
+                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
                                   />
                                 )}
                               />
-                              {errors.program && <p className='fielderror'>{errors.program.message}</p>}
+                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
                             </div>
-
                             <div className="fieldboxquarter">
                               <label>Site(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
@@ -1185,24 +1238,25 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxthird">
-                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
+                              <label>Program(s)</label>
                               <Controller
-                                name="auditType"
+                                name="program"
                                 control={control}
-                                rules={{ required: "Audit Type is required" }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
-                                    options={auditTypes}
+                                    isMulti
+                                    options={programs}
                                     styles={customStyles}
-                                    placeholder="Audit Type"
-                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                    placeholder="Program"
+                                    value={field.value ? programs.filter(p => field.value.includes(p.value)) : []}
+                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
                                 )}
                               />
-                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
+                              {errors.program && <p className='fielderror'>{errors.program.message}</p>}
                             </div>
+
                           </div>
                         </div>
                         <div className='section'>
