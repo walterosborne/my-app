@@ -1540,6 +1540,7 @@ const Metrics = () => {
                   <label>Division</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                     options={divisionOptions}
                     styles={customStyles}
                     placeholder="Select Division"
@@ -1554,6 +1555,7 @@ const Metrics = () => {
                   <label>Function</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                     options={functionOptions}
                     styles={customStyles}
                     placeholder="Select Function"
