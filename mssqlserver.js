@@ -218,6 +218,9 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (error) => {
     console.error('[NGAT] Uncaught exception:', error);
+    // Continuing after an uncaught exception leaves the server in an unknown
+    // state. Exit so the OpenShift Deployment can restart the container.
+    process.exit(1);
 });
 
 process.on('beforeExit', (code) => {
