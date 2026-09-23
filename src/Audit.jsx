@@ -1798,7 +1798,7 @@ const Audit = () => {
                     >
                         {audits.map((audit) => (
                             <option key={audit.scheduleId} value={audit.scheduleId}>
-                                {audit.scheduleId} - {audit.title}
+                                {audit.scheduleId} - {audit.title}{Number(audit.stage) === -2 ? ' (Cancelled)' : ''}
                             </option>
                         ))}
                     </select>
@@ -1814,7 +1814,7 @@ const Audit = () => {
                             : stageLabel === 'Historical'
                                 ? { backgroundColor: '#9ca3af', color: '#ffffff' }
                                 : stageLabel === 'Cancelled'
-                                    ? { backgroundColor: '#b45309', color: '#ffffff' }
+                                    ? { backgroundColor: '#6b7280', color: '#ffffff' }
                                     : {})}
                         className="audit-status-badge"
                     >
