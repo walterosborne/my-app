@@ -3416,88 +3416,6 @@ app.get('/api/standard-texts', async (req, res) => {
     }
 });
 
-// Validate writes only. Legacy hierarchy values are still returned unchanged by GET/report endpoints.
-const hierarchyIds = (raw) => {
-    const input = Array.isArray(raw) ? raw : raw == null || raw === '' ? [] : [raw];
-    const values = input.map(Number);
-    return values.every((value) => Number.isSafeInteger(value) && value > 0)
-        ? [...new Set(values)]
-        : null;
-};
-
-const validateOrgHierarchy = async (db, {
-    divisionIds, businessUnitIds, operatingUnitIds, programIds,
-    requireDivision = false, requireBusinessUnit = false, requireOperatingUnit = false
-}) => {
-    const divisions = hierarchyIds(divisionIds);
-    const businessUnits = hierarchyIds(businessUnitIds);
-    const operatingUnits = hierarchyIds(operatingUnitIds);
-    const programs = hierarchyIds(programIds);
-    if ([divisions, businessUnits, operatingUnits, programs].some((ids) => ids === null)) {
-        return 'Organization IDs must be valid positive integers.';
-    }
-    if (requireDivision && divisions.length === 0) return 'Division is required.';
-    if (requireBusinessUnit && businessUnits.length === 0) return 'Business Unit is required.';
-    if (requireOperatingUnit && operatingUnits.length === 0) return 'Operating Unit is required.';
-
-    for (const id of divisions) {
-        const result = await db.query(
-            'SELECT divisionid FROM divisions_r WHERE divisionid = $1', [id]
-        );
-        if (!result.rows.length) return `Division ${id} does not exist.`;
-    }
-
-    const buById = new Map();
-    for (const id of businessUnits) {
-        const result = await db.query(
-            'SELECT businessunitid, divisionid FROM business_units_r WHERE businessunitid = $1',
-            [id]
-        );
-        const bu = result.rows[0];
-        if (!bu) return `Business Unit ${id} does not exist.`;
-        if (!divisions.includes(Number(bu.divisionid))) {
-            return `Business Unit ${id} must belong to a selected Division.`;
-        }
-        buById.set(id, bu);
-    }
-
-    const ouById = new Map();
-    for (const id of operatingUnits) {
-        const result = await db.query(
-            'SELECT operatingunitid, divisionid, businessunitid FROM operating_units_r WHERE operatingunitid = $1',
-            [id]
-        );
-        const ou = result.rows[0];
-        if (!ou) return `Operating Unit ${id} does not exist.`;
-        const parentBU = buById.get(Number(ou.businessunitid));
-        if (!divisions.includes(Number(ou.divisionid))
-            || !parentBU
-            || Number(parentBU.divisionid) !== Number(ou.divisionid)) {
-            return `Operating Unit ${id} must belong to a selected Business Unit in the same Division. If this is an older OU, assign its parent BU in Admin first.`;
-        }
-        ouById.set(id, ou);
-    }
-
-    for (const id of programs) {
-        const result = await db.query(
-            'SELECT programid, divisionid, businessunitid, operatingunitid FROM programs_r WHERE programid = $1',
-            [id]
-        );
-        const program = result.rows[0];
-        if (!program) return `Program ${id} does not exist.`;
-        const parentBU = buById.get(Number(program.businessunitid));
-        const parentOU = ouById.get(Number(program.operatingunitid));
-        if (!divisions.includes(Number(program.divisionid))
-            || !parentBU || !parentOU
-            || Number(parentBU.divisionid) !== Number(program.divisionid)
-            || Number(parentOU.divisionid) !== Number(program.divisionid)
-            || Number(parentOU.businessunitid) !== Number(program.businessunitid)) {
-            return `Program ${id} must match a selected Division, Business Unit, and Operating Unit with aligned parents. Correct older program/OU assignments in Admin before submitting.`;
-        }
-    }
-    return null;
-};
-
 // Get all programs
 app.get('/api/programs', async (req, res) => {
     try {
@@ -3530,22 +3448,16 @@ app.get('/api/programs', async (req, res) => {
 
 app.post('/api/programs', async (req, res) => {
     const { programName, divisionId, businessUnitId, operatingUnitId, auditorIds = [], active = 1 } = req.body;
-    if (!programName?.trim() || !divisionId || !businessUnitId || !operatingUnitId) {
-        return res.status(400).json({ success: false, error: 'Program, Division, Business Unit, and Operating Unit are required.' });
+    if (!programName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Program name is required.' });
     }
     const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
     const client = await pool.connect();
     try {
-        const hierarchyError = await validateOrgHierarchy(client, {
-            divisionIds: [divisionId], businessUnitIds: [businessUnitId],
-            operatingUnitIds: [operatingUnitId], programIds: [],
-            requireDivision: true, requireBusinessUnit: true, requireOperatingUnit: true
-        });
-        if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         await client.query('BEGIN');
         const existing = await client.query(
-            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2',
-            [programName, divisionId]
+            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND (divisionId = $2 OR (divisionId IS NULL AND $2 IS NULL))',
+            [programName, divisionId || null]
         );
         if (existing.rowCount > 0) {
             await rollbackTransaction(client);
@@ -3553,7 +3465,7 @@ app.post('/api/programs', async (req, res) => {
         }
         const insert = await client.query(
             'INSERT INTO programs_r (programName, divisionId, businessUnitId, operatingUnitId, active) VALUES ($1, $2, $3, $4, $5) RETURNING programId, programName, divisionId, businessUnitId, operatingUnitId, active',
-            [programName, divisionId, businessUnitId, operatingUnitId, active]
+            [programName, divisionId || null, businessUnitId || null, operatingUnitId || null, active]
         );
         const saved = insert.rows[0];
         for (const auditorId of normalizedAuditorIds) {
@@ -3584,22 +3496,16 @@ app.post('/api/programs', async (req, res) => {
 app.put('/api/programs/:programId', async (req, res) => {
     const { programId } = req.params;
     const { programName, divisionId, businessUnitId, operatingUnitId, auditorIds = [], active = 1 } = req.body;
-    if (!programName?.trim() || !divisionId || !businessUnitId || !operatingUnitId) {
-        return res.status(400).json({ success: false, error: 'Program, Division, Business Unit, and Operating Unit are required.' });
+    if (!programName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Program name is required.' });
     }
     const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
     const client = await pool.connect();
     try {
-        const hierarchyError = await validateOrgHierarchy(client, {
-            divisionIds: [divisionId], businessUnitIds: [businessUnitId],
-            operatingUnitIds: [operatingUnitId], programIds: [],
-            requireDivision: true, requireBusinessUnit: true, requireOperatingUnit: true
-        });
-        if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         await client.query('BEGIN');
         const conflict = await client.query(
-            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2 AND programId <> $3',
-            [programName, divisionId, programId]
+            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND (divisionId = $2 OR (divisionId IS NULL AND $2 IS NULL)) AND programId <> $3',
+            [programName, divisionId || null, programId]
         );
         if (conflict.rowCount > 0) {
             await rollbackTransaction(client);
@@ -3607,7 +3513,7 @@ app.put('/api/programs/:programId', async (req, res) => {
         }
         const update = await client.query(
             'UPDATE programs_r SET programName = $1, divisionId = $2, businessUnitId = $3, operatingUnitId = $4, active = $5 WHERE programId = $6 RETURNING programId, programName, divisionId, businessUnitId, operatingUnitId, active',
-            [programName, divisionId, businessUnitId, operatingUnitId, active, programId]
+            [programName, divisionId || null, businessUnitId || null, operatingUnitId || null, active, programId]
         );
         if (update.rowCount === 0) {
             await rollbackTransaction(client);
@@ -3920,15 +3826,10 @@ app.get('/api/operating-units', async (req, res) => {
 
 app.post('/api/operating-units', async (req, res) => {
     const { operatingUnitName, divisionId, businessUnitId, active = 1 } = req.body;
-    if (!operatingUnitName?.trim() || !divisionId || !businessUnitId) {
-        return res.status(400).json({ success: false, error: 'Operating Unit, Division, and Business Unit are required.' });
+    if (!operatingUnitName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Operating Unit name is required.' });
     }
     try {
-        const hierarchyError = await validateOrgHierarchy(pool, {
-            divisionIds: [divisionId], businessUnitIds: [businessUnitId],
-            operatingUnitIds: [], programIds: [], requireDivision: true, requireBusinessUnit: true
-        });
-        if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         const existing = await pool.query(
             'SELECT operatingUnitId FROM operating_units_r WHERE LOWER(TRIM(operatingUnitName)) = LOWER(TRIM($1))',
             [operatingUnitName]
@@ -3938,7 +3839,7 @@ app.post('/api/operating-units', async (req, res) => {
         }
         const insert = await pool.query(
             'INSERT INTO operating_units_r (operatingUnitName, divisionId, businessUnitId, active) VALUES ($1, $2, $3, $4) RETURNING operatingUnitId, operatingUnitName, divisionId, businessUnitId, active',
-            [operatingUnitName, divisionId, businessUnitId, active]
+            [operatingUnitName, divisionId || null, businessUnitId || null, active]
         );
         res.status(201).json(insert.rows[0]);
     } catch (error) {
@@ -3950,15 +3851,10 @@ app.post('/api/operating-units', async (req, res) => {
 app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
     const { operatingUnitId } = req.params;
     const { operatingUnitName, divisionId, businessUnitId, active = 1 } = req.body;
-    if (!operatingUnitName?.trim() || !divisionId || !businessUnitId) {
-        return res.status(400).json({ success: false, error: 'Operating Unit, Division, and Business Unit are required.' });
+    if (!operatingUnitName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Operating Unit name is required.' });
     }
     try {
-        const hierarchyError = await validateOrgHierarchy(pool, {
-            divisionIds: [divisionId], businessUnitIds: [businessUnitId],
-            operatingUnitIds: [], programIds: [], requireDivision: true, requireBusinessUnit: true
-        });
-        if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         const conflict = await pool.query(
             'SELECT operatingUnitId FROM operating_units_r WHERE LOWER(TRIM(operatingUnitName)) = LOWER(TRIM($1)) AND operatingUnitId <> $2',
             [operatingUnitName, operatingUnitId]
@@ -3968,7 +3864,7 @@ app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
         }
         const update = await pool.query(
             'UPDATE operating_units_r SET operatingUnitName = $1, divisionId = $2, businessUnitId = $3, active = $4 WHERE operatingUnitId = $5 RETURNING operatingUnitId, operatingUnitName, divisionId, businessUnitId, active',
-            [operatingUnitName, divisionId, businessUnitId, active, operatingUnitId]
+            [operatingUnitName, divisionId || null, businessUnitId || null, active, operatingUnitId]
         );
         if (update.rowCount === 0) {
             return res.status(404).json({ success: false, error: 'Operating unit not found.' });
@@ -4790,19 +4686,6 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
         delete updates.stage;
         delete updates.stageBeforeInactive;
 
-        // Do not revalidate read/display of historical audits. Validate only hierarchy writes.
-        if (targetStage === 1 || ['divisionId', 'businessUnitIds', 'operatingUnitIds', 'programIds']
-            .some((key) => Object.prototype.hasOwnProperty.call(updates, key))) {
-            const hierarchyError = await validateOrgHierarchy(client, {
-                divisionIds: updates.divisionId ?? audit.divisionId,
-                businessUnitIds: updates.businessUnitIds ?? audit.businessUnitIds,
-                operatingUnitIds: updates.operatingUnitIds ?? audit.operatingUnitIds,
-                programIds: updates.programIds ?? audit.programIds,
-                requireDivision: targetStage === 1
-            });
-            if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
-        }
-
         await client.query('BEGIN');
 
         if (targetStage) {
@@ -4862,19 +4745,6 @@ app.post('/api/audits', async (req, res) => {
             if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
                 return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
             }
-        }
-
-        // GET/report paths never validate historical rows. Only submissions which write
-        // the audit's Schedule or program selection require aligned hierarchy.
-        if (isNewAudit || [1, 3].includes(Number(audit.targetStage))) {
-            const hierarchyError = await validateOrgHierarchy(client, {
-                divisionIds: audit.divisionId,
-                businessUnitIds: audit.businessUnitIds,
-                operatingUnitIds: audit.operatingUnitIds,
-                programIds: audit.programIds,
-                requireDivision: isNewAudit || Number(audit.targetStage) === 1
-            });
-            if (hierarchyError) return res.status(400).json({ success: false, error: hierarchyError });
         }
 
         await client.query('BEGIN');
