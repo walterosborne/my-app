@@ -1890,142 +1890,169 @@ const Audit = () => {
                     </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Audit actions grouped by purpose; all available actions stay visible. */}
                 <div className="action-buttons">
-                    {/* Always show Export XLSX */}
-                    <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
-
-                    {/* Stage-specific buttons */}
-                    {!isLocked && stageValue === 1 && (
-                        <>
+                    {((!isLocked && stageValue >= 1 && stageValue <= 4) || (isLocked && canApprove) || canUndoSubmission || canNudgeApprovers) && (
+                        <section className="audit-action-group audit-action-group--workflow" aria-label="Audit workflow actions">
+                            <h2 className="audit-action-group-title">Workflow</h2>
+                            <div className="audit-action-group-controls">
+                            {/* Stage-specific buttons */}
+                            {!isLocked && stageValue === 1 && (
+                            <>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
                             >
-                                Edit Schedule
+                            Edit Schedule
                             </button>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
                             >
-                                Edit Planning
+                            Edit Planning
                             </button>
-                        </>
-                    )}
-
-                    {!isLocked && stageValue === 2 && (
-                        <>
+                            </>
+                            )}
+                            
+                            {!isLocked && stageValue === 2 && (
+                            <>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
                             >
-                                Edit Schedule
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Planning
+                            Edit Schedule
                             </button>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
                             >
-                                Conduct Audit
-                            </button>
-                        </>
-                    )}
-
-                    {!isLocked && (stageValue === 3 || stageValue === 4) && (
-                        <>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Schedule
+                            Edit Planning
                             </button>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
                             >
-                                Edit Planning
+                            Conduct Audit
+                            </button>
+                            </>
+                            )}
+                            
+                            {!isLocked && (stageValue === 3 || stageValue === 4) && (
+                            <>
+                            <button
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
+                            >
+                            Edit Schedule
                             </button>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
                             >
-                                Conduct Audit
+                            Edit Planning
                             </button>
                             <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
                             >
-                                Enter Nonconformities
+                            Conduct Audit
                             </button>
-                        </>
-                    )}
-
-                    {isLocked && canApprove && (
-                        <a
+                            <button
+                            className="action-btn"
+                            onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
+                            >
+                            Enter Nonconformities
+                            </button>
+                            </>
+                            )}
+                            {isLocked && canApprove && (
+                            <a
                             className="action-btn"
                             href={`/approve/${auditData.scheduleId}`}
                             style={{ textDecoration: 'none', textAlign: 'center', fontSize: '18px', color: 'white' }}
-                        >
+                            >
                             Approve Audit
-                        </a>
-                    )}
-
-                    {canUndoSubmission && (
-                        <button
+                            </a>
+                            )}
+                            {canUndoSubmission && (
+                            <button
                             className="action-btn undo-submission-btn"
                             onClick={handleUndoSubmission}
                             disabled={unlockingSubmission}
-                        >
+                            >
                             {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
-                        </button>
-                    )}
-
-                    {canNudgeApprovers && (
-                        <button
+                            </button>
+                            )}
+                            {canNudgeApprovers && (
+                            <button
                             className="action-btn"
                             onClick={handleNudgeApprovers}
                             disabled={nudgingApprovers}
                             style={{ backgroundColor: '#d97706' }}
-                        >
+                            >
                             {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
-                        </button>
+                            </button>
+                            )}
+                            </div>
+                        </section>
                     )}
 
-                    {isLocked && (
-                        <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
-                    )}
+                    <section
+                        className={`audit-action-group audit-action-group--downloads${(!isLocked && stageValue >= 1 && stageValue <= 4) || (isLocked && canApprove) || canUndoSubmission || canNudgeApprovers ? '' : ' audit-action-group--wide'}`}
+                        aria-label="Audit downloads"
+                    >
+                        <h2 className="audit-action-group-title">Downloads</h2>
+                        <div className="audit-action-group-controls">
+                            <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
+                            {isLocked && (
+                            <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                            )}
+                            {hasObjectiveEvidence && (
+                                <button
+                                    type="button"
+                                    className="action-btn objective-evidence-download"
+                                    onClick={handleDownloadObjectiveEvidence}
+                                    disabled={downloadingObjectiveEvidence}
+                                >
+                                    {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
+                                </button>
+                            )}
+                        </div>
+                    </section>
 
-                    {canChangeLifecycle && stageValue > 0 && (
-                        <button
+                    {canChangeLifecycle && (
+                        <section className="audit-action-group audit-action-group--management" aria-label="Audit status actions">
+                            <h2 className="audit-action-group-title">Audit Status</h2>
+                            <div className="audit-action-group-controls">
+                            {canChangeLifecycle && stageValue > 0 && (
+                            <button
                             className="action-btn lifecycle-cancel"
                             onClick={() => handleLifecycle('cancel')}
                             disabled={changingLifecycle}
-                        >
+                            >
                             Cancel Audit
-                        </button>
-                    )}
-                    {canChangeLifecycle && stageValue === -2 && (
-                        <button
+                            </button>
+                            )}
+                            {canChangeLifecycle && stageValue === -2 && (
+                            <button
                             className="action-btn lifecycle-reactivate"
                             onClick={() => handleLifecycle('reactivate')}
                             disabled={changingLifecycle}
-                        >
+                            >
                             Reactivate Audit
-                        </button>
-                    )}
-                    {canChangeLifecycle && (
-                        <button
+                            </button>
+                            )}
+                            {canChangeLifecycle && (
+                            <button
                             className="action-btn lifecycle-archive"
                             onClick={() => handleLifecycle('archive')}
                             disabled={changingLifecycle}
-                        >
+                            >
                             Archive Audit
-                        </button>
+                            </button>
+                            )}
+                            </div>
+                        </section>
                     )}
                 </div>
 
@@ -2349,29 +2376,6 @@ const Audit = () => {
                             </div>
                         </div>
                     </div>
-                )}
-
-                {hasObjectiveEvidence && (
-                    <button
-                        type="button"
-                        onClick={handleDownloadObjectiveEvidence}
-                        disabled={downloadingObjectiveEvidence}
-                        style={{
-                            width: '100%',
-                            backgroundColor: '#1976d2',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '12px 16px',
-                            fontSize: '16px',
-                            fontWeight: 600,
-                            cursor: downloadingObjectiveEvidence ? 'default' : 'pointer',
-                            opacity: downloadingObjectiveEvidence ? 0.75 : 1,
-                            marginBottom: '36px'
-                        }}
-                    >
-                        {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
-                    </button>
                 )}
 
                 {/* Process Evaluation Questions (PEQs) */}
