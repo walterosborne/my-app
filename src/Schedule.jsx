@@ -1297,7 +1297,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Standard(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="standards"
@@ -1318,7 +1318,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
                             </div>
 
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Function(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="function"
