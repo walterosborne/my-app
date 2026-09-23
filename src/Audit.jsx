@@ -1847,6 +1847,12 @@ const Audit = () => {
     };
 
     const canChangeLifecycle = Boolean(auditData?.canManage && !isLocked && !isApproved);
+    const hasWorkflowActions = Boolean(
+        (!isLocked && stageValue >= 1 && stageValue <= 4)
+        || (isLocked && canApprove)
+        || canUndoSubmission
+        || canNudgeApprovers
+    );
     const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
     const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical' || stageLabel === 'Cancelled')
         ? stageLabel
@@ -1890,122 +1896,85 @@ const Audit = () => {
                     </div>
                 </div>
 
-                {/* Audit actions grouped by purpose; all available actions stay visible. */}
+                {/* Available actions stay visible, grouped by purpose rather than hidden in menus. */}
                 <div className="action-buttons">
-                    {((!isLocked && stageValue >= 1 && stageValue <= 4) || (isLocked && canApprove) || canUndoSubmission || canNudgeApprovers) && (
+                    {hasWorkflowActions && (
                         <section className="audit-action-group audit-action-group--workflow" aria-label="Audit workflow actions">
                             <h2 className="audit-action-group-title">Workflow</h2>
                             <div className="audit-action-group-controls">
-                            {/* Stage-specific buttons */}
-                            {!isLocked && stageValue === 1 && (
-                            <>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Schedule
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Planning
-                            </button>
-                            </>
-                            )}
-                            
-                            {!isLocked && stageValue === 2 && (
-                            <>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Schedule
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Planning
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
-                            >
-                            Conduct Audit
-                            </button>
-                            </>
-                            )}
-                            
-                            {!isLocked && (stageValue === 3 || stageValue === 4) && (
-                            <>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Schedule
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                            Edit Planning
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
-                            >
-                            Conduct Audit
-                            </button>
-                            <button
-                            className="action-btn"
-                            onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
-                            >
-                            Enter Nonconformities
-                            </button>
-                            </>
-                            )}
-                            {isLocked && canApprove && (
-                            <a
-                            className="action-btn"
-                            href={`/approve/${auditData.scheduleId}`}
-                            style={{ textDecoration: 'none', textAlign: 'center', fontSize: '18px', color: 'white' }}
-                            >
-                            Approve Audit
-                            </a>
-                            )}
-                            {canUndoSubmission && (
-                            <button
-                            className="action-btn undo-submission-btn"
-                            onClick={handleUndoSubmission}
-                            disabled={unlockingSubmission}
-                            >
-                            {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
-                            </button>
-                            )}
-                            {canNudgeApprovers && (
-                            <button
-                            className="action-btn"
-                            onClick={handleNudgeApprovers}
-                            disabled={nudgingApprovers}
-                            style={{ backgroundColor: '#d97706' }}
-                            >
-                            {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
-                            </button>
-                            )}
+                                {!isLocked && stageValue >= 1 && stageValue <= 4 && (
+                                    <>
+                                        <button
+                                            className="action-btn"
+                                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
+                                        >
+                                            Edit Schedule
+                                        </button>
+                                        <button
+                                            className="action-btn"
+                                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
+                                        >
+                                            Edit Planning
+                                        </button>
+                                    </>
+                                )}
+                                {!isLocked && stageValue >= 2 && stageValue <= 4 && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
+                                    >
+                                        Conduct Audit
+                                    </button>
+                                )}
+                                {!isLocked && stageValue >= 3 && stageValue <= 4 && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
+                                    >
+                                        Enter Nonconformities
+                                    </button>
+                                )}
+                                {isLocked && canApprove && (
+                                    <a
+                                        className="action-btn"
+                                        href={`/approve/${auditData.scheduleId}`}
+                                        style={{ textDecoration: 'none', color: 'white' }}
+                                    >
+                                        Approve Audit
+                                    </a>
+                                )}
+                                {canUndoSubmission && (
+                                    <button
+                                        className="action-btn undo-submission-btn"
+                                        onClick={handleUndoSubmission}
+                                        disabled={unlockingSubmission}
+                                    >
+                                        {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
+                                    </button>
+                                )}
+                                {canNudgeApprovers && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={handleNudgeApprovers}
+                                        disabled={nudgingApprovers}
+                                        style={{ backgroundColor: '#d97706' }}
+                                    >
+                                        {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
+                                    </button>
+                                )}
                             </div>
                         </section>
                     )}
 
                     <section
-                        className={`audit-action-group audit-action-group--downloads${(!isLocked && stageValue >= 1 && stageValue <= 4) || (isLocked && canApprove) || canUndoSubmission || canNudgeApprovers ? '' : ' audit-action-group--wide'}`}
+                        className={`audit-action-group audit-action-group--downloads${hasWorkflowActions ? '' : ' audit-action-group--wide'}`}
                         aria-label="Audit downloads"
                     >
                         <h2 className="audit-action-group-title">Downloads</h2>
                         <div className="audit-action-group-controls">
                             <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
                             {isLocked && (
-                            <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                                <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
                             )}
                             {hasObjectiveEvidence && (
                                 <button
@@ -2024,33 +1993,31 @@ const Audit = () => {
                         <section className="audit-action-group audit-action-group--management" aria-label="Audit status actions">
                             <h2 className="audit-action-group-title">Audit Status</h2>
                             <div className="audit-action-group-controls">
-                            {canChangeLifecycle && stageValue > 0 && (
-                            <button
-                            className="action-btn lifecycle-cancel"
-                            onClick={() => handleLifecycle('cancel')}
-                            disabled={changingLifecycle}
-                            >
-                            Cancel Audit
-                            </button>
-                            )}
-                            {canChangeLifecycle && stageValue === -2 && (
-                            <button
-                            className="action-btn lifecycle-reactivate"
-                            onClick={() => handleLifecycle('reactivate')}
-                            disabled={changingLifecycle}
-                            >
-                            Reactivate Audit
-                            </button>
-                            )}
-                            {canChangeLifecycle && (
-                            <button
-                            className="action-btn lifecycle-archive"
-                            onClick={() => handleLifecycle('archive')}
-                            disabled={changingLifecycle}
-                            >
-                            Archive Audit
-                            </button>
-                            )}
+                                {stageValue > 0 && (
+                                    <button
+                                        className="action-btn lifecycle-cancel"
+                                        onClick={() => handleLifecycle('cancel')}
+                                        disabled={changingLifecycle}
+                                    >
+                                        Cancel Audit
+                                    </button>
+                                )}
+                                {stageValue === -2 && (
+                                    <button
+                                        className="action-btn lifecycle-reactivate"
+                                        onClick={() => handleLifecycle('reactivate')}
+                                        disabled={changingLifecycle}
+                                    >
+                                        Reactivate Audit
+                                    </button>
+                                )}
+                                <button
+                                    className="action-btn lifecycle-archive"
+                                    onClick={() => handleLifecycle('archive')}
+                                    disabled={changingLifecycle}
+                                >
+                                    Archive Audit
+                                </button>
                             </div>
                         </section>
                     )}
