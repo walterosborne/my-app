@@ -3075,11 +3075,15 @@ const AdminMenu = () => {
                             setEditingProgram(program);
                             setProgramInput(program.programName || '');
                             setProgramDivisionId(program.divisionId ?? '');
+                            setProgramBusinessUnitId(program.businessUnitId ?? '');
+                            setProgramOperatingUnitId(program.operatingUnitId ?? '');
                             setProgramAuditorIds(program.auditorIds ?? []);
                             setProgramMessage('');
                             setProgramError('');
                         }}
                         getDivisionName={getDivisionName}
+                        getBusinessUnitName={getBusinessUnitName}
+                        getOperatingUnitName={getOperatingUnitName}
                         programInput={programInput}
                         onProgramInputChange={(event) => {
                             setProgramInput(event.target.value);
@@ -3091,11 +3095,17 @@ const AdminMenu = () => {
                             }
                         }}
                         programDivisionId={programDivisionId}
+                        programBusinessUnitId={programBusinessUnitId}
+                        programOperatingUnitId={programOperatingUnitId}
+                        programBusinessUnitOptions={programBusinessUnitOptions}
+                        programOperatingUnitOptions={programOperatingUnitOptions}
                         onDivisionChange={(event) => {
                             setProgramDivisionId(event.target.value);
-                            if (programFieldErrors.divisionId) {
+                            setProgramBusinessUnitId('');
+                            setProgramOperatingUnitId('');
+                            if (programFieldErrors.divisionId || programFieldErrors.businessUnitId || programFieldErrors.operatingUnitId) {
                                 setProgramFieldErrors((prev) => {
-                                    const { divisionId, ...rest } = prev;
+                                    const { divisionId, businessUnitId, operatingUnitId, ...rest } = prev;
                                     return rest;
                                 });
                             }
@@ -3103,13 +3113,35 @@ const AdminMenu = () => {
                         sortedDivisions={sortedDivisions}
                         onClearDivision={() => {
                             setProgramDivisionId('');
-                            if (programFieldErrors.divisionId) {
+                            setProgramBusinessUnitId('');
+                            setProgramOperatingUnitId('');
+                            if (programFieldErrors.divisionId || programFieldErrors.businessUnitId || programFieldErrors.operatingUnitId) {
                                 setProgramFieldErrors((prev) => {
-                                    const { divisionId, ...rest } = prev;
+                                    const { divisionId, businessUnitId, operatingUnitId, ...rest } = prev;
                                     return rest;
                                 });
                             }
                         }}
+                        onBusinessUnitChange={(event) => {
+                            setProgramBusinessUnitId(event.target.value);
+                            setProgramOperatingUnitId('');
+                            setProgramFieldErrors((prev) => {
+                                const { businessUnitId, operatingUnitId, ...rest } = prev;
+                                return rest;
+                            });
+                        }}
+                        onOperatingUnitChange={(event) => {
+                            setProgramOperatingUnitId(event.target.value);
+                            setProgramFieldErrors((prev) => {
+                                const { operatingUnitId, ...rest } = prev;
+                                return rest;
+                            });
+                        }}
+                        onClearBusinessUnit={() => {
+                            setProgramBusinessUnitId('');
+                            setProgramOperatingUnitId('');
+                        }}
+                        onClearOperatingUnit={() => setProgramOperatingUnitId('')}
                         auditorOptions={programAuditorOptions}
                         selectedAuditorIds={programAuditorIds}
                         onAuditorChange={(selectedOptions) => {
@@ -3121,6 +3153,8 @@ const AdminMenu = () => {
                         onReset={() => {
                             setProgramInput('');
                             setProgramDivisionId('');
+                            setProgramBusinessUnitId('');
+                            setProgramOperatingUnitId('');
                             setProgramAuditorIds([]);
                             setEditingProgram(null);
                             setProgramError('');
@@ -3552,10 +3586,12 @@ const AdminMenu = () => {
                             setEditingOperatingUnit(unit);
                             setOperatingUnitInput(unit.operatingUnitName || '');
                             setOperatingUnitDivisionId(unit.divisionId ?? '');
+                            setOperatingUnitBusinessUnitId(unit.businessUnitId ?? '');
                             setOperatingUnitMessage('');
                             setOperatingUnitError('');
                         }}
                         getDivisionName={getDivisionName}
+                        getBusinessUnitName={getBusinessUnitName}
                         operatingUnitInput={operatingUnitInput}
                         onOperatingUnitInputChange={(event) => {
                             setOperatingUnitInput(event.target.value);
@@ -3567,11 +3603,14 @@ const AdminMenu = () => {
                             }
                         }}
                         operatingUnitDivisionId={operatingUnitDivisionId}
+                        operatingUnitBusinessUnitId={operatingUnitBusinessUnitId}
+                        operatingUnitBusinessUnitOptions={operatingUnitBusinessUnitOptions}
                         onDivisionChange={(event) => {
                             setOperatingUnitDivisionId(event.target.value);
-                            if (operatingUnitFieldErrors.divisionId) {
+                            setOperatingUnitBusinessUnitId('');
+                            if (operatingUnitFieldErrors.divisionId || operatingUnitFieldErrors.businessUnitId) {
                                 setOperatingUnitFieldErrors((prev) => {
-                                    const { divisionId, ...rest } = prev;
+                                    const { divisionId, businessUnitId, ...rest } = prev;
                                     return rest;
                                 });
                             }
@@ -3579,19 +3618,29 @@ const AdminMenu = () => {
                         sortedDivisions={sortedDivisions}
                         onClearDivision={() => {
                             setOperatingUnitDivisionId('');
-                            if (operatingUnitFieldErrors.divisionId) {
+                            setOperatingUnitBusinessUnitId('');
+                            if (operatingUnitFieldErrors.divisionId || operatingUnitFieldErrors.businessUnitId) {
                                 setOperatingUnitFieldErrors((prev) => {
-                                    const { divisionId, ...rest } = prev;
+                                    const { divisionId, businessUnitId, ...rest } = prev;
                                     return rest;
                                 });
                             }
                         }}
+                        onBusinessUnitChange={(event) => {
+                            setOperatingUnitBusinessUnitId(event.target.value);
+                            setOperatingUnitFieldErrors((prev) => {
+                                const { businessUnitId, ...rest } = prev;
+                                return rest;
+                            });
+                        }}
+                        onClearBusinessUnit={() => setOperatingUnitBusinessUnitId('')}
                         operatingUnitFieldErrors={operatingUnitFieldErrors}
                         onSubmit={handleOperatingUnitSubmit}
                         onArchiveToggle={handleOperatingUnitArchive}
                         onReset={() => {
                             setOperatingUnitInput('');
                             setOperatingUnitDivisionId('');
+                            setOperatingUnitBusinessUnitId('');
                             setEditingOperatingUnit(null);
                             setOperatingUnitError('');
                             setOperatingUnitMessage('');
