@@ -927,7 +927,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     setExpandedTexts({});
   }, []);
 
-  const buildResultsFormValues = useCallback((audit, auditNCs, etqQuestions) => {
+  const buildResultsFormValues = useCallback((audit, auditQuestionGroups, etqQuestions) => {
     const values = {
       overview: audit?.overview || '',
       auditorsTime: audit?.auditorsTime ?? audit?.auditorstime ?? '',
@@ -954,74 +954,83 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       });
     }
 
-    const etqQuestionsSet = new Set((etqQuestions || []).map((question) => question.question));
-    const peqNCs = auditNCs.filter((nc) => nc.type === 'PEQ');
-    const etqNCs = auditNCs.filter((nc) => nc.type === 'ETQ');
-    const validEtqNCs = etqNCs.filter((nc) => etqQuestionsSet.has(nc.question));
-    const convertedEtqNCs = etqNCs.filter((nc) => !etqQuestionsSet.has(nc.question));
-    const combinedPeqs = [
-      ...peqNCs,
-      ...convertedEtqNCs.map((nc) => ({ ...nc, type: 'PEQ' }))
-    ];
+    const findingCountsTemp = {};
+    const setFindingValues = (questionKey, findingIndex, finding = {}) => {
+      values[getFindingFieldName(questionKey, findingIndex, 'id')] = finding.findingId ?? finding.ncId ?? null;
+      values[getFindingFieldName(questionKey, findingIndex, 'findingType')] =
+        findingTypeReverseMap[finding.findingType] || null;
+      values[getFindingFieldName(questionKey, findingIndex, 'response')] = finding.response || '';
+      values[getFindingFieldName(questionKey, findingIndex, 'auditorComment')] = finding.auditorComment || '';
+      values[getFindingFieldName(questionKey, findingIndex, 'qma')] = finding.qma || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'sector')] = finding.sector || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'division')] = finding.division || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'other')] = finding.other || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'files')] = normalizeFileIds(finding.files);
+    };
 
-    combinedPeqs.forEach((nc, idx) => {
-      values[`peqQuestion${idx}`] = nc.question || '';
-      values[`peq${idx}`] = nc.response || '';
-      values[`auditorComment${idx}`] = nc.auditorComment || '';
-      values[`auditeeResponse${idx}`] = nc.response || '';
-      values[`findingType${idx}`] = findingTypeReverseMap[nc.findingType] || null;
-      values[`prOPCorporate${idx}`] = nc.qma || [];
-      values[`prOPSector${idx}`] = nc.sector || [];
-      values[`prOPDivision${idx}`] = nc.division || [];
-      values[`prOPOther${idx}`] = nc.other || [];
-      values[`peqFiles${idx}`] = normalizeFileIds(nc.files);
+    const normalizedQuestions = [...(auditQuestionGroups || [])].sort((a, b) =>
+      Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+      || Number(a.questionId ?? 0) - Number(b.questionId ?? 0)
+    );
+
+    const peqGroups = normalizedQuestions.filter((question) => question.type === 'PEQ');
+    peqGroups.forEach((question, idx) => {
+      const questionKey = `peq_${idx}`;
+      values[getQuestionIdFieldName(questionKey)] = question.questionId || null;
+      values[`peqQuestion${idx}`] = question.question || '';
+      const findings = Array.isArray(question.findings) ? question.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
-    (etqQuestions || []).forEach((question, idx) => {
-      const etqNc = validEtqNCs.find((nc) => nc.question === question.question);
-      values[`etqAuditeeResponse${idx}`] = etqNc?.response || '';
-      values[`etqAuditorComment${idx}`] = etqNc?.auditorComment || '';
-      values[`etqFindingType${idx}`] = etqNc ? (findingTypeReverseMap[etqNc.findingType] || null) : null;
-      values[`etqPrOPCorporate${idx}`] = etqNc?.qma || [];
-      values[`etqPrOPSector${idx}`] = etqNc?.sector || [];
-      values[`etqPrOPDivision${idx}`] = etqNc?.division || [];
-      values[`etqPrOPOther${idx}`] = etqNc?.other || [];
-      values[`etqFiles${idx}`] = etqNc ? normalizeFileIds(etqNc.files) : [];
+    const usedEtqQuestionIds = new Set();
+    (etqQuestions || []).forEach((definition, idx) => {
+      const definitionId = Number(definition.etqId);
+      const savedQuestion = normalizedQuestions.find((question) => {
+        if (question.type !== 'ETQ' || usedEtqQuestionIds.has(question.questionId)) return false;
+        const sourceMatches = Number.isFinite(definitionId)
+          && Number(question.sourceId) === definitionId;
+        return sourceMatches || question.question === definition.question;
+      });
+      if (savedQuestion?.questionId) usedEtqQuestionIds.add(savedQuestion.questionId);
+
+      const questionKey = `etq_${idx}`;
+      values[getQuestionIdFieldName(questionKey)] = savedQuestion?.questionId || null;
+      const findings = Array.isArray(savedQuestion?.findings) ? savedQuestion.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
     const standardAdditionalTemp = {};
     const activeStandardSet = new Set((audit?.standardIds || []).map((id) => Number(id)));
 
-    auditNCs.forEach((nc) => {
-      const standardId = Number(nc.type);
-      if (!Number.isFinite(standardId)) return;
-      if (!activeStandardSet.has(standardId)) return;
-      if (nc.section === null || nc.subsection === null) return;
+    normalizedQuestions.forEach((question) => {
+      const standardId = Number(question.type);
+      if (!Number.isFinite(standardId) || !activeStandardSet.has(standardId)) return;
+      if (question.section === null || question.section === undefined
+          || question.subsection === null || question.subsection === undefined) return;
 
-      const key = `${standardId}_${nc.section}_${nc.subsection}`;
-      if (!standardAdditionalTemp[key]) {
-        standardAdditionalTemp[key] = 0;
-      }
-      const addIdx = standardAdditionalTemp[key];
-      standardAdditionalTemp[key] += 1;
+      const additionalKey = `${standardId}_${question.section}_${question.subsection}`;
+      const questionIndex = standardAdditionalTemp[additionalKey] || 0;
+      standardAdditionalTemp[additionalKey] = questionIndex + 1;
+      const questionKey = `std_${standardId}_${question.section}_${question.subsection}_${questionIndex}`;
 
-      values[`standardAdditionalQuestion_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.question || '';
-      values[`standardAdditionalAuditeeResponse_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.response || '';
-      values[`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = findingTypeReverseMap[nc.findingType] || null;
-      values[`standardAdditionalAuditorComment_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.auditorComment || '';
-      values[`standardAdditionalPrOPCorporate_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.qma || [];
-      values[`standardAdditionalPrOPSector_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.sector || [];
-      values[`standardAdditionalPrOPDivision_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.division || [];
-      values[`standardAdditionalPrOPOther_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.other || [];
-      values[`standardAdditionalFiles_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = normalizeFileIds(nc.files);
+      values[getQuestionIdFieldName(questionKey)] = question.questionId || null;
+      values[`standardAdditionalQuestion_${standardId}_${question.section}_${question.subsection}_${questionIndex}`] =
+        question.question || '';
+
+      const findings = Array.isArray(question.findings) ? question.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
     return {
       values,
-      combinedPeqs,
-      standardAdditionalTemp
+      combinedPeqs: peqGroups,
+      standardAdditionalTemp,
+      findingCountsTemp
     };
-  }, [normalizeFileIds]);
+  }, [normalizeFileIds, getQuestionIdFieldName]);
 
   const watchedStandards = useWatch({ control, name: 'standards' });
   const selectedStandardIds = useMemo(() => {
