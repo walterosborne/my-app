@@ -5273,6 +5273,69 @@ const buildStageUpdateQuery = ({ scheduleId, stageValue, targetStage, audit }) =
     return { query, values };
 };
 
+// Conduct Audit saves the stage-3 audit fields and normalized question/finding
+// graph in one transaction so the audit cannot advance without its results.
+app.post('/api/save-audit-results', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { audit: auditPayload, questions, deletedQuestionIds } = req.body || {};
+        const scheduleId = asPositiveIntegerOrNull(auditPayload?.scheduleId);
+        if (!scheduleId || !Array.isArray(questions)) {
+            return res.status(400).json({ success: false, error: 'Valid audit and questions are required.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const existingAudit = await getAuditForAccessCheck(client, scheduleId);
+        if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit: existingAudit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+
+        const targetStage = 3;
+        const requestedStage = Number(auditPayload.stage);
+        const stageValue = Number.isFinite(requestedStage)
+            ? Math.max(requestedStage, targetStage)
+            : targetStage;
+
+        await client.query('BEGIN');
+
+        const { query, values } = buildStageUpdateQuery({
+            scheduleId,
+            stageValue,
+            targetStage,
+            audit: auditPayload
+        });
+        const auditUpdate = await client.query(query, values);
+        if (auditUpdate.rowCount !== 1) {
+            throw new Error('Audit changed or could not be updated.');
+        }
+
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            questions,
+            { deletedQuestionIds }
+        );
+
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            scheduleId,
+            questions: savedQuestions
+        });
+    } catch (error) {
+        await rollbackTransaction(client, 'saving audit results');
+        console.error('Error saving audit results:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    } finally {
+        client.release();
+    }
+});
+
 // Update specific audit fields (for Planning, Results, etc.)
 app.put('/api/audits/:scheduleId', async (req, res) => {
     const client = await pool.connect();
