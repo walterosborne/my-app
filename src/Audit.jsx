@@ -1429,7 +1429,6 @@ const Audit = () => {
             const severityHtml = (nc.severity !== null && nc.severity !== undefined && nc.severity !== '')
                 ? escapeHtml(getSeverityLabel(nc.severity))
                 : '';
-            const questionHtml = nc.question ? escapeHtml(nc.question) : '<span class="muted">No response provided.</span>';
             const responseHtml = nc.response ? escapeHtml(nc.response) : '<span class="muted">No response provided.</span>';
             const auditorCommentHtml = nc.auditorComment
                 ? escapeHtml(nc.auditorComment)
@@ -1448,11 +1447,10 @@ const Audit = () => {
             return `
                 <div class="nc-card">
                     <div class="nc-card-header">
-                        <span class="nc-id">NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
+                        <span class="nc-id">Response ${escapeHtml(nc.responseNumber || 1)} · NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
                     ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
-                    <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>\n                    <div class="nc-field"><strong>Response:</strong> ${escapeHtml(nc.responseNumber || 1)}</div>
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
                     ${propRowsHtml}
@@ -1460,6 +1458,29 @@ const Audit = () => {
                     <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
                     <div class="nc-field"><strong>Corrective Action Record Number:</strong> ${ainHtml}</div>
                     ` : ''}
+                </div>
+            `;
+        };
+
+        const groupNcEntriesByQuestion = (entries) => {
+            const grouped = new Map();
+            entries.forEach((nc, index) => {
+                const key = String(nc.questionId ?? `legacy-${nc.ncId ?? index}`);
+                if (!grouped.has(key)) grouped.set(key, []);
+                grouped.get(key).push(nc);
+            });
+            return [...grouped.values()];
+        };
+
+        const renderNcQuestionGroup = (entries) => {
+            const first = entries[0] || {};
+            const questionHtml = first.question
+                ? escapeHtml(first.question)
+                : '<span class="muted">No response provided.</span>';
+            return `
+                <div class="nc-question-group">
+                    <div class="nc-question"><strong>Question:</strong> ${questionHtml}</div>
+                    ${groupNcEntriesByQuestion(entries).map(renderNcQuestionGroup).join('')}
                 </div>
             `;
         };
@@ -1515,7 +1536,7 @@ const Audit = () => {
                 .map(([label, items]) => `
                     <div class="nc-standard-group">
                         <div class="nc-standard-label">${escapeHtml(label)}</div>
-                        ${items.map((nc) => renderNcEntry(nc)).join('')}
+                        ${groupNcEntriesByQuestion(items).map(renderNcQuestionGroup).join('')}
                     </div>
                 `)
                 .join('');
@@ -1549,7 +1570,7 @@ const Audit = () => {
   .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 14px; }
   .info-table td strong { font-weight: 700; }
   .section-box { border: 1px solid #000; padding: 12px; margin-bottom: 12px; font-size: 13px; }
-  .section-box, .nc-card, .counts-card, .approver-row, .nc-section, .nc-standard-group { page-break-inside: avoid; break-inside: avoid; }
+  .section-box, .nc-card, .nc-question-group, .counts-card, .approver-row, .nc-section, .nc-standard-group { page-break-inside: avoid; break-inside: avoid; }
   .section-box strong { display: block; font-size: 14px; margin-bottom: 6px; }
   .counts-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 10px; margin-bottom: 12px; }
   .counts-card { border: 1px solid #000; padding: 8px; text-align: center; }
@@ -1567,6 +1588,8 @@ const Audit = () => {
   .nc-section { margin-bottom: 10px; }
   .nc-section h3 { margin: 0 0 6px; font-size: 16px; }
   .nc-standard-label { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+  .nc-question-group { border: 1px solid #777; padding: 8px; margin-bottom: 10px; }
+  .nc-question { font-size: 13px; margin-bottom: 7px; }
   .nc-card { border: 1px solid #000; padding: 10px; margin-bottom: 8px; font-size: 13px; }
   .nc-card-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
   .nc-id { font-weight: 700; }
