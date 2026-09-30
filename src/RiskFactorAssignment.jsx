@@ -12,12 +12,13 @@ const getProcessAreaLabel = (subcategory) => {
     || '';
 };
 
-export const buildRiskRatingsPayload = (riskRatings) => {
+export const buildRiskRatingsPayload = (riskRatings, riskComments = {}) => {
   return Object.entries(riskRatings)
     .filter(([_, rating]) => rating !== null && rating !== undefined && rating !== '')
     .map(([subcategoryId, rating]) => ({
       subcategoryId: Number(subcategoryId),
-      rating: Number(rating)
+      rating: Number(rating),
+      comments: String(riskComments[subcategoryId] || '')
     }));
 };
 
@@ -27,6 +28,7 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
   const [subcategoriesList, setSubcategoriesList] = useState([]);
   const [selectedRiskFactors, setSelectedRiskFactors] = useState([]);
   const [riskRatings, setRiskRatings] = useState({});
+  const [riskComments, setRiskComments] = useState({});
 
   useEffect(() => {
     async function loadLookupData() {
@@ -50,6 +52,7 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
     async function loadExistingRatings() {
       if (!riskTypeId || (Number(riskTypeId) !== 1 && !targetId) || !String(processArea || '').trim() || !year || subcategoriesList.length === 0) {
         setRiskRatings({});
+        setRiskComments({});
         setSelectedRiskFactors([]);
         return;
       }
@@ -57,10 +60,12 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
       try {
         const ratings = await getRiskRatings(riskTypeId, targetId, processArea, year);
         const ratingsMap = {};
+        const commentsMap = {};
         const selectedFactors = new Set();
 
         ratings.forEach((rating) => {
           ratingsMap[rating.subcategoryid] = rating.rating;
+          commentsMap[rating.subcategoryid] = rating.comments || '';
           const subcategory = subcategoriesList.find((item) => item.subcategoryid === rating.subcategoryid);
           if (subcategory) {
             selectedFactors.add(subcategory.riskfactorid);
@@ -68,6 +73,7 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
         });
 
         setRiskRatings(ratingsMap);
+        setRiskComments(commentsMap);
         setSelectedRiskFactors(Array.from(selectedFactors));
       } catch (error) {
         console.error('Error loading risk ratings:', error);
@@ -82,9 +88,10 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
     onChange({
       selectedRiskFactors,
       riskRatings,
-      ratingsPayload: buildRiskRatingsPayload(riskRatings)
+      riskComments,
+      ratingsPayload: buildRiskRatingsPayload(riskRatings, riskComments)
     });
-  }, [selectedRiskFactors, riskRatings, onChange]);
+  }, [selectedRiskFactors, riskRatings, riskComments, onChange]);
 
   if (loading) {
     return (
@@ -117,8 +124,13 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
                     .filter((item) => item.riskfactorid === factor.riskfactorid)
                     .map((item) => item.subcategoryid);
                   const nextRatings = { ...riskRatings };
-                  subcatsToRemove.forEach((id) => delete nextRatings[id]);
+                  const nextComments = { ...riskComments };
+                  subcatsToRemove.forEach((id) => {
+                    delete nextRatings[id];
+                    delete nextComments[id];
+                  });
                   setRiskRatings(nextRatings);
+                  setRiskComments(nextComments);
                 }}
                 style={{ cursor: 'pointer' }}
               />
@@ -159,12 +171,19 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
                                   ...riskRatings,
                                   [subcategory.subcategoryid]: ''
                                 });
+                                setRiskComments({
+                                  ...riskComments,
+                                  [subcategory.subcategoryid]: ''
+                                });
                                 return;
                               }
 
                               const nextRatings = { ...riskRatings };
+                              const nextComments = { ...riskComments };
                               delete nextRatings[subcategory.subcategoryid];
+                              delete nextComments[subcategory.subcategoryid];
                               setRiskRatings(nextRatings);
+                              setRiskComments(nextComments);
                             }}
                             style={{ cursor: 'pointer' }}
                           />
@@ -175,36 +194,54 @@ function RiskFactorAssignment({ riskTypeId = null, targetId = null, processArea 
                             {getProcessAreaLabel(subcategory)}
                           </label>
                           {isChecked && (
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: '200px' }}>
-                              <label style={{ fontSize: '0.85em', marginBottom: '3px' }}>
-                                Rating<span style={{ color: 'red' }}>*</span>
-                              </label>
-                              <Select
-                                value={riskRatings[subcategory.subcategoryid]
-                                  ? {
-                                      value: riskRatings[subcategory.subcategoryid],
-                                      label: riskRatings[subcategory.subcategoryid] === 1
-                                        ? 'Low Risk'
-                                        : riskRatings[subcategory.subcategoryid] === 2
-                                          ? 'Medium Risk'
-                                          : 'High Risk'
-                                    }
-                                  : null}
-                                onChange={(selectedOption) => {
-                                  setRiskRatings({
-                                    ...riskRatings,
-                                    [subcategory.subcategoryid]: selectedOption ? selectedOption.value : ''
-                                  });
-                                }}
-                                options={[
-                                  { value: 1, label: 'Low Risk' },
-                                  { value: 2, label: 'Medium Risk' },
-                                  { value: 3, label: 'High Risk' }
-                                ]}
-                                styles={customStyles}
-                                placeholder="Select Rating"
-                                isClearable
-                              />
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flex: '0 0 62%' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: '200px', flex: '0 0 200px' }}>
+                                <label style={{ fontSize: '0.85em', marginBottom: '3px' }}>
+                                  Rating<span style={{ color: 'red' }}>*</span>
+                                </label>
+                                <Select
+                                  value={riskRatings[subcategory.subcategoryid]
+                                    ? {
+                                        value: riskRatings[subcategory.subcategoryid],
+                                        label: riskRatings[subcategory.subcategoryid] === 1
+                                          ? 'Low Risk'
+                                          : riskRatings[subcategory.subcategoryid] === 2
+                                            ? 'Medium Risk'
+                                            : 'High Risk'
+                                      }
+                                    : null}
+                                  onChange={(selectedOption) => {
+                                    setRiskRatings({
+                                      ...riskRatings,
+                                      [subcategory.subcategoryid]: selectedOption ? selectedOption.value : ''
+                                    });
+                                  }}
+                                  options={[
+                                    { value: 1, label: 'Low Risk' },
+                                    { value: 2, label: 'Medium Risk' },
+                                    { value: 3, label: 'High Risk' }
+                                  ]}
+                                  styles={customStyles}
+                                  placeholder="Select Rating"
+                                  isClearable
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '220px' }}>
+                                <label style={{ fontSize: '0.85em', marginBottom: '3px' }}>Comments</label>
+                                <textarea
+                                  className="textfield"
+                                  value={riskComments[subcategory.subcategoryid] || ''}
+                                  onChange={(event) => {
+                                    setRiskComments({
+                                      ...riskComments,
+                                      [subcategory.subcategoryid]: event.target.value
+                                    });
+                                  }}
+                                  placeholder="Add comments for this rating"
+                                  rows={3}
+                                  style={{ width: '100%', resize: 'vertical' }}
+                                />
+                              </div>
                             </div>
                           )}
                         </div>
