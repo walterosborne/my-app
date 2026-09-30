@@ -11,6 +11,10 @@ Included:
 4. Legacy standard question types -> numeric standard IDs.
    - Exact standard-name matches use standards_r.
    - Legacy ISO9001 is explicitly mapped to standard ID 5.
+5. Normalized audit question/finding model for multiple responses per question.
+   - Creates audit_questions_r and audit_findings_r.
+   - Migrates every existing nonconformances_r row to one question + one finding.
+   - Preserves each legacy ncid as the migrated finding ID.
 
 Not included because they require no database change:
 - Objective-evidence report/download UI.
@@ -41,6 +45,8 @@ DECLARE @OperatingUnitsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[oper
 DECLARE @ProgramsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[programs_r]';
 DECLARE @QuestionsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[nonconformances_r]';
 DECLARE @StandardsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[standards_r]';
+DECLARE @AuditQuestionsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_questions_r]';
+DECLARE @AuditFindingsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_findings_r]';
 
 IF OBJECT_ID(@AuditsTable, N'U') IS NULL
     THROW 50203, 'Target audits_r table does not exist.', 1;
@@ -307,6 +313,181 @@ BEGIN TRY
     IF @ActualQuestionUpdates <> @ExpectedQuestionUpdates
         THROW 50213, 'Updated standard-question row count differs from expected count; entire migration rolled back.', 1;
 
+    /* ============================================================
+       5. NORMALIZED QUESTION / FINDING MODEL
+       A question can now own zero or many findings/responses.
+       The legacy nonconformances_r table remains in place as migration
+       history; the Kubernetes app reads/writes the normalized tables.
+       ============================================================ */
+    IF OBJECT_ID(@AuditQuestionsTable, N'U') IS NULL
+    BEGIN
+        SET @Sql = N'
+            CREATE TABLE ' + @AuditQuestionsTable + N' (
+                questionid INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                scheduleid INT NOT NULL,
+                [type] NVARCHAR(20) NOT NULL,
+                sourceid INT NULL,
+                section INT NULL,
+                subsection INT NULL,
+                question NVARCHAR(MAX) NULL,
+                sortorder INT NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_questions_sortorder] DEFAULT (0),
+                createdat DATETIME2 NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_questions_createdat] DEFAULT (CURRENT_TIMESTAMP),
+                updatedat DATETIME2 NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_questions_updatedat] DEFAULT (CURRENT_TIMESTAMP)
+            );';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF OBJECT_ID(@AuditFindingsTable, N'U') IS NULL
+    BEGIN
+        SET @Sql = N'
+            CREATE TABLE ' + @AuditFindingsTable + N' (
+                findingid INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+                questionid INT NOT NULL,
+                findingtype INT NULL,
+                response NVARCHAR(MAX) NULL,
+                auditorcomment NVARCHAR(MAX) NULL,
+                details NVARCHAR(MAX) NULL,
+                ain NVARCHAR(50) NULL,
+                division NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_division] DEFAULT (N''[]''),
+                sector NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_sector] DEFAULT (N''[]''),
+                qma NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_qma] DEFAULT (N''[]''),
+                other NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_other] DEFAULT (N''[]''),
+                files NVARCHAR(MAX) NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_files] DEFAULT (N''[]''),
+                severity INT NULL,
+                sortorder INT NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_sortorder] DEFAULT (0),
+                createdat DATETIME2 NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_createdat] DEFAULT (CURRENT_TIMESTAMP),
+                updatedat DATETIME2 NOT NULL CONSTRAINT [DF_' + @TargetSchema + N'_audit_findings_updatedat] DEFAULT (CURRENT_TIMESTAMP)
+            );';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    -- Refuse to continue if a partially-created normalized table is missing
+    -- a required column. This prevents silently creating incompatible data.
+    IF COL_LENGTH(@AuditQuestionsTable, N'questionid') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'scheduleid') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'type') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'sourceid') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'section') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'subsection') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'question') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'sortorder') IS NULL
+        THROW 50214, 'audit_questions_r exists but does not match the Kubernetes schema.', 1;
+
+    IF COL_LENGTH(@AuditFindingsTable, N'findingid') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'questionid') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'findingtype') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'response') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'auditorcomment') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'details') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'ain') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'division') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'sector') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'qma') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'other') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'files') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'severity') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'sortorder') IS NULL
+        THROW 50215, 'audit_findings_r exists but does not match the Kubernetes schema.', 1;
+
+    -- Preserve legacy identifiers on first migration. Each current legacy
+    -- record becomes one question with one finding, exactly as it exists today.
+    SET @Sql = N'
+        SET IDENTITY_INSERT ' + @AuditQuestionsTable + N' ON;
+
+        INSERT INTO ' + @AuditQuestionsTable + N'
+            (questionid, scheduleid, [type], sourceid, section, subsection,
+             question, sortorder, createdat, updatedat)
+        SELECT
+            nc.ncid,
+            nc.scheduleid,
+            nc.[type],
+            NULL,
+            nc.section,
+            nc.subsection,
+            nc.question,
+            ROW_NUMBER() OVER (PARTITION BY nc.scheduleid ORDER BY nc.ncid),
+            COALESCE(nc.createdat, CURRENT_TIMESTAMP),
+            COALESCE(nc.updatedat, nc.createdat, CURRENT_TIMESTAMP)
+        FROM ' + @QuestionsTable + N' AS nc
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ' + @AuditQuestionsTable + N' AS q
+            WHERE q.questionid = nc.ncid
+        );
+
+        SET IDENTITY_INSERT ' + @AuditQuestionsTable + N' OFF;
+
+        SET IDENTITY_INSERT ' + @AuditFindingsTable + N' ON;
+
+        INSERT INTO ' + @AuditFindingsTable + N'
+            (findingid, questionid, findingtype, response, auditorcomment,
+             details, ain, division, sector, qma, other, files, severity,
+             sortorder, createdat, updatedat)
+        SELECT
+            nc.ncid,
+            nc.ncid,
+            nc.findingtype,
+            nc.response,
+            nc.auditorcomment,
+            nc.details,
+            nc.ain,
+            COALESCE(nc.division, N''[]''),
+            COALESCE(nc.sector, N''[]''),
+            COALESCE(nc.qma, N''[]''),
+            COALESCE(nc.other, N''[]''),
+            COALESCE(nc.files, N''[]''),
+            nc.severity,
+            1,
+            COALESCE(nc.createdat, CURRENT_TIMESTAMP),
+            COALESCE(nc.updatedat, nc.createdat, CURRENT_TIMESTAMP)
+        FROM ' + @QuestionsTable + N' AS nc
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ' + @AuditFindingsTable + N' AS f
+            WHERE f.findingid = nc.ncid
+        );
+
+        SET IDENTITY_INSERT ' + @AuditFindingsTable + N' OFF;';
+    EXEC sys.sp_executesql @Sql;
+
+    -- Indexes are idempotent and intentionally created after the legacy load.
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID(@AuditQuestionsTable)
+          AND name = N'IX_audit_questions_schedule'
+    )
+    BEGIN
+        SET @Sql = N'CREATE INDEX [IX_audit_questions_schedule] ON ' +
+            @AuditQuestionsTable + N' ([scheduleid], [sortorder], [questionid]);';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'IX_audit_findings_question'
+    )
+    BEGIN
+        SET @Sql = N'CREATE INDEX [IX_audit_findings_question] ON ' +
+            @AuditFindingsTable + N' ([questionid], [sortorder], [findingid]);';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    DECLARE @FindingFkName SYSNAME = N'FK_' + @TargetSchema + N'_audit_findings_question';
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.foreign_keys
+        WHERE parent_object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = @FindingFkName
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT ' + QUOTENAME(@FindingFkName) +
+            N' FOREIGN KEY ([questionid]) REFERENCES ' + @AuditQuestionsTable +
+            N' ([questionid]) ON DELETE CASCADE;';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
     COMMIT TRANSACTION;
 END TRY
 BEGIN CATCH
@@ -322,6 +503,17 @@ SELECT
     @TargetSchema AS schema_name,
     N'Kubernetes migration complete' AS result,
     @ActualQuestionUpdates AS legacy_standard_questions_updated;
+
+SET @Sql = N'
+    SELECT
+        @SchemaName AS schema_name,
+        (SELECT COUNT_BIG(*) FROM ' + @AuditQuestionsTable + N') AS audit_questions,
+        (SELECT COUNT_BIG(*) FROM ' + @AuditFindingsTable + N') AS audit_findings,
+        (SELECT COUNT_BIG(*) FROM ' + @QuestionsTable + N') AS legacy_rows;';
+EXEC sys.sp_executesql
+    @Sql,
+    N'@SchemaName SYSNAME',
+    @SchemaName = @TargetSchema;
 
 SELECT
     s.name AS schema_name,
