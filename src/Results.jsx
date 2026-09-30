@@ -709,26 +709,38 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         }
 
         setAccessBlock(null);
-        const validEtqIds = new Set(etqList.map((question) => Number(question.etqId)).filter(Number.isFinite));
-        const validEtqQuestions = new Set(etqList.map((question) => question.question));
-        const convertedCount = data.filter((question) =>
-          question.type === 'ETQ'
-          && !(
-            (Number.isFinite(Number(question.sourceId)) && validEtqIds.has(Number(question.sourceId)))
-            || validEtqQuestions.has(question.question)
-          )
-        ).length;
+        const etqById = new Map(
+          etqList
+            .map((question) => [Number(question.etqId), question])
+            .filter(([id]) => Number.isFinite(id))
+        );
+        const etqByText = new Map(etqList.map((question) => [question.question, question]));
+        const claimedEtqs = new Set();
+        let convertedCount = 0;
         const converted = data.map((question) => {
-          if (
-            question.type === 'ETQ'
-            && !(
-              (Number.isFinite(Number(question.sourceId)) && validEtqIds.has(Number(question.sourceId)))
-              || validEtqQuestions.has(question.question)
-            )
-          ) {
+          if (question.type !== 'ETQ') return question;
+
+          const sourceId = Number(question.sourceId);
+          const definition = (Number.isFinite(sourceId) ? etqById.get(sourceId) : null)
+            || etqByText.get(question.question);
+          const definitionKey = definition
+            ? String(definition.etqId ?? definition.question)
+            : null;
+
+          // A configured ETQ appears once in the form. If legacy data happens
+          // to contain duplicate ETQ question rows, keep the first as the ETQ
+          // and expose the extras as PEQs instead of hiding or deleting them.
+          if (!definition || claimedEtqs.has(definitionKey)) {
+            convertedCount += 1;
             return { ...question, type: 'PEQ', sourceId: null };
           }
-          return question;
+
+          claimedEtqs.add(definitionKey);
+          return {
+            ...question,
+            sourceId: definition.etqId ?? question.sourceId,
+            question: definition.question || question.question
+          };
         });
 
         if (convertedCount > 0 && selectedAudit?.scheduleId) {
