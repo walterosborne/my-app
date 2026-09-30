@@ -1580,53 +1580,42 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         }
       });
 
-      // Save audit record with updated fields
-      const auditResponse = await fetch(buildApiUrl('audits'), {
+      const auditPayload = {
+        ...selectedAudit,
+        overview: data.overview,
+        auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
+        cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
+        standardIds: data.standards || [],
+        programIds: data.programs || [],
+        intervieweeIds: data.interviewees || [],
+        startDate: data.auditDate || null,
+        evaluator: data.evaluator,
+        relatedItems: data.relatedItems,
+        programManager: data.programManager,
+        maLeadManager: data.maLeadManager,
+        delayCause: isDelayed ? (data.delayCause || null) : null,
+        stage: nextStage,
+        targetStage: 3
+      };
+
+      // Save stage-3 audit fields and the normalized question/finding graph in
+      // one backend transaction. Either both persist or neither does.
+      const response = await fetch(buildApiUrl('save-audit-results'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...selectedAudit,
-          overview: data.overview,
-          auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
-          cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
-          standardIds: data.standards || [],
-          programIds: data.programs || [],
-          intervieweeIds: data.interviewees || [],
-          startDate: data.auditDate || null,
-          evaluator: data.evaluator,
-          relatedItems: data.relatedItems,
-          programManager: data.programManager,
-          maLeadManager: data.maLeadManager,
-          delayCause: isDelayed ? (data.delayCause || null) : null,
-          stage: nextStage,
-          targetStage: 3
-        })
-      });
-
-      const auditResult = await auditResponse.json();
-
-      if (!auditResult.success) {
-        throw new Error(auditResult.error || 'Failed to save audit');
-      }
-
-      // Save the normalized question -> findings graph. Existing IDs are
-      // preserved so Nonconformities, CARs, evidence links, and reports keep
-      // referring to the same finding across edits.
-      const response = await fetch(buildApiUrl('save-audit-questions'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          scheduleId: selectedAudit.scheduleId,
+          audit: auditPayload,
           questions: questionsPayload,
           deletedQuestionIds
         })
       });
 
       const result = await response.json();
+      if (!response.ok && !result?.success) {
+        throw new Error(result?.error || 'Failed to save audit results');
+      }
 
       if (result.success) {
         const isProceeding = submitIntentRef.current === 'proceed';
