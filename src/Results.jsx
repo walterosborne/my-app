@@ -1221,24 +1221,34 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         return;
       }
       const scheduleId = Number(selectedAudit.scheduleId);
-      const auditNCs = nonconformances.filter(nc => Number(nc.scheduleId) === scheduleId);
+      const auditQuestionGroups = auditQuestions.filter(
+        (question) => Number(question.scheduleId) === scheduleId
+      );
       const {
         values,
         combinedPeqs,
-        standardAdditionalTemp
-      } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
+        standardAdditionalTemp,
+        findingCountsTemp
+      } = buildResultsFormValues(selectedAudit, auditQuestionGroups, filteredEveryTimeQuestions);
       const groupedStandardTexts = buildStandardTextsByStandard(selectedAudit?.standardIds || []);
       const {
         peqDefaults,
         sectionDefaults,
         subsectionDefaults,
         everyTimeQuestionDefaults
-      } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, groupedStandardTexts);
+      } = buildAuditQuestionCollapseDefaults(
+        selectedAudit,
+        auditQuestionGroups,
+        filteredEveryTimeQuestions,
+        groupedStandardTexts
+      );
 
       setNewPEQs(combinedPeqs.length);
       setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
       setDeletedStandardQuestions({});
+      setFindingCountsByQuestion(findingCountsTemp);
+      setDeletedFindingSlots({});
       setCollapsedPEQs(peqDefaults);
       setCollapsedSections(sectionDefaults);
       setCollapsedSubsections(subsectionDefaults);
@@ -1248,7 +1258,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, loadedNonconformancesScheduleId, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
+  }, [schedule, selectedAudit, auditQuestions, loadedNonconformancesScheduleId, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
 
   useEffect(() => {
     if (!isDelayed) {
