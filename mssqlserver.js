@@ -1845,6 +1845,7 @@ const mapAuditFindingRow = (row) => ({
     question: row.question,
     questionSortOrder: row.questionsortorder,
     findingSortOrder: row.findingsortorder,
+    responseNumber: Number(row.responsenumber ?? 1),
     findingType: row.findingtype,
     severity: row.severity,
     response: row.response,
@@ -2727,6 +2728,10 @@ app.get('/api/nonconformances', async (req, res) => {
                 f.files,
                 f.severity,
                 f.sortorder AS findingsortorder,
+                ROW_NUMBER() OVER (
+                    PARTITION BY q.questionid
+                    ORDER BY f.sortorder, f.findingid
+                ) AS responsenumber,
                 f.createdat AS findingcreatedat,
                 f.updatedat AS findingupdatedat
              FROM audit_questions_r AS q
