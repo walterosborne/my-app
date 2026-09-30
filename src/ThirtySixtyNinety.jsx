@@ -739,31 +739,39 @@ const ThirtySixtyNinety = () => {
           if (section === null || section === undefined || section === '') return false;
           if (auditStandardIds.size > 0 && !auditStandardIds.has(standardId)) return false;
           return true;
-        })
+        });
+
+      // Multiple findings can now belong to one question. A clause was audited
+      // once regardless of how many responses/findings were recorded beneath it.
+      const auditedClauseKeys = new Set();
+      matchingStandardFindings
         .sort((a, b) => {
           const standardDiff = Number(a.type) - Number(b.type);
           if (standardDiff !== 0) return standardDiff;
           const sectionDiff = Number(a.section) - Number(b.section);
           if (sectionDiff !== 0) return sectionDiff;
           return Number(a.subsection ?? 0) - Number(b.subsection ?? 0);
-        });
+        })
+        .forEach((nc) => {
+          const standardId = Number(nc.type);
+          const clauseKey = `${standardId}:${nc.section}:${nc.subsection ?? ''}`;
+          if (auditedClauseKeys.has(clauseKey)) return;
+          auditedClauseKeys.add(clauseKey);
 
-      matchingStandardFindings.forEach((nc) => {
-        const standardId = Number(nc.type);
-        clauseRows.push({
-          id: nc.ncId ?? `${audit.scheduleId}-${standardId}-${nc.section}-${nc.subsection ?? 'na'}-${clauseRows.length}`,
-          scheduleId: audit.scheduleId,
-          standard: formatSingle(standardId, standardsList, 'standardId', 'standardName') || `Standard ${standardId}`,
-          clause: formatClauseLabel(nc.section, nc.subsection),
-          divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
-          businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
-          operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
-          programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
-          auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
-          stage: getStageLabel(audit),
-          scheduledMonth: formatMonth(audit.expectedStartDate)
+          clauseRows.push({
+            id: `${audit.scheduleId}-${standardId}-${nc.section}-${nc.subsection ?? 'na'}`,
+            scheduleId: audit.scheduleId,
+            standard: formatSingle(standardId, standardsList, 'standardId', 'standardName') || `Standard ${standardId}`,
+            clause: formatClauseLabel(nc.section, nc.subsection),
+            divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+            businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+            operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+            programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+            auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+            stage: getStageLabel(audit),
+            scheduledMonth: formatMonth(audit.expectedStartDate)
+          });
         });
-      });
     });
 
     return clauseRows;
