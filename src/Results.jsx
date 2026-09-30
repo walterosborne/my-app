@@ -2364,7 +2364,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                               </button>
 
                               {!isCollapsed && (
-                                <div className="peq">
+                                <div className="peq audit-question-card">
                                   <input
                                     type="hidden"
                                     {...register(getQuestionIdFieldName(questionKey))}
@@ -2422,7 +2422,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           const questionKey = `etq_${index}`;
 
                           return (
-                            <div className="peq" key={etqCollapseKey}>
+                            <div className="peq audit-question-card" key={etqCollapseKey}>
                               <input
                                 type="hidden"
                                 {...register(getQuestionIdFieldName(questionKey))}
@@ -2584,7 +2584,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
                                               return (
                                                 <div key={`${additionalKey}_add_${addIdx}`} style={{ width: '100%', marginBottom: '10px' }}>
-                                                  <div className="peq">
+                                                  <div className="peq audit-question-card">
                                                     <input
                                                       type="hidden"
                                                       {...register(getQuestionIdFieldName(questionKey))}
