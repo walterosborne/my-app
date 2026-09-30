@@ -3101,14 +3101,21 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
             `SELECT q.scheduleid
              FROM audit_findings_r AS f
              INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
-             WHERE f.findingid = $1`,
+             WHERE f.findingid = $1 AND f.findingtype = 1`,
             [ncId]
         );
         const scheduleId = ncLookup.rows[0]?.scheduleid;
+        if (!scheduleId) {
+            return res.status(404).json({ success: false, error: 'Nonconformity finding not found.' });
+        }
+
         const userInfo = await getCurrentUserInfo(req);
-        const audit = scheduleId ? await getAuditForAccessCheck(client, scheduleId) : null;
+        const audit = await getAuditForAccessCheck(client, scheduleId);
         if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         const result = await client.query(
