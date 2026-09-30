@@ -662,13 +662,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       });
       }).filter(car => car.car); // Only include CARs with actual data
 
-      // Prepare nonconformance updates
-      const ncUpdates = nonconformances.map(nc => ({
-        ncId: nc.ncId,
-        details: data[`ncDetails${nc.ncId}`] || '',
-        severity: normalizeNonconformitySeverityValue(data[`ncSeverity${nc.ncId}`]),
-        actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
-      }));
+      // Prepare one downstream detail update per Nonconformity response.
+      // Conformities/OFIs/observations never receive NC-only fields.
+      const ncUpdates = nonconformances
+        .filter((nc) => Number(nc.findingType) === 1)
+        .map((nc) => ({
+          ncId: nc.ncId,
+          details: data[`ncDetails${nc.ncId}`] || '',
+          severity: normalizeNonconformitySeverityValue(data[`ncSeverity${nc.ncId}`]),
+          actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
+        }));
 
       console.log('Submitting audit data:', auditUpdate);
       console.log('Submitting CARs data:', carsData);
@@ -682,7 +685,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         },
         body: JSON.stringify({
           audit: auditUpdate,
-          cars: carsData
+          cars: carsData,
+          ncUpdates
         })
       });
 
@@ -690,21 +694,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       console.log('Server response:', result);
 
       if (result.success) {
-        // Update nonconformance details
-        for (const ncUpdate of ncUpdates) {
-          const ncResponse = await fetch(buildApiUrl('update-nonconformance-details'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(ncUpdate)
-          });
-          const ncResult = await ncResponse.json();
-          if (!ncResult.success) {
-            console.error('Failed to update nonconformance:', ncUpdate.ncId, ncResult.error);
-          }
-        }
-
         toast.success(lockedValue ? 'Nonconformities submitted successfully!' : 'Changes saved successfully!');
         if (result.emailWarning) {
           errorToast(result.emailWarning);
