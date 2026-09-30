@@ -6148,11 +6148,14 @@ app.post('/api/unlock-audit', async (req, res) => {
 app.post('/api/save-nonconformities-data', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { audit, cars } = req.body;
+        const { audit, cars, ncUpdates } = req.body;
         const userInfo = await getCurrentUserInfo(req);
         const existingAudit = await getAuditForAccessCheck(client, audit?.scheduleId);
         if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit: existingAudit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         console.log('Received audit data:', audit);
@@ -6300,6 +6303,39 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         }
 
         await replaceCarsForSchedule(client, audit.scheduleId, Array.isArray(cars) ? cars : []);
+
+        // Save only actual Nonconformity responses. Each response has its own
+        // stable finding ID even when several findings share one question.
+        for (const update of (Array.isArray(ncUpdates) ? ncUpdates : [])) {
+            const findingId = asPositiveIntegerOrNull(update?.ncId ?? update?.findingId);
+            if (!findingId) {
+                throw new Error('Valid nonconformity finding ID required.');
+            }
+
+            const severity = update?.severity === null || update?.severity === undefined || update?.severity === ''
+                ? null
+                : Number(update.severity);
+            const result = await client.query(
+                `UPDATE audit_findings_r
+                 SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
+                 WHERE findingid = $4
+                   AND findingtype = 1
+                   AND questionid IN (
+                       SELECT questionid FROM audit_questions_r WHERE scheduleid = $5
+                   )`,
+                [
+                    String(update?.details ?? ''),
+                    Number.isFinite(severity) ? severity : null,
+                    String(update?.actionItemNumber ?? update?.AIN ?? ''),
+                    findingId,
+                    audit.scheduleId
+                ]
+            );
+
+            if (result.rowCount !== 1) {
+                throw new Error(`Nonconformity finding ${findingId} changed or no longer belongs to this audit.`);
+            }
+        }
 
         await client.query('COMMIT');
         console.log('Transaction committed successfully');
