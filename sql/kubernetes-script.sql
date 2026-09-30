@@ -352,6 +352,18 @@ BEGIN TRY
         EXEC sys.sp_executesql @Sql;
     END;
 
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@MigrationsTable)
+          AND name = N'appliedat' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @MigrationsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_ngat_migrations_appliedat] DEFAULT (CURRENT_TIMESTAMP) FOR [appliedat];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
     SET @Sql = N'
         SELECT @Applied = CASE WHEN EXISTS (
             SELECT 1 FROM ' + @MigrationsTable + N'
@@ -781,6 +793,20 @@ WHERE s.name = @TargetSchema
         (t.name = N'operating_units_r' AND c.name IN (N'divisionid', N'businessunitid'))
         OR
         (t.name = N'programs_r' AND c.name IN (N'divisionid', N'businessunitid', N'operatingunitid'))
+        OR
+        (t.name = N'audit_questions_r' AND c.name IN (
+            N'questionid', N'scheduleid', N'type', N'sourceid', N'section',
+            N'subsection', N'question', N'sortorder', N'createdat', N'updatedat'
+        ))
+        OR
+        (t.name = N'audit_findings_r' AND c.name IN (
+            N'findingid', N'questionid', N'findingtype', N'response',
+            N'auditorcomment', N'details', N'ain', N'division', N'sector',
+            N'qma', N'other', N'files', N'severity', N'sortorder',
+            N'createdat', N'updatedat'
+        ))
+        OR
+        (t.name = N'ngat_migrations_r' AND c.name IN (N'migrationkey', N'appliedat'))
       )
 ORDER BY t.name, c.column_id;
 
