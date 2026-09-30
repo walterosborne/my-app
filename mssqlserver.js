@@ -2391,12 +2391,15 @@ app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', asy
         }
         if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
 
-        const ncResult = await pool.query(
-            'SELECT files FROM nonconformances_r WHERE scheduleId = $1 AND ncId = $2',
+        const findingResult = await pool.query(
+            `SELECT f.files
+             FROM audit_findings_r AS f
+             INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+             WHERE q.scheduleid = $1 AND f.findingid = $2`,
             [auditId, ncId]
         );
-        const linkedIds = ncResult.rows.length > 0
-            ? parseMaybeJsonArray(ncResult.rows[0].files).map(Number)
+        const linkedIds = findingResult.rows.length > 0
+            ? parseMaybeJsonArray(findingResult.rows[0].files).map(Number)
             : [];
         if (!linkedIds.includes(fileId)) {
             return res.status(404).json({ success: false, error: 'File not found.' });
@@ -2419,32 +2422,51 @@ app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', asy
     }
 });
 
-// Omit ncId to download all evidence, or pass ncId for one question only.
+// Omit filters to download all audit evidence. questionId aggregates every
+// response under one question; ncId/findingId limits the ZIP to one response.
 app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
     try {
         const auditId = Number(req.params.scheduleId);
-        const ncId = req.query.ncId === undefined ? null : Number(req.query.ncId);
-        if (ncId !== null && (!Number.isSafeInteger(ncId) || ncId <= 0)) {
+        const questionId = req.query.questionId === undefined ? null : Number(req.query.questionId);
+        const findingIdValue = req.query.findingId ?? req.query.ncId;
+        const findingId = findingIdValue === undefined ? null : Number(findingIdValue);
+
+        if (questionId !== null && (!Number.isSafeInteger(questionId) || questionId <= 0)) {
             return res.status(400).json({ success: false, error: 'Valid question ID required.' });
+        }
+        if (findingId !== null && (!Number.isSafeInteger(findingId) || findingId <= 0)) {
+            return res.status(400).json({ success: false, error: 'Valid finding ID required.' });
+        }
+        if (questionId !== null && findingId !== null) {
+            return res.status(400).json({ success: false, error: 'Choose either questionId or findingId, not both.' });
         }
         if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
 
-        const ncResult = await pool.query(
-            ncId === null
-                ? 'SELECT ncId, files FROM nonconformances_r WHERE scheduleId = $1'
-                : 'SELECT ncId, files FROM nonconformances_r WHERE scheduleId = $1 AND ncId = $2',
-            ncId === null ? [auditId] : [auditId, ncId]
-        );
-        if (ncId !== null && ncResult.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Question not found.' });
+        let evidenceQuery = `
+            SELECT f.findingid, f.files
+            FROM audit_findings_r AS f
+            INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+            WHERE q.scheduleid = $1`;
+        const params = [auditId];
+
+        if (questionId !== null) {
+            evidenceQuery += ' AND q.questionid = $2';
+            params.push(questionId);
+        } else if (findingId !== null) {
+            evidenceQuery += ' AND f.findingid = $2';
+            params.push(findingId);
         }
+
+        const evidenceResult = await pool.query(evidenceQuery, params);
+        if ((questionId !== null || findingId !== null) && evidenceResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Question or finding not found.' });
+        }
+
         const fileIdSet = new Set();
-        ncResult.rows.forEach((row) => {
+        evidenceResult.rows.forEach((row) => {
             parseMaybeJsonArray(row.files).forEach((id) => {
                 const parsed = Number(id);
-                if (Number.isSafeInteger(parsed) && parsed > 0) {
-                    fileIdSet.add(parsed);
-                }
+                if (Number.isSafeInteger(parsed) && parsed > 0) fileIdSet.add(parsed);
             });
         });
 
@@ -2465,9 +2487,11 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
             return res.status(404).json({ success: false, error: 'No objective evidence files found.' });
         }
 
-        const zipName = ncId === null
-            ? `audit-${auditId}-objective-evidence.zip`
-            : `audit-${auditId}-question-${ncId}-objective-evidence.zip`;
+        const zipName = questionId !== null
+            ? `audit-${auditId}-question-${questionId}-objective-evidence.zip`
+            : findingId !== null
+                ? `audit-${auditId}-finding-${findingId}-objective-evidence.zip`
+                : `audit-${auditId}-objective-evidence.zip`;
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
 
@@ -2486,8 +2510,6 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         filesResult.rows.forEach((file) => {
             const safeName = sanitizeFilename(file.filename || `file-${file.fileid}`);
             let archiveName = safeName;
-            // Evidence from different auditors can have the same filename.
-            // Give ZIP members unique names so neither attachment is lost.
             if (usedNames.has(archiveName.toLowerCase())) {
                 const dot = safeName.lastIndexOf('.');
                 const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
@@ -2505,7 +2527,7 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         await archive.finalize();
     } catch (error) {
         console.error('Error building objective evidence zip:', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     }
 });
 
