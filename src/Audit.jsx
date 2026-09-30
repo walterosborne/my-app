@@ -89,6 +89,7 @@ const Audit = () => {
     const [rosterList, setRosterList] = React.useState([]);
     const [safetyEquipmentList, setSafetyEquipmentList] = React.useState([]);
     const [trainingRequirementsList, setTrainingRequirementsList] = React.useState([]);
+    const [auditQuestions, setAuditQuestions] = React.useState([]);
     const [nonconformances, setNonconformances] = React.useState([]);
     const [cars, setCars] = React.useState([]);
     const [causesList, setCausesList] = React.useState([]);
@@ -297,38 +298,20 @@ const Audit = () => {
     };
 
     const questionGroups = React.useMemo(() => {
-        const groups = new Map();
-
-        nonconformances.forEach((finding, index) => {
-            const questionId = finding.questionId ?? finding.ncId ?? `finding-${index}`;
-            const key = String(questionId);
-            if (!groups.has(key)) {
-                groups.set(key, {
-                    questionId: finding.questionId ?? null,
-                    type: finding.type,
-                    section: finding.section,
-                    subsection: finding.subsection,
-                    question: finding.question || '',
-                    sortOrder: Number(finding.questionSortOrder ?? index),
-                    findings: []
-                });
-            }
-            groups.get(key).findings.push(finding);
-        });
-
-        return [...groups.values()]
-            .map((group) => ({
-                ...group,
-                findings: group.findings.slice().sort((a, b) =>
-                    Number(a.findingSortOrder ?? 0) - Number(b.findingSortOrder ?? 0)
-                    || Number(a.ncId ?? 0) - Number(b.ncId ?? 0)
+        return (auditQuestions || [])
+            .map((question, questionIndex) => ({
+                ...question,
+                sortOrder: Number(question.sortOrder ?? questionIndex),
+                findings: (question.findings || []).slice().sort((a, b) =>
+                    Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+                    || Number(a.findingId ?? a.ncId ?? 0) - Number(b.findingId ?? b.ncId ?? 0)
                 )
             }))
             .sort((a, b) =>
                 Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
                 || Number(a.questionId ?? 0) - Number(b.questionId ?? 0)
             );
-    }, [nonconformances]);
+    }, [auditQuestions]);
 
     const peqQuestionGroups = React.useMemo(
         () => questionGroups.filter((group) => group.type === 'PEQ'),
@@ -825,28 +808,59 @@ const Audit = () => {
         programsList
     ]);
 
-    // Load nonconformances for the selected audit
+    // Load the normalized question graph for the selected audit, including
+    // response-level evidence metadata. Keep a flattened finding view for
+    // summaries, exports, metrics-style helpers, and PDF generation.
     React.useEffect(() => {
-        async function loadNonconformances() {
+        const flattenQuestions = (questions) => (questions || []).flatMap((question) =>
+            (question.findings || []).map((finding, index) => ({
+                ...finding,
+                ncId: finding.findingId ?? finding.ncId,
+                findingId: finding.findingId ?? finding.ncId,
+                questionId: question.questionId,
+                scheduleId: question.scheduleId,
+                type: question.type,
+                sourceId: question.sourceId,
+                section: question.section,
+                subsection: question.subsection,
+                question: question.question,
+                questionSortOrder: question.sortOrder,
+                findingSortOrder: finding.sortOrder,
+                responseNumber: index + 1
+            }))
+        );
+
+        async function loadAuditQuestions() {
             if (isCuiAccessDenied) {
+                setAuditQuestions([]);
                 setNonconformances([]);
                 return;
             }
-            if (auditData?.scheduleId) {
-                try {
-                    const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}?includeEvidenceFiles=true`));
-                    const data = await response.json();
-                    if (!response.ok) {
-                        throw new Error(data?.error || 'Failed to load audit findings.');
-                    }
-                    setNonconformances(Array.isArray(data) ? data : []);
-                } catch (error) {
-                    console.error('Error loading nonconformances:', error);
-                    setNonconformances([]);
+            if (!auditData?.scheduleId) {
+                setAuditQuestions([]);
+                setNonconformances([]);
+                return;
+            }
+
+            try {
+                const response = await fetch(buildApiUrl(
+                    `audit-questions/${auditData.scheduleId}?includeEvidenceFiles=true`
+                ));
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Failed to load audit questions and findings.');
                 }
+                const questions = Array.isArray(data) ? data : [];
+                setAuditQuestions(questions);
+                setNonconformances(flattenQuestions(questions));
+            } catch (error) {
+                console.error('Error loading audit questions and findings:', error);
+                setAuditQuestions([]);
+                setNonconformances([]);
             }
         }
-        loadNonconformances();
+
+        loadAuditQuestions();
     }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     const hasObjectiveEvidence = React.useMemo(() => {
