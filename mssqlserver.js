@@ -6455,7 +6455,7 @@ app.get('/api/risk-ratings', async (req, res) => {
                     whereClause = `WHERE year = $1`;
                 }
                 const result = await pool.query(
-                    `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                    `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
                      FROM RiskRatings_r
                      ${whereClause}
                      ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
@@ -6471,7 +6471,7 @@ app.get('/api/risk-ratings', async (req, res) => {
                 whereClause += ` AND year = $2`;
             }
             const result = await pool.query(
-                `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
                  FROM RiskRatings_r
                  ${whereClause}
                  ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
@@ -6491,7 +6491,7 @@ app.get('/api/risk-ratings', async (req, res) => {
             whereClause += ` AND year = $${params.length}`;
         }
         const result = await pool.query(
-            `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+            `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
              FROM RiskRatings_r
              WHERE ${whereClause}
              ORDER BY year DESC, subcategoryid`,
@@ -6543,8 +6543,9 @@ app.post('/api/risk-ratings', async (req, res) => {
                         ouid,
                         programid,
                         subcategoryid,
-                        rating
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                        rating,
+                        comments
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                     [
                         normalizedProcessArea,
                         normalizedYear,
@@ -6556,7 +6557,8 @@ app.post('/api/risk-ratings', async (req, res) => {
                         scope.column === 'ouid' ? scope.targetId : null,
                         scope.column === 'programid' ? scope.targetId : null,
                         rating.subcategoryId,
-                        rating.rating
+                        rating.rating,
+                        String(rating.comments ?? '')
                     ]
                 );
             }
