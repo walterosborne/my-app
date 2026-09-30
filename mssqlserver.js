@@ -3012,7 +3012,7 @@ app.post('/api/save-nonconformances', async (req, res) => {
         const findingQuestionMap = new Map();
 
         if (incomingFindingIds.length > 0) {
-            const placeholders = incomingFindingIds.map((_, index) => `${index + 2}`).join(', ');
+            const placeholders = incomingFindingIds.map((_, index) => `$${index + 2}`).join(', ');
             const mappingResult = await client.query(
                 `SELECT f.findingid, q.questionid
                  FROM audit_findings_r AS f
@@ -5547,7 +5547,7 @@ app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
                 ].filter(Boolean))];
 
                 if (auditorIds.length > 0) {
-                    const auditorPlaceholders = auditorIds.map((_, index) => `${index + 1}`).join(', ');
+                    const auditorPlaceholders = auditorIds.map((_, index) => `$${index + 1}`).join(', ');
                     const auditorResult = await client.query(
                         `SELECT DISTINCT myid
                          FROM auditors_r
