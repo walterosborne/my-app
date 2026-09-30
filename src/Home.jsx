@@ -192,7 +192,7 @@ const Home = () => {
                         className="home-link-button"
                         onClick={() => navigate('/audit-statuses')}
                     >
-                        My Audits & Approvals
+                        My Audit To-Do List
                     </button>
                 </div>
 
