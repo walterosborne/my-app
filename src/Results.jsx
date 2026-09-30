@@ -4,7 +4,6 @@ import { useForm, Controller, useWatch } from 'react-hook-form'
 import Select from "react-select"
 import AsyncSelect from 'react-select/async'
 import { Box } from '@mui/material';
-import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { micromark } from 'micromark';
 import { toast } from 'react-toastify';
@@ -331,10 +330,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     );
   }, [standardsList]);
 
-  const etqQuestionSet = useMemo(() => {
-    return new Set(filteredEveryTimeQuestions.map((question) => question.question));
-  }, [filteredEveryTimeQuestions]);
-
   const getQuestionTypeLabel = useCallback(
     (typeValue) => {
       if (!typeValue && typeValue !== 0) return 'No response provided';
@@ -593,15 +588,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       || hasFieldValue(nc.other)
       || normalizeFileIds(nc.files).length > 0;
   }, [hasFieldValue, normalizeFileIds]);
-
-  const hasSavedEveryTimeQuestionContent = useCallback((nc) => {
-    return hasSavedFindingMetadata(nc);
-  }, [hasSavedFindingMetadata]);
-
-  const hasSavedStandardQuestionContent = useCallback((nc) => {
-    if (!nc) return false;
-    return hasFieldValue(nc.question) || hasSavedFindingMetadata(nc);
-  }, [hasFieldValue, hasSavedFindingMetadata]);
 
   const getEveryTimeQuestionCollapseKey = useCallback((question, index) => {
     return `etq_${question?.etqId ?? index}`;
