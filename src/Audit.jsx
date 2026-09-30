@@ -440,12 +440,12 @@ const Audit = () => {
 
     const getStandardClauses = () => {
         const clauseMap = new Map();
-        nonconformances.forEach(nc => {
-            if (!nc.section) return;
-            const section = nc.section;
-            const subsection = nc.subsection;
-            const question = nc.question;
-            const key = `${section}-${subsection || ''}`;
+        questionGroups.forEach((questionGroup) => {
+            if (!questionGroup.section) return;
+            const section = questionGroup.section;
+            const subsection = questionGroup.subsection;
+            const question = questionGroup.question;
+            const key = `${questionGroup.type}-${section}-${subsection || ''}`;
             if (clauseMap.has(key)) return;
             const label = `Clause ${section}${subsection ? '.' + subsection : ''}${question ? ` - ${question}` : ''}`;
             clauseMap.set(key, label);
