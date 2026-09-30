@@ -348,6 +348,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     const rows = (nonconformances || []).map((nc, index) => ({
       id: nc.ncId ?? `nc-${index}`,
       question: nc.question || 'No response provided',
+      responseNumber: nc.responseNumber ?? 1,
       type: getQuestionTypeLabel(nc.type),
       findingType: getFindingTypeLabel(nc.findingType),
       comment: nc.auditorComment || nc.comment || 'No response provided'
@@ -2056,6 +2057,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           <thead>
                             <tr>
                               <th>Question</th>
+                              <th>Response</th>
                               <th>Type</th>
                               <th>Finding Type</th>
                               <th>Comment</th>
@@ -2064,12 +2066,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           <tbody>
                             {existingFindingsRows.length === 0 ? (
                               <tr>
-                                <td colSpan={4}>No findings recorded yet.</td>
+                                <td colSpan={5}>No findings recorded yet.</td>
                               </tr>
                             ) : (
                               existingFindingsRows.map((row) => (
                                 <tr key={row.id}>
                                   <td>{row.question}</td>
+                                  <td>{row.responseNumber}</td>
                                   <td>{row.type}</td>
                                   <td>{row.findingType}</td>
                                   <td>{row.comment}</td>
