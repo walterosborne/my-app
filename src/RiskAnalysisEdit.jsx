@@ -464,8 +464,7 @@ function RiskAnalysisEdit() {
     <div className="entry-page">
       <div className="entry-container">
         <div className="tool-page-header">
-          <p className="tool-page-subtitle">Tools · Risk Analysis</p>
-          <h1 className="tool-page-title">Edit Risk Analysis</h1>
+          <p className="tool-page-subtitle">Tools · Edit Risk Analysis</p>
           {currentUser?.name && currentUser.name !== 'User' && (
             <h2 style={{ marginTop: '3px' }}>
               Welcome {currentUser.name}.{' '}
