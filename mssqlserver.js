@@ -2700,108 +2700,317 @@ app.post('/api/submit-improvement', async (req, res) => {
     }
 });
 
-// Get all nonconformances
+// Get all findings across non-archived audits. This intentionally keeps the
+// legacy endpoint name because metrics/report consumers already use it.
 app.get('/api/nonconformances', async (req, res) => {
     try {
-        const result = await pool.query(`SELECT nc.*
-             FROM nonconformances_r AS nc
-             INNER JOIN audits_r AS a ON a.scheduleid = nc.scheduleid
+        const result = await pool.query(
+            `SELECT
+                q.questionid,
+                q.scheduleid,
+                q.[type],
+                q.sourceid,
+                q.section,
+                q.subsection,
+                q.question,
+                q.sortorder AS questionsortorder,
+                f.findingid,
+                f.findingtype,
+                f.response,
+                f.auditorcomment,
+                f.details,
+                f.ain,
+                f.division,
+                f.sector,
+                f.qma,
+                f.other,
+                f.files,
+                f.severity,
+                f.sortorder AS findingsortorder,
+                f.createdat AS findingcreatedat,
+                f.updatedat AS findingupdatedat
+             FROM audit_questions_r AS q
+             INNER JOIN audit_findings_r AS f ON f.questionid = q.questionid
+             INNER JOIN audits_r AS a ON a.scheduleid = q.scheduleid
              WHERE a.stage <> -3
-             ORDER BY nc.ncid`);
-
-        // Parse array fields back to arrays and convert column names to camelCase
-        const nonconformances = result.rows.map(nc => ({
-            ncId: nc.ncid,
-            scheduleId: nc.scheduleid,
-            type: nc.type,
-            findingType: nc.findingtype,
-            severity: nc.severity,
-            section: nc.section,
-            subsection: nc.subsection,
-            question: nc.question,
-            response: nc.response,
-            auditorComment: nc.auditorcomment,
-            details: nc.details,
-            AIN: nc.ain,
-            division: parseMaybeJsonArray(nc.division),
-            sector: parseMaybeJsonArray(nc.sector),
-            qma: parseMaybeJsonArray(nc.qma),
-            other: parseMaybeJsonArray(nc.other),
-            files: parseMaybeJsonArray(nc.files),
-            createdAt: nc.createdat,
-            updatedAt: nc.updatedat
-        }));
-
-        res.json(nonconformances);
+             ORDER BY q.scheduleid, q.sortorder, q.questionid, f.sortorder, f.findingid`
+        );
+        res.json(result.rows.map(mapAuditFindingRow));
     } catch (error) {
         console.error('Error fetching all nonconformances:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Save nonconformances for a specific schedule
-app.post('/api/save-nonconformances', async (req, res) => {
-    const client = await pool.connect();
+const asPositiveIntegerOrNull = (value) => {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
 
+const saveAuditQuestionsForSchedule = async (client, scheduleId, questions) => {
+    const normalizedScheduleId = asPositiveIntegerOrNull(scheduleId);
+    if (!normalizedScheduleId) throw new Error('Valid scheduleId is required.');
+    if (!Array.isArray(questions)) throw new Error('questions must be an array.');
+
+    const existingQuestionResult = await client.query(
+        'SELECT questionid FROM audit_questions_r WHERE scheduleid = $1',
+        [normalizedScheduleId]
+    );
+    const existingQuestionIds = new Set(existingQuestionResult.rows.map((row) => Number(row.questionid)));
+    const keptQuestionIds = new Set();
+
+    for (let questionIndex = 0; questionIndex < questions.length; questionIndex += 1) {
+        const question = questions[questionIndex] || {};
+        const type = String(question.type ?? '').trim();
+        if (!type) throw new Error('Every audit question requires a type.');
+
+        let questionId = asPositiveIntegerOrNull(question.questionId);
+        const sourceId = asPositiveIntegerOrNull(question.sourceId);
+        const section = question.section === null || question.section === undefined || question.section === ''
+            ? null : Number(question.section);
+        const subsection = question.subsection === null || question.subsection === undefined || question.subsection === ''
+            ? null : Number(question.subsection);
+        const sortOrder = Number.isFinite(Number(question.sortOrder))
+            ? Number(question.sortOrder) : questionIndex + 1;
+        const questionText = String(question.question ?? '');
+
+        if (questionId) {
+            if (!existingQuestionIds.has(questionId) || keptQuestionIds.has(questionId)) {
+                throw new Error('Question ID does not belong to this audit or was submitted more than once.');
+            }
+            const updateResult = await client.query(
+                `UPDATE audit_questions_r
+                 SET [type] = $1, sourceid = $2, section = $3, subsection = $4,
+                     question = $5, sortorder = $6, updatedat = CURRENT_TIMESTAMP
+                 WHERE questionid = $7 AND scheduleid = $8`,
+                [type, sourceId, section, subsection, questionText, sortOrder, questionId, normalizedScheduleId]
+            );
+            if (updateResult.rowCount !== 1) {
+                throw new Error('Failed to update an existing audit question.');
+            }
+        } else {
+            const insertResult = await client.query(
+                `INSERT INTO audit_questions_r
+                    (scheduleid, [type], sourceid, section, subsection, question, sortorder)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING questionid`,
+                [normalizedScheduleId, type, sourceId, section, subsection, questionText, sortOrder]
+            );
+            questionId = Number(insertResult.rows[0]?.questionid);
+            if (!Number.isSafeInteger(questionId)) {
+                throw new Error('Failed to create audit question.');
+            }
+        }
+        keptQuestionIds.add(questionId);
+
+        const existingFindingResult = await client.query(
+            'SELECT findingid FROM audit_findings_r WHERE questionid = $1',
+            [questionId]
+        );
+        const existingFindingIds = new Set(existingFindingResult.rows.map((row) => Number(row.findingid)));
+        const keptFindingIds = new Set();
+        const findings = Array.isArray(question.findings) ? question.findings : [];
+
+        for (let findingIndex = 0; findingIndex < findings.length; findingIndex += 1) {
+            const finding = findings[findingIndex] || {};
+            let findingId = asPositiveIntegerOrNull(finding.findingId ?? finding.ncId);
+            const findingType = finding.findingType === null || finding.findingType === undefined || finding.findingType === ''
+                ? null : Number(finding.findingType);
+            const findingSortOrder = Number.isFinite(Number(finding.sortOrder))
+                ? Number(finding.sortOrder) : findingIndex + 1;
+            const values = [
+                findingType,
+                String(finding.response ?? ''),
+                String(finding.auditorComment ?? ''),
+                JSON.stringify(Array.isArray(finding.division) ? finding.division : []),
+                JSON.stringify(Array.isArray(finding.sector) ? finding.sector : []),
+                JSON.stringify(Array.isArray(finding.qma) ? finding.qma : []),
+                JSON.stringify(Array.isArray(finding.other) ? finding.other : []),
+                JSON.stringify(Array.isArray(finding.files) ? finding.files : []),
+                findingSortOrder
+            ];
+
+            if (findingId) {
+                if (!existingFindingIds.has(findingId) || keptFindingIds.has(findingId)) {
+                    throw new Error('Finding ID does not belong to its question or was submitted more than once.');
+                }
+                const updateResult = await client.query(
+                    `UPDATE audit_findings_r
+                     SET findingtype = $1, response = $2, auditorcomment = $3,
+                         division = $4, sector = $5, qma = $6, other = $7,
+                         files = $8, sortorder = $9, updatedat = CURRENT_TIMESTAMP
+                     WHERE findingid = $10 AND questionid = $11`,
+                    [...values, findingId, questionId]
+                );
+                if (updateResult.rowCount !== 1) {
+                    throw new Error('Failed to update an existing audit finding.');
+                }
+            } else {
+                const insertResult = await client.query(
+                    `INSERT INTO audit_findings_r
+                        (questionid, findingtype, response, auditorcomment, details, ain,
+                         division, sector, qma, other, files, severity, sortorder)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     RETURNING findingid`,
+                    [
+                        questionId,
+                        findingType,
+                        String(finding.response ?? ''),
+                        String(finding.auditorComment ?? ''),
+                        String(finding.details ?? ''),
+                        String(finding.AIN ?? finding.ain ?? ''),
+                        JSON.stringify(Array.isArray(finding.division) ? finding.division : []),
+                        JSON.stringify(Array.isArray(finding.sector) ? finding.sector : []),
+                        JSON.stringify(Array.isArray(finding.qma) ? finding.qma : []),
+                        JSON.stringify(Array.isArray(finding.other) ? finding.other : []),
+                        JSON.stringify(Array.isArray(finding.files) ? finding.files : []),
+                        finding.severity === null || finding.severity === undefined || finding.severity === ''
+                            ? null : Number(finding.severity),
+                        findingSortOrder
+                    ]
+                );
+                findingId = Number(insertResult.rows[0]?.findingid);
+                if (!Number.isSafeInteger(findingId)) throw new Error('Failed to create audit finding.');
+            }
+            keptFindingIds.add(findingId);
+        }
+
+        for (const existingFindingId of existingFindingIds) {
+            if (!keptFindingIds.has(existingFindingId)) {
+                await client.query(
+                    'DELETE FROM audit_findings_r WHERE findingid = $1 AND questionid = $2',
+                    [existingFindingId, questionId]
+                );
+            }
+        }
+    }
+
+    for (const existingQuestionId of existingQuestionIds) {
+        if (!keptQuestionIds.has(existingQuestionId)) {
+            // Explicit delete keeps this safe even if a copied schema has lost the FK/cascade.
+            await client.query('DELETE FROM audit_findings_r WHERE questionid = $1', [existingQuestionId]);
+            await client.query(
+                'DELETE FROM audit_questions_r WHERE questionid = $1 AND scheduleid = $2',
+                [existingQuestionId, normalizedScheduleId]
+            );
+        }
+    }
+
+    return loadAuditQuestions(client, normalizedScheduleId);
+};
+
+app.post('/api/save-audit-questions', async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { scheduleId, nonconformances } = req.body;
+        const { scheduleId, questions } = req.body || {};
         const userInfo = await getCurrentUserInfo(req);
         const audit = await getAuditForAccessCheck(client, scheduleId);
         if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
         }
-
-        await client.query('BEGIN');
-
-        // Delete existing nonconformances for this schedule
-        await client.query('DELETE FROM nonconformances_r WHERE scheduleId = $1', [scheduleId]);
-
-        // Insert new/updated nonconformances
-        for (const nc of nonconformances) {
-            await client.query(
-                `INSERT INTO nonconformances_r 
-        (scheduleId, type, findingType, section, subsection, question, response, auditorComment, details, AIN, division, sector, qma, other, files)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-                [
-                    nc.scheduleId,
-                    nc.type,
-                    nc.findingType !== undefined ? nc.findingType : null,
-                    nc.section,
-                    nc.subsection,
-                    nc.question || '',
-                    nc.response || '',
-                    nc.auditorComment || '',
-                    nc.details || '',
-                    nc.AIN || '',
-                    JSON.stringify(nc.division || []),
-                    JSON.stringify(nc.sector || []),
-                    JSON.stringify(nc.qma || []),
-                    JSON.stringify(nc.other || []),
-                    JSON.stringify(nc.files || [])
-                ]
-            );
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
+        await client.query('BEGIN');
+        const savedQuestions = await saveAuditQuestionsForSchedule(client, scheduleId, questions);
         await client.query('COMMIT');
 
-        res.json({ success: true, message: 'Nonconformances saved successfully' });
+        res.json({
+            success: true,
+            message: 'Audit questions and findings saved successfully',
+            questions: savedQuestions
+        });
     } catch (error) {
-        await rollbackTransaction(client);
-        console.error('Error saving nonconformances:', error);
-        res.status(500).json({ success: false, error: error.message });
+        await rollbackTransaction(client, 'save audit questions');
+        console.error('Error saving audit questions:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
     }
 });
 
-// Update nonconformance details (for Nonconformities page)
+// Compatibility for older clients during rollout. Each flattened row is grouped
+// by questionId when present; otherwise it becomes its own question.
+app.post('/api/save-nonconformances', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { scheduleId, nonconformances } = req.body || {};
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+
+        const grouped = new Map();
+        (Array.isArray(nonconformances) ? nonconformances : []).forEach((nc, index) => {
+            const existingQuestionId = asPositiveIntegerOrNull(nc?.questionId);
+            const key = existingQuestionId ? `question:${existingQuestionId}` : `row:${index}`;
+            if (!grouped.has(key)) {
+                grouped.set(key, {
+                    questionId: existingQuestionId,
+                    type: nc?.type,
+                    sourceId: nc?.sourceId ?? null,
+                    section: nc?.section ?? null,
+                    subsection: nc?.subsection ?? null,
+                    question: nc?.question || '',
+                    sortOrder: nc?.questionSortOrder ?? index + 1,
+                    findings: []
+                });
+            }
+            grouped.get(key).findings.push({
+                findingId: nc?.findingId ?? nc?.ncId ?? null,
+                findingType: nc?.findingType ?? null,
+                severity: nc?.severity ?? null,
+                response: nc?.response || '',
+                auditorComment: nc?.auditorComment || '',
+                details: nc?.details || '',
+                AIN: nc?.AIN || '',
+                division: nc?.division || [],
+                sector: nc?.sector || [],
+                qma: nc?.qma || [],
+                other: nc?.other || [],
+                files: nc?.files || [],
+                sortOrder: nc?.findingSortOrder ?? grouped.get(key).findings.length + 1
+            });
+        });
+
+        await client.query('BEGIN');
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            [...grouped.values()]
+        );
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            message: 'Audit findings saved successfully',
+            questions: savedQuestions,
+            nonconformances: flattenAuditQuestions(savedQuestions)
+        });
+    } catch (error) {
+        await rollbackTransaction(client, 'save legacy nonconformances');
+        console.error('Error saving nonconformances:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Update one normalized finding's Nonconformities-stage fields.
 app.post('/api/update-nonconformance-details', async (req, res) => {
     const client = await pool.connect();
-
     try {
         const { ncId, details, severity, actionItemNumber } = req.body;
         const ncLookup = await client.query(
-            'SELECT TOP 1 scheduleid FROM nonconformances_r WHERE ncid = $1',
+            `SELECT q.scheduleid
+             FROM audit_findings_r AS f
+             INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+             WHERE f.findingid = $1`,
             [ncId]
         );
         const scheduleId = ncLookup.rows[0]?.scheduleid;
@@ -2811,12 +3020,15 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
         }
 
-        await client.query(
-            `UPDATE nonconformances_r 
-            SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
-            WHERE ncid = $4`,
+        const result = await client.query(
+            `UPDATE audit_findings_r
+             SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
+             WHERE findingid = $4`,
             [details || '', severity || null, actionItemNumber || '', ncId]
         );
+        if (result.rowCount !== 1) {
+            return res.status(404).json({ success: false, error: 'Finding not found.' });
+        }
 
         res.json({ success: true, message: 'Nonconformance details updated successfully' });
     } catch (error) {
