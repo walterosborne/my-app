@@ -48,6 +48,24 @@ const findingTypeReverseMap = {
   4: 'OBS'
 };
 
+const flattenAuditQuestionFindings = (questions) => (questions || []).flatMap((question) =>
+  (question.findings || []).map((finding, index) => ({
+    ...finding,
+    ncId: finding.findingId ?? finding.ncId,
+    findingId: finding.findingId ?? finding.ncId,
+    questionId: question.questionId,
+    scheduleId: question.scheduleId,
+    type: question.type,
+    sourceId: question.sourceId,
+    section: question.section,
+    subsection: question.subsection,
+    question: question.question,
+    questionSortOrder: question.sortOrder,
+    findingSortOrder: finding.sortOrder,
+    responseNumber: index + 1
+  }))
+);
+
 const normalizeMarkdownText = (value) => {
   const text = String(value || '');
   return text
