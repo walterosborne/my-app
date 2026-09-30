@@ -1613,7 +1613,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       });
 
       const result = await response.json();
-      if (!response.ok && !result?.success) {
+      if (!response.ok || !result?.success) {
         throw new Error(result?.error || 'Failed to save audit results');
       }
 
