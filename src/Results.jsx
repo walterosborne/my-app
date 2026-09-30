@@ -918,6 +918,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     setDeletedPEQs(new Set());
     setStandardAdditional({});
     setDeletedStandardQuestions({});
+    setFindingCountsByQuestion({});
+    setDeletedFindingSlots({});
     setCollapsedPEQs({});
     setCollapsedSections({});
     setCollapsedSubsections({});
