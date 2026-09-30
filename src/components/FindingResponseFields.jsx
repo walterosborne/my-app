@@ -23,6 +23,7 @@ function FindingResponseFields({
 }) {
   return (
     <div className="finding-response-editor">
+      <input type="hidden" {...register(fieldName(questionKey, findingIndex, 'id'))} />
       <div className="finding-response-editor__header">
         <strong>Response {responseNumber}</strong>
         <button
