@@ -2852,7 +2852,11 @@ const saveAuditQuestionsForSchedule = async (
                     `UPDATE audit_findings_r
                      SET findingtype = $1, response = $2, auditorcomment = $3,
                          division = $4, sector = $5, qma = $6, other = $7,
-                         files = $8, sortorder = $9, updatedat = CURRENT_TIMESTAMP
+                         files = $8, sortorder = $9,
+                         details = CASE WHEN $1 = 1 THEN details ELSE N'' END,
+                         severity = CASE WHEN $1 = 1 THEN severity ELSE NULL END,
+                         ain = CASE WHEN $1 = 1 THEN ain ELSE N'' END,
+                         updatedat = CURRENT_TIMESTAMP
                      WHERE findingid = $10 AND questionid = $11`,
                     [...values, findingId, questionId]
                 );
