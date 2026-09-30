@@ -14,6 +14,7 @@ import './App.css'
 import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
 import { buildRosterOption, customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
+import FindingResponseFields, { getFindingFieldName } from './components/FindingResponseFields.jsx';
 import {
   buildApiUrl,
   getPrograms,
@@ -202,7 +203,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [expandedTexts, setExpandedTexts] = useState({});
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
+  const [auditQuestions, setAuditQuestions] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
+  const [findingCountsByQuestion, setFindingCountsByQuestion] = useState({});
+  const [deletedFindingSlots, setDeletedFindingSlots] = useState({});
   const [loadedNonconformancesScheduleId, setLoadedNonconformancesScheduleId] = useState(null);
   const [auditorFiles, setAuditorFiles] = useState([]);
   const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
