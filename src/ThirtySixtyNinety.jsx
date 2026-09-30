@@ -80,7 +80,6 @@ const ThirtySixtyNinety = () => {
   const [propsList, setPropsList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
-  const [includeCancelledAudits, setIncludeCancelledAudits] = useState(false);
   const [sectorFilter, setSectorFilter] = useState(null);
   const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
@@ -347,7 +346,7 @@ const ThirtySixtyNinety = () => {
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
-      if (!includeCancelledAudits && Number(audit?.stage) === -2) return false;
+      if (Number(audit?.stage) === -2) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -402,7 +401,6 @@ const ThirtySixtyNinety = () => {
   }, [
     audits,
     titleFilter,
-    includeCancelledAudits,
     sectorFilter,
     divisionFilter,
     programFilter,
@@ -435,8 +433,7 @@ const ThirtySixtyNinety = () => {
     { key: 'stageNonconformities', label: 'Nonconformities' },
     { key: 'stagePending', label: 'Pending Approval' },
     { key: 'stageApproved', label: 'Approved' },
-    { key: 'stageHistorical', label: 'Historical' },
-    { key: 'stageCancelled', label: 'Cancelled' }
+    { key: 'stageHistorical', label: 'Historical' }
   ];
 
   const findingColumns = [
@@ -561,7 +558,6 @@ const ThirtySixtyNinety = () => {
                   stagePending: 0,
                   stageApproved: 0,
                   stageHistorical: 0,
-                  stageCancelled: 0,
                   findingNonconformities: 0,
                   findingConformities: 0,
                   findingOfis: 0,
@@ -576,7 +572,6 @@ const ThirtySixtyNinety = () => {
               else if (stageLabel === 'Pending Approval') group.stagePending += 1;
               else if (stageLabel === 'Approved') group.stageApproved += 1;
               else if (stageLabel === 'Historical') group.stageHistorical += 1;
-              else if (stageLabel === 'Cancelled') group.stageCancelled += 1;
 
               group.findingNonconformities += findingCounts.nonconformities;
               group.findingConformities += findingCounts.conformities;
@@ -1435,14 +1430,6 @@ const ThirtySixtyNinety = () => {
           <div className="reports-heading">
             <div className="reports-title-row">
               <h1>{activeReport.title}</h1>
-              <label className="reports-title-checkbox">
-                <input
-                  type="checkbox"
-                  checked={includeCancelledAudits}
-                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
-                />
-                <span>Include cancelled audits</span>
-              </label>
             </div>
             {!activeReport.ready && <p>This report is coming soon.</p>}
           </div>
