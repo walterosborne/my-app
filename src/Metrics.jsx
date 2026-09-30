@@ -631,6 +631,9 @@ const Metrics = () => {
 
     return audits.filter((audit) => {
       const stageValue = Number(audit?.stage);
+      if (stageValue === -2) {
+        return false;
+      }
       if (!includeHistorical && stageValue === -1) {
         return false;
       }
