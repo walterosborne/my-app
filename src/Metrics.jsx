@@ -1456,7 +1456,6 @@ const Metrics = () => {
       <div className="entry-container">
         <div className="metrics-header tool-page-header">
           <p className="tool-page-subtitle">Tools · Metrics</p>
-          <h2 className="tool-page-title">Metrics</h2>
         </div>
         <div className="metrics-layout">
           <div className="metrics-filters">
