@@ -235,6 +235,7 @@ const Calendar = () => {
             onMouseLeave={clearHoverInfo}
         >
             <span className="event-id">{audit.scheduleId}</span>
+            <span className="event-separator" aria-hidden="true"> - </span>
             <span className="event-lead">{audit.leadName}</span>
         </button>
     );
@@ -271,7 +272,6 @@ const Calendar = () => {
             <div className="entry-container">
                 <div className="tool-page-header calendar-tool-header">
                     <p className="tool-page-subtitle">Tools · Calendar</p>
-                    <h2 className="tool-page-title">Calendar</h2>
                 </div>
                 <div className="calendar-bubble">
                 <div className="calendar-header">
