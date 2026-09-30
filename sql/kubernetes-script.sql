@@ -490,6 +490,90 @@ BEGIN TRY
         EXEC sys.sp_executesql @Sql;
     END;
 
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditQuestionsTable)
+          AND name = N'sortorder' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditQuestionsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_questions_sortorder] DEFAULT (0) FOR [sortorder];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'sortorder' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_sortorder] DEFAULT (0) FOR [sortorder];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'division' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_division] DEFAULT (N''[]'') FOR [division];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'sector' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_sector] DEFAULT (N''[]'') FOR [sector];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'qma' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_qma] DEFAULT (N''[]'') FOR [qma];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'other' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_other] DEFAULT (N''[]'') FOR [other];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'files' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_files] DEFAULT (N''[]'') FOR [files];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
     -- SELECT INTO also drops primary keys. Restore them before the FK/index
     -- work below. Stable question/finding IDs are part of the application contract.
     IF COLUMNPROPERTY(OBJECT_ID(@AuditQuestionsTable), N'questionid', 'IsIdentity') <> 1
