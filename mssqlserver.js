@@ -2756,7 +2756,11 @@ const saveAuditQuestionsForSchedule = async (
     client,
     scheduleId,
     questions,
-    { deletedQuestionIds = [], replaceOmittedQuestions = false } = {}
+    {
+        deletedQuestionIds = [],
+        replaceOmittedQuestions = false,
+        replaceOmittedFindings = true
+    } = {}
 ) => {
     const normalizedScheduleId = asPositiveIntegerOrNull(scheduleId);
     if (!normalizedScheduleId) throw new Error('Valid scheduleId is required.');
@@ -2885,12 +2889,14 @@ const saveAuditQuestionsForSchedule = async (
             keptFindingIds.add(findingId);
         }
 
-        for (const existingFindingId of existingFindingIds) {
-            if (!keptFindingIds.has(existingFindingId)) {
-                await client.query(
-                    'DELETE FROM audit_findings_r WHERE findingid = $1 AND questionid = $2',
-                    [existingFindingId, questionId]
-                );
+        if (replaceOmittedFindings) {
+            for (const existingFindingId of existingFindingIds) {
+                if (!keptFindingIds.has(existingFindingId)) {
+                    await client.query(
+                        'DELETE FROM audit_findings_r WHERE findingid = $1 AND questionid = $2',
+                        [existingFindingId, questionId]
+                    );
+                }
             }
         }
     }
@@ -3042,7 +3048,13 @@ app.post('/api/save-nonconformances', async (req, res) => {
             client,
             scheduleId,
             [...grouped.values()],
-            { replaceOmittedQuestions: true }
+            {
+                // A stale pre-multi-response browser cannot reliably represent
+                // every response under a question. Update what it submitted,
+                // but never delete omitted questions/findings.
+                replaceOmittedQuestions: false,
+                replaceOmittedFindings: false
+            }
         );
         await client.query('COMMIT');
 
