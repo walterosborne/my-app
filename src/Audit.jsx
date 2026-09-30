@@ -1821,32 +1821,58 @@ const Audit = () => {
         }
     };
 
-    const handleDownloadFindingEvidence = async (ncId) => {
-        if (!auditData?.scheduleId || !Number.isSafeInteger(Number(ncId))) return;
-        setDownloadingEvidenceNcId(ncId);
+    const downloadEvidenceZip = async ({ query, filename, setBusy, errorMessage }) => {
+        if (!auditData?.scheduleId) return;
+        setBusy(true);
         try {
             const response = await fetch(buildApiUrl(
-                `audits/${auditData.scheduleId}/objective-evidence.zip?ncId=${encodeURIComponent(ncId)}`
+                `audits/${auditData.scheduleId}/objective-evidence.zip?${query}`
             ));
             if (!response.ok) {
                 const errorData = (response.headers.get('content-type') || '').includes('application/json')
                     ? await response.json() : null;
-                throw new Error(errorData?.error || 'Failed to download question objective evidence.');
+                throw new Error(errorData?.error || errorMessage);
             }
             const blob = await response.blob();
             const objectUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = objectUrl;
-            link.download = `audit-${auditData.scheduleId}-question-${ncId}-objective-evidence.zip`;
+            link.download = filename;
             document.body.appendChild(link);
             link.click();
             link.remove();
             window.URL.revokeObjectURL(objectUrl);
         } catch (error) {
-            errorToast(error.message || 'Failed to download question objective evidence.');
+            errorToast(error.message || errorMessage);
         } finally {
-            setDownloadingEvidenceNcId(null);
+            setBusy(false);
         }
+    };
+
+    const handleDownloadFindingEvidence = async (findingId) => {
+        if (!Number.isSafeInteger(Number(findingId))) return;
+        setDownloadingEvidenceNcId(findingId);
+        await downloadEvidenceZip({
+            query: `findingId=${encodeURIComponent(findingId)}`,
+            filename: `audit-${auditData.scheduleId}-finding-${findingId}-objective-evidence.zip`,
+            setBusy: (busy) => {
+                if (!busy) setDownloadingEvidenceNcId(null);
+            },
+            errorMessage: 'Failed to download response objective evidence.'
+        });
+    };
+
+    const handleDownloadQuestionEvidence = async (questionId) => {
+        if (!Number.isSafeInteger(Number(questionId))) return;
+        setDownloadingQuestionEvidenceId(questionId);
+        await downloadEvidenceZip({
+            query: `questionId=${encodeURIComponent(questionId)}`,
+            filename: `audit-${auditData.scheduleId}-question-${questionId}-objective-evidence.zip`,
+            setBusy: (busy) => {
+                if (!busy) setDownloadingQuestionEvidenceId(null);
+            },
+            errorMessage: 'Failed to download question objective evidence.'
+        });
     };
 
     const handleLifecycle = async (action) => {
