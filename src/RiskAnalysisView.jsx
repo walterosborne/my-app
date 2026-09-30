@@ -365,10 +365,10 @@ const RiskAnalysisView = () => {
               <section key={group.key} className="risk-analysis-view-card">
                 <div className="risk-analysis-view-card-header">
                   <div>
-                    <p className="risk-analysis-view-kicker">{group.orgGroupLabel}</p>
-                    <h3>{group.orgTargetLabel}</h3>
+                    <h3 className="risk-analysis-view-process-area-title">{group.processAreaName}</h3>
+                    <p className="risk-analysis-view-org-group">{group.orgTargetLabel}</p>
+                    <p className="risk-analysis-view-org-type">{group.orgGroupLabel}</p>
                     <div className="risk-analysis-view-meta">
-                      <p className="risk-analysis-view-process-area">{group.processAreaName}</p>
                       <span className="risk-analysis-view-year">{group.year}</span>
                     </div>
                   </div>
@@ -382,7 +382,12 @@ const RiskAnalysisView = () => {
                       <div className="risk-analysis-view-items">
                         {factorGroup.items.map((item) => (
                           <div key={`${item.riskratingid}-${item.subcategoryid}`} className="risk-analysis-view-item">
-                            <span className="risk-analysis-view-process">{item.subcategoryName}</span>
+                            <div className="risk-analysis-view-item-content">
+                              <span className="risk-analysis-view-process">{item.subcategoryName}</span>
+                              {String(item.comments || '').trim() && (
+                                <p className="risk-analysis-view-comments">{item.comments}</p>
+                              )}
+                            </div>
                             <span className={`risk-analysis-view-chip rating-${getRiskToneLabel(item.rating).toLowerCase()}`}>
                               {getRiskToneLabel(item.rating)}
                             </span>
