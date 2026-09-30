@@ -282,7 +282,9 @@ export async function getNonconformances(scheduleId) {
         }
         return Array.isArray(data) ? data : [];
     }
-    const data = await fetchData('nonconformances');
+    // Findings change throughout Conduct Audit/Nonconformities, so a global
+    // results read must not reuse stale session cache data.
+    const data = await fetchData('nonconformances', true);
     return Array.isArray(data) ? data : [];
 }
 
