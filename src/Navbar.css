@@ -123,3 +123,13 @@
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.18);
     transform: translateY(-1px) scale(1.03);
 }
+
+.navbar-shortcut {
+    text-decoration: none;
+}
+
+.navbar-shortcut-icon {
+    width: 23px;
+    height: 23px;
+    display: block;
+}
