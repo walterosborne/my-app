@@ -280,8 +280,7 @@ const RiskAnalysisView = () => {
     <div className="entry-page">
       <div className="entry-container">
         <div className="tool-page-header">
-          <p className="tool-page-subtitle">Tools · Risk Analysis</p>
-          <h1 className="tool-page-title">View Risk Analysis</h1>
+          <p className="tool-page-subtitle">Tools · View Risk Analysis</p>
           <p className="risk-analysis-view-subtitle">
             Review saved risk selections by organization, risk factor, and process area.
           </p>
