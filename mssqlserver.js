@@ -2035,7 +2035,22 @@ app.get('/api/audit-questions/:scheduleId', async (req, res) => {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
         if (!await getAuditQuestionsReadAccess(req, res, auditId)) return;
-        res.json(await loadAuditQuestions(pool, auditId));
+        const questions = await loadAuditQuestions(pool, auditId);
+
+        if (req.query.includeEvidenceFiles === 'true') {
+            const flattened = flattenAuditQuestions(questions);
+            await attachEvidenceFileMetadata(pool, flattened);
+            const evidenceByFindingId = new Map(
+                flattened.map((finding) => [Number(finding.findingId), finding.evidenceFiles || []])
+            );
+            questions.forEach((question) => {
+                (question.findings || []).forEach((finding) => {
+                    finding.evidenceFiles = evidenceByFindingId.get(Number(finding.findingId)) || [];
+                });
+            });
+        }
+
+        res.json(questions);
     } catch (error) {
         console.error('Error fetching audit questions:', error);
         if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
