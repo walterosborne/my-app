@@ -499,6 +499,8 @@ const Metrics = () => {
   };
 
   const nonconformanceBySchedule = useMemo(() => {
+    // The API is intentionally one row per finding/response. Multiple responses
+    // beneath one question therefore count as multiple findings in metrics.
     return nonconformances.reduce((acc, nc) => {
       const scheduleId = Number(nc.scheduleId ?? nc.scheduleid);
       if (!scheduleId) return acc;
