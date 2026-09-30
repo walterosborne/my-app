@@ -2536,197 +2536,50 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       <div className='section'>
                         <label className='sectiontitle'>Every Time Questions</label>
                         {filteredEveryTimeQuestions.map((question, index) => {
-                      const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
-                      const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
+                          const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
+                          const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
+                          const questionKey = `etq_${index}`;
 
-                      return (
-                        <div className='peq' key={etqCollapseKey}>
-                          <div
-                            onClick={() => setCollapsedEveryTimeQuestions((prev) => ({ ...prev, [etqCollapseKey]: !prev[etqCollapseKey] }))}
-                            style={{
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '8px',
-                              padding: '8px',
-                              backgroundColor: '#f5f5f5',
-                              borderRadius: '4px',
-                              marginBottom: isEtqCollapsed ? 0 : '12px'
-                            }}
-                          >
-                            <span style={{ fontSize: '14px', marginTop: '2px' }}>
-                              {isEtqCollapsed ? '▶' : '▼'}
-                            </span>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <label style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
-                                Every Time Question {index + 1}
-                              </label>
-                              <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: 0, cursor: 'pointer' }}>
-                                {question.question}
-                              </label>
+                          return (
+                            <div className="peq" key={etqCollapseKey}>
+                              <input
+                                type="hidden"
+                                {...register(getQuestionIdFieldName(questionKey))}
+                              />
+                              <div
+                                onClick={() => setCollapsedEveryTimeQuestions((prev) => ({
+                                  ...prev,
+                                  [etqCollapseKey]: !prev[etqCollapseKey]
+                                }))}
+                                style={{
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: '8px',
+                                  padding: '8px',
+                                  backgroundColor: '#f5f5f5',
+                                  borderRadius: '4px',
+                                  marginBottom: isEtqCollapsed ? 0 : '12px',
+                                  width: '100%',
+                                  boxSizing: 'border-box'
+                                }}
+                              >
+                                <span style={{ fontSize: '14px', marginTop: '2px' }}>
+                                  {isEtqCollapsed ? '▶' : '▼'}
+                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <label style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
+                                    Every Time Question {index + 1}
+                                  </label>
+                                  <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: 0, cursor: 'pointer' }}>
+                                    {question.question}
+                                  </label>
+                                </div>
+                              </div>
+
+                              {!isEtqCollapsed && renderFindingResponses(questionKey)}
                             </div>
-                          </div>
-                          {!isEtqCollapsed && (
-                            <>
-                              <div className="fieldboxwhole">
-                                <label>Finding Type</label>
-                                <Controller
-                                  name={`etqFindingType${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <ToggleButtonGroup
-                                      {...field}
-                                      exclusive
-                                      onChange={(event, newValue) => {
-                                        if (newValue !== null) {
-                                          field.onChange(newValue);
-                                        }
-                                      }}
-                                      aria-label="finding type"
-                                    >
-                                      <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                        Nonconformity
-                                      </ToggleButton>
-                                      <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                        Conformity
-                                      </ToggleButton>
-                                      <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                        OFI
-                                      </ToggleButton>
-                                      <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                        OBS
-                                      </ToggleButton>
-                                    </ToggleButtonGroup>
-                                  )}
-                                />
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxhalf">
-                                  <label>Auditor Comment</label>
-                                  <textarea
-                                    {...register(`etqAuditorComment${index}`)}
-                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                    id={`etqAuditorComment${index}`}
-                                    className='textfield'
-                                  />
-                                </div>
-                                <div className="fieldboxhalf">
-                                  <label>Auditee Response</label>
-                                  <textarea
-                                    {...register(`etqAuditeeResponse${index}`)}
-                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                    id={`etqAuditeeResponse${index}`}
-                                    className='textfield'
-                                  />
-                                </div>
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Corporate</label>
-                                  <Controller
-                                    name={`etqPrOPCorporate${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        closeMenuOnSelect={false}
-                                        options={corporatePrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Corporate"
-                                        value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Sector</label>
-                                  <Controller
-                                    name={`etqPrOPSector${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        closeMenuOnSelect={false}
-                                        options={sectorPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Sector"
-                                        value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Division</label>
-                                  <Controller
-                                    name={`etqPrOPDivision${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        closeMenuOnSelect={false}
-                                        options={divisionPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Division"
-                                        value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Other</label>
-                                  <Controller
-                                    name={`etqPrOPOther${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        closeMenuOnSelect={false}
-                                        options={otherPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Other"
-                                        value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxwhole">
-                                  <label>Objective Evidence</label>
-                                  <Controller
-                                    name={`etqFiles${index}`}
-                                    control={control}
-                                    render={({ field }) => {
-                                      const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                      const selectedFileIds = normalizeFileIds(field.value);
-                                      return (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          closeMenuOnSelect={false}
-                                          options={objectiveEvidenceOptions}
-                                          styles={customStyles}
-                                          placeholder="Select files"
-                                          value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      );
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
+                          );
                         })}
                       </div>
                       <div className='section'>
