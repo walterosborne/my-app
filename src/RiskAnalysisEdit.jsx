@@ -218,7 +218,7 @@ function RiskAnalysisEdit() {
     { field: 'orgGroupLabel', headerName: 'Org Group Level', flex: 1, minWidth: 180 },
     { field: 'orgTargetLabel', headerName: 'Org Group', flex: 1.4, minWidth: 220 },
     { field: 'processArea', headerName: 'Process Area', flex: 1.3, minWidth: 220 },
-    { field: 'year', headerName: 'Year', width: 110, type: 'number' }
+    { field: 'year', headerName: 'Year', width: 110, valueFormatter: (value) => String(value ?? '') }
   ]), []);
 
   const duplicateProcessAreaInNewMode = useMemo(() => {
