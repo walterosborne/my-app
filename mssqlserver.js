@@ -2752,7 +2752,12 @@ const asPositiveIntegerOrNull = (value) => {
     return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 };
 
-const saveAuditQuestionsForSchedule = async (client, scheduleId, questions) => {
+const saveAuditQuestionsForSchedule = async (
+    client,
+    scheduleId,
+    questions,
+    { deletedQuestionIds = [], replaceOmittedQuestions = false } = {}
+) => {
     const normalizedScheduleId = asPositiveIntegerOrNull(scheduleId);
     if (!normalizedScheduleId) throw new Error('Valid scheduleId is required.');
     if (!Array.isArray(questions)) throw new Error('questions must be an array.');
@@ -2890,15 +2895,33 @@ const saveAuditQuestionsForSchedule = async (client, scheduleId, questions) => {
         }
     }
 
-    for (const existingQuestionId of existingQuestionIds) {
-        if (!keptQuestionIds.has(existingQuestionId)) {
-            // Explicit delete keeps this safe even if a copied schema has lost the FK/cascade.
-            await client.query('DELETE FROM audit_findings_r WHERE questionid = $1', [existingQuestionId]);
-            await client.query(
-                'DELETE FROM audit_questions_r WHERE questionid = $1 AND scheduleid = $2',
-                [existingQuestionId, normalizedScheduleId]
-            );
+    const questionIdsToDelete = new Set(
+        (Array.isArray(deletedQuestionIds) ? deletedQuestionIds : [])
+            .map(asPositiveIntegerOrNull)
+            .filter(Boolean)
+    );
+
+    if (replaceOmittedQuestions) {
+        for (const existingQuestionId of existingQuestionIds) {
+            if (!keptQuestionIds.has(existingQuestionId)) {
+                questionIdsToDelete.add(existingQuestionId);
+            }
         }
+    }
+
+    for (const questionIdToDelete of questionIdsToDelete) {
+        if (!existingQuestionIds.has(questionIdToDelete)) {
+            throw new Error('Deleted question ID does not belong to this audit.');
+        }
+        if (keptQuestionIds.has(questionIdToDelete)) {
+            throw new Error('A question cannot be both saved and deleted.');
+        }
+        // Explicit child delete keeps this safe even if a copied schema lost the FK/cascade.
+        await client.query('DELETE FROM audit_findings_r WHERE questionid = $1', [questionIdToDelete]);
+        await client.query(
+            'DELETE FROM audit_questions_r WHERE questionid = $1 AND scheduleid = $2',
+            [questionIdToDelete, normalizedScheduleId]
+        );
     }
 
     return loadAuditQuestions(client, normalizedScheduleId);
@@ -2907,7 +2930,7 @@ const saveAuditQuestionsForSchedule = async (client, scheduleId, questions) => {
 app.post('/api/save-audit-questions', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { scheduleId, questions } = req.body || {};
+        const { scheduleId, questions, deletedQuestionIds } = req.body || {};
         const userInfo = await getCurrentUserInfo(req);
         const audit = await getAuditForAccessCheck(client, scheduleId);
         if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
@@ -2918,7 +2941,12 @@ app.post('/api/save-audit-questions', async (req, res) => {
         }
 
         await client.query('BEGIN');
-        const savedQuestions = await saveAuditQuestionsForSchedule(client, scheduleId, questions);
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            questions,
+            { deletedQuestionIds }
+        );
         await client.query('COMMIT');
 
         res.json({
@@ -2987,7 +3015,8 @@ app.post('/api/save-nonconformances', async (req, res) => {
         const savedQuestions = await saveAuditQuestionsForSchedule(
             client,
             scheduleId,
-            [...grouped.values()]
+            [...grouped.values()],
+            { replaceOmittedQuestions: true }
         );
         await client.query('COMMIT');
 
