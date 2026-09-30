@@ -2321,93 +2321,87 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       <div className='section'>
                         <label className='sectiontitle'>Process Evaluation Questions</label>
                         {Array.from({ length: newPEQs }, (_, index) => {
-                          // Don't render deleted PEQs
                           if (deletedPEQs.has(index)) return null;
+                          const questionKey = `peq_${index}`;
+                          const isCollapsed = collapsedPEQs[index] ?? true;
 
                           return (
                             <div key={index} style={{ width: '100%' }}>
                               <button
                                 type="button"
-                                aria-expanded={!(collapsedPEQs[index] ?? true)}
+                                aria-expanded={!isCollapsed}
                                 onClick={() => setCollapsedPEQs((current) => ({
-                                  ...current, [index]: !(current[index] ?? true)
+                                  ...current,
+                                  [index]: !(current[index] ?? true)
                                 }))}
                                 style={{
-                                  display: 'flex', alignItems: 'center', gap: '8px',
-                                  width: '100%', textAlign: 'left', cursor: 'pointer',
-                                  backgroundColor: '#f5f5f5', color: '#000',
-                                  border: 0, borderRadius: '4px',
-                                  padding: '8px', marginBottom: '8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  backgroundColor: '#f5f5f5',
+                                  color: '#000',
+                                  border: 0,
+                                  borderRadius: '4px',
+                                  padding: '8px',
+                                  marginBottom: '8px',
                                   fontWeight: 'bold'
                                 }}
                               >
-                                <span aria-hidden="true">{(collapsedPEQs[index] ?? true) ? '▶' : '▼'}</span>
+                                <span aria-hidden="true">{isCollapsed ? '▶' : '▼'}</span>
                                 <span>Process Evaluation Question {index + 1}</span>
                               </button>
-                              {!(collapsedPEQs[index] ?? true) && (
-                              <div className='peq'>
-                                <div className="fieldboxwhole">
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                    <label style={{ margin: 0, alignSelf: 'center' }}>Process Evaluation Question {index + 1}</label>
-                                    <button
-                                      type="button"
-                                      onClick={() => deletePEQ(index)}
-                                      style={{
-                                        background: '#f44336',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 16px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        fontWeight: 'bold',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      × Delete
-                                    </button>
-                                  </div>
-                                  <textarea
-                                    {...register(`peqQuestion${index}`)}
-                                    style={{ width: '100%', height: '80px', resize: 'vertical' }}
-                                    id={`peqQuestion${index}`}
-                                    className='textfield'
-                                    placeholder="Enter your question here..."
+
+                              {!isCollapsed && (
+                                <div className="peq">
+                                  <input
+                                    type="hidden"
+                                    {...register(getQuestionIdFieldName(questionKey))}
                                   />
-                                </div>
-                                <div className="fieldboxwhole">
-                                  <label>Finding Type</label>
-                                  <Controller
-                                    name={`findingType${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <ToggleButtonGroup
-                                        {...field}
-                                        exclusive
-                                        onChange={(event, newValue) => {
-                                          if (newValue !== null) {
-                                            field.onChange(newValue);
-                                          }
+                                  <div className="fieldboxwhole">
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                      <label style={{ margin: 0, alignSelf: 'center' }}>
+                                        Process Evaluation Question {index + 1}
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => deletePEQ(index)}
+                                        style={{
+                                          background: '#f44336',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          padding: '6px 16px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          fontWeight: 'bold',
+                                          whiteSpace: 'nowrap'
                                         }}
-                                        aria-label="finding type"
                                       >
-                                        <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                          Nonconformity
-                                        </ToggleButton>
-                                        <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                          Conformity
-                                        </ToggleButton>
-                                        <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                          OFI
-                                        </ToggleButton>
-                                        <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                          OBS
-                                        </ToggleButton>
-                                      </ToggleButtonGroup>
+                                        × Delete Question
+                                      </button>
+                                    </div>
+                                    <textarea
+                                      {...register(`peqQuestion${index}`)}
+                                      style={{ width: '100%', height: '80px', resize: 'vertical' }}
+                                      id={`peqQuestion${index}`}
+                                      className="textfield"
+                                      placeholder="Enter your question here..."
+                                    />
+                                    {errors[`peqQuestion${index}`] && (
+                                      <span className="fielderror">{errors[`peqQuestion${index}`].message}</span>
                                     )}
-                                  />
+                                  </div>
+
+                                  {renderFindingResponses(questionKey)}
                                 </div>
-                                <div className='sectionrow'>
+                              )}
+                            </div>
+                          );
+                        })}
+                        <div className='sectionrow'>
                                   <div className="fieldboxhalf">
                                     <label>Auditor Comment</label>
                                     <textarea
