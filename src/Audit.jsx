@@ -1653,7 +1653,7 @@ const Audit = () => {
       </div>
 
       <div class="section-box">
-        <strong>PrOP criteria/documents reviewed during audit (including revision):</strong>
+        <strong>PrOP criteria/documents reviewed during audit:</strong>
         <p>${propDocsHtml}</p>
       </div>
 
