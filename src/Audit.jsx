@@ -136,7 +136,7 @@ const Audit = () => {
                     getCurrentUser()
                 ]);
 
-                setAudits(auditsData);
+                setAudits(auditsData.filter((audit) => Number(audit?.stage) !== -2));
                 setCurrentUser(userData);
                 setProgramsList(programs);
                 setDivisionsList(divisions);
@@ -1939,13 +1939,14 @@ const Audit = () => {
                 throw new Error(result.error || 'Failed to change audit stage.');
             }
             const refreshedAudits = await getAuditsReport(true);
-            setAudits(refreshedAudits);
-            if (action === 'archive') {
-                toast.success('Audit archived.');
-                const remaining = refreshedAudits.find((audit) => audit.scheduleId !== auditData.scheduleId);
+            const visibleAudits = refreshedAudits.filter((audit) => Number(audit?.stage) !== -2);
+            setAudits(visibleAudits);
+            if (action === 'archive' || action === 'cancel') {
+                toast.success(action === 'archive' ? 'Audit archived.' : 'Audit cancelled.');
+                const remaining = visibleAudits.find((audit) => audit.scheduleId !== auditData.scheduleId);
                 navigate(remaining ? `/audit/${remaining.scheduleId}` : '/audit');
             } else {
-                toast.success(action === 'cancel' ? 'Audit cancelled.' : 'Audit reactivated.');
+                toast.success('Audit reactivated.');
             }
             if (result.emailWarning) {
                 errorToast(result.emailWarning);
@@ -2098,7 +2099,7 @@ const Audit = () => {
                     >
                         {audits.map((audit) => (
                             <option key={audit.scheduleId} value={audit.scheduleId}>
-                                {audit.scheduleId} - {audit.title}{Number(audit.stage) === -2 ? ' (Cancelled)' : ''}
+                                {audit.scheduleId} - {audit.title}
                             </option>
                         ))}
                     </select>
