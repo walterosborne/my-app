@@ -1830,95 +1830,235 @@ app.get(['/api/healthz'], async (_req, res) => {
     res.status(result.ok ? 200 : 500).json(result);
 });
 
-// Get nonconformances for a specific schedule
-app.get('/api/nonconformances/:scheduleId', async (req, res) => {
-    try {
-        const { scheduleId } = req.params;
-        const auditId = parseInt(scheduleId, 10);
-        const userInfo = await getCurrentUserInfo(req);
-        const audit = await getAuditForAccessCheck(pool, auditId);
-        let approverScheduleIds = new Set();
+// Normalized audit question/finding model. The legacy /nonconformances API
+// remains as a flattened finding view so reports and metrics can consume findings
+// without needing to know how Conduct Audit groups them.
+const mapAuditFindingRow = (row) => ({
+    ncId: row.findingid,
+    findingId: row.findingid,
+    questionId: row.questionid,
+    scheduleId: row.scheduleid,
+    type: row.type,
+    sourceId: row.sourceid,
+    section: row.section,
+    subsection: row.subsection,
+    question: row.question,
+    questionSortOrder: row.questionsortorder,
+    findingSortOrder: row.findingsortorder,
+    findingType: row.findingtype,
+    severity: row.severity,
+    response: row.response,
+    auditorComment: row.auditorcomment,
+    details: row.details,
+    AIN: row.ain,
+    division: parseMaybeJsonArray(row.division),
+    sector: parseMaybeJsonArray(row.sector),
+    qma: parseMaybeJsonArray(row.qma),
+    other: parseMaybeJsonArray(row.other),
+    files: parseMaybeJsonArray(row.files),
+    createdAt: row.findingcreatedat,
+    updatedAt: row.findingupdatedat
+});
 
-        if (userInfo?.myid) {
-            const approvalsResult = await pool.query(
-                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
-                [auditId, userInfo.myid]
-            );
-            if (approvalsResult.rows.length > 0) {
-                approverScheduleIds.add(auditId);
-            }
+const loadAuditQuestions = async (queryable, scheduleId) => {
+    const result = await queryable.query(
+        `SELECT
+            q.questionid,
+            q.scheduleid,
+            q.[type],
+            q.sourceid,
+            q.section,
+            q.subsection,
+            q.question,
+            q.sortorder AS questionsortorder,
+            q.createdat AS questioncreatedat,
+            q.updatedat AS questionupdatedat,
+            f.findingid,
+            f.findingtype,
+            f.response,
+            f.auditorcomment,
+            f.details,
+            f.ain,
+            f.division,
+            f.sector,
+            f.qma,
+            f.other,
+            f.files,
+            f.severity,
+            f.sortorder AS findingsortorder,
+            f.createdat AS findingcreatedat,
+            f.updatedat AS findingupdatedat
+         FROM audit_questions_r AS q
+         LEFT JOIN audit_findings_r AS f ON f.questionid = q.questionid
+         WHERE q.scheduleid = $1
+         ORDER BY q.sortorder, q.questionid, f.sortorder, f.findingid`,
+        [scheduleId]
+    );
+
+    const questionsById = new Map();
+    for (const row of result.rows) {
+        const questionId = Number(row.questionid);
+        if (!questionsById.has(questionId)) {
+            questionsById.set(questionId, {
+                questionId,
+                scheduleId: Number(row.scheduleid),
+                type: row.type,
+                sourceId: row.sourceid === null || row.sourceid === undefined ? null : Number(row.sourceid),
+                section: row.section,
+                subsection: row.subsection,
+                question: row.question || '',
+                sortOrder: Number(row.questionsortorder ?? 0),
+                createdAt: row.questioncreatedat,
+                updatedAt: row.questionupdatedat,
+                findings: []
+            });
         }
 
-        if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        if (row.findingid !== null && row.findingid !== undefined) {
+            questionsById.get(questionId).findings.push({
+                findingId: Number(row.findingid),
+                ncId: Number(row.findingid),
+                findingType: row.findingtype,
+                severity: row.severity,
+                response: row.response || '',
+                auditorComment: row.auditorcomment || '',
+                details: row.details || '',
+                AIN: row.ain || '',
+                division: parseMaybeJsonArray(row.division),
+                sector: parseMaybeJsonArray(row.sector),
+                qma: parseMaybeJsonArray(row.qma),
+                other: parseMaybeJsonArray(row.other),
+                files: parseMaybeJsonArray(row.files),
+                sortOrder: Number(row.findingsortorder ?? 0),
+                createdAt: row.findingcreatedat,
+                updatedAt: row.findingupdatedat
+            });
+        }
+    }
+
+    return [...questionsById.values()];
+};
+
+const flattenAuditQuestions = (questions) => (questions || []).flatMap((question) =>
+    (question.findings || []).map((finding, index) => ({
+        ncId: finding.findingId,
+        findingId: finding.findingId,
+        questionId: question.questionId,
+        scheduleId: question.scheduleId,
+        type: question.type,
+        sourceId: question.sourceId,
+        section: question.section,
+        subsection: question.subsection,
+        question: question.question,
+        questionSortOrder: question.sortOrder,
+        findingSortOrder: finding.sortOrder,
+        responseNumber: index + 1,
+        findingType: finding.findingType,
+        severity: finding.severity,
+        response: finding.response,
+        auditorComment: finding.auditorComment,
+        details: finding.details,
+        AIN: finding.AIN,
+        division: finding.division,
+        sector: finding.sector,
+        qma: finding.qma,
+        other: finding.other,
+        files: finding.files,
+        createdAt: finding.createdAt,
+        updatedAt: finding.updatedAt
+    }))
+);
+
+const attachEvidenceFileMetadata = async (queryable, findings) => {
+    const fileIds = [...new Set((findings || []).flatMap((finding) => finding.files || [])
+        .map(Number)
+        .filter((fileId) => Number.isSafeInteger(fileId) && fileId > 0))];
+    if (fileIds.length === 0) {
+        for (const finding of findings || []) finding.evidenceFiles = [];
+        return;
+    }
+
+    const placeholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
+    const result = await queryable.query(
+        `SELECT fileId, fileName, fileSize
+         FROM auditor_files_r
+         WHERE fileId IN (${placeholders})`,
+        fileIds
+    );
+    const evidenceById = new Map(result.rows.map((file) => [
+        Number(file.fileid),
+        {
+            fileId: Number(file.fileid),
+            fileName: file.filename,
+            fileSize: file.filesize
+        }
+    ]));
+
+    for (const finding of findings || []) {
+        finding.evidenceFiles = [...new Set((finding.files || []).map(Number))]
+            .map((fileId) => evidenceById.get(fileId))
+            .filter(Boolean);
+    }
+};
+
+const getAuditQuestionsReadAccess = async (req, res, auditId) => {
+    const userInfo = await getCurrentUserInfo(req);
+    const audit = await getAuditForAccessCheck(pool, auditId);
+    let approverScheduleIds = new Set();
+
+    if (userInfo?.myid) {
+        const approvalsResult = await pool.query(
+            'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+            [auditId, userInfo.myid]
+        );
+        if (approvalsResult.rows.length > 0) approverScheduleIds.add(auditId);
+    }
+
+    if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    if (!hasCuiAccess({ audit, userInfo })) {
+        sendCuiAccessDenied(res, { req, userInfo });
+        return null;
+    }
+    return { audit, userInfo };
+};
+
+// Conduct Audit consumes the nested representation so one question can own
+// multiple independent responses/findings.
+app.get('/api/audit-questions/:scheduleId', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        if (!Number.isSafeInteger(auditId) || auditId <= 0) {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
-        if (!hasCuiAccess({ audit, userInfo })) {
-            return sendCuiAccessDenied(res, { req, userInfo });
+        if (!await getAuditQuestionsReadAccess(req, res, auditId)) return;
+        res.json(await loadAuditQuestions(pool, auditId));
+    } catch (error) {
+        console.error('Error fetching audit questions:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Flatten findings for reports, metrics, Nonconformities, and compatibility.
+app.get('/api/nonconformances/:scheduleId', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        if (!Number.isSafeInteger(auditId) || auditId <= 0) {
+            return res.status(404).json({ success: false, error: 'Audit not found' });
         }
+        if (!await getAuditQuestionsReadAccess(req, res, auditId)) return;
 
-        const result = await pool.query(
-            'SELECT * FROM nonconformances_r WHERE scheduleId = $1 ORDER BY ncId',
-            [auditId]
-        );
-
-        // Parse array fields back to arrays and convert column names to camelCase
-        const nonconformances = result.rows.map(nc => ({
-            ncId: nc.ncid,
-            scheduleId: nc.scheduleid,
-            type: nc.type,
-            findingType: nc.findingtype,
-            severity: nc.severity,
-            section: nc.section,
-            subsection: nc.subsection,
-            question: nc.question,
-            response: nc.response,
-            auditorComment: nc.auditorcomment,
-            details: nc.details,
-            AIN: nc.ain,
-            division: parseMaybeJsonArray(nc.division),
-            sector: parseMaybeJsonArray(nc.sector),
-            qma: parseMaybeJsonArray(nc.qma),
-            other: parseMaybeJsonArray(nc.other),
-            files: parseMaybeJsonArray(nc.files),
-            createdAt: nc.createdat,
-            updatedAt: nc.updatedat
-        }));
-
-        // Only the individual audit report requests file metadata. Resolve linked
-        // files across all auditors, including archived files still on a finding.
+        const questions = await loadAuditQuestions(pool, auditId);
+        const findings = flattenAuditQuestions(questions);
         if (req.query.includeEvidenceFiles === 'true') {
-            const fileIds = [...new Set(nonconformances.flatMap((nc) => nc.files)
-                .map(Number)
-                .filter((fileId) => Number.isSafeInteger(fileId) && fileId > 0))];
-
-            const evidenceById = new Map();
-            if (fileIds.length > 0) {
-                const placeholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
-                const filesResult = await pool.query(
-                    `SELECT fileId, fileName, fileSize FROM auditor_files_r
-                     WHERE fileId IN (${placeholders})`,
-                    fileIds
-                );
-                for (const file of filesResult.rows) {
-                    evidenceById.set(Number(file.fileid), {
-                        fileId: Number(file.fileid),
-                        fileName: file.filename,
-                        fileSize: file.filesize
-                    });
-                }
-            }
-
-            for (const nc of nonconformances) {
-                nc.evidenceFiles = [...new Set(nc.files.map(Number))]
-                    .map((fileId) => evidenceById.get(fileId))
-                    .filter(Boolean);
-            }
+            await attachEvidenceFileMetadata(pool, findings);
         }
-
-        res.json(nonconformances);
+        res.json(findings);
     } catch (error) {
         console.error('Error fetching nonconformances:', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     }
 });
 
