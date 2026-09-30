@@ -1494,7 +1494,7 @@ const Audit = () => {
             return `
                 <div class="nc-question-group">
                     <div class="nc-question"><strong>Question:</strong> ${questionHtml}</div>
-                    ${groupNcEntriesByQuestion(entries).map(renderNcQuestionGroup).join('')}
+                    ${entries.map((nc) => renderNcEntry(nc)).join('')}
                 </div>
             `;
         };
@@ -1511,7 +1511,7 @@ const Audit = () => {
             return `
                 <div class="nc-section">
                     <h3>${escapeHtml(heading)}</h3>
-                    ${entries.map((nc) => renderNcEntry(nc)).join('')}
+                    ${groupNcEntriesByQuestion(entries).map(renderNcQuestionGroup).join('')}
                 </div>
             `;
         };
