@@ -1380,6 +1380,38 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [selectedAudit, propsList]);
 
+  const renderFindingResponses = (questionKey) => {
+    const findingIndexes = getVisibleFindingIndexes(questionKey);
+    return (
+      <>
+        {findingIndexes.map((findingIndex, visibleIndex) => (
+          <FindingResponseFields
+            key={`${questionKey}-finding-${findingIndex}`}
+            questionKey={questionKey}
+            findingIndex={findingIndex}
+            responseNumber={visibleIndex + 1}
+            control={control}
+            register={register}
+            corporatePrOPOptions={corporatePrOPOptions}
+            sectorPrOPOptions={sectorPrOPOptions}
+            divisionPrOPOptions={divisionPrOPOptions}
+            otherPrOPOptions={otherPrOPOptions}
+            getObjectiveEvidenceOptions={getObjectiveEvidenceOptions}
+            normalizeFileIds={normalizeFileIds}
+            onDelete={() => deleteFindingResponse(questionKey, findingIndex)}
+          />
+        ))}
+        <button
+          type="button"
+          className="add-response-button"
+          onClick={() => addFindingResponse(questionKey)}
+        >
+          + Add Response
+        </button>
+      </>
+    );
+  };
+
   const [paginationModel, setPaginationModel] = useState({
     page: 0,
     pageSize: 10
