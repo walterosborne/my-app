@@ -16,7 +16,7 @@ Included:
    - Migrates every existing nonconformances_r row to one question + one finding.
    - Preserves each legacy ncid as the migrated finding ID.
 6. Per-rating Risk Analysis comments.
-7. Historical cleanup for Planning audits with expected start dates before 2026-08-01.
+7. Cancel stale Planning audits with expected start dates before 2026-08-01.
 
 Not included because they require no database change:
 - Objective-evidence report/download UI.
@@ -109,12 +109,12 @@ BEGIN TRY
         EXEC sys.sp_executesql @Sql;
     END;
 
-    -- Mark stale Planning audits as Historical. Preserve the prior stage so the
-    -- lifecycle history remains explicit if a record is ever reactivated.
+    -- Mark stale Planning audits as Cancelled. Preserve the prior stage so they
+    -- can still be reactivated through the normal audit lifecycle controls.
     SET @Sql = N'
         UPDATE ' + @AuditsTable + N'
         SET stagebeforeinactive = COALESCE(stagebeforeinactive, stage),
-            stage = -1,
+            stage = -2,
             updatedat = CURRENT_TIMESTAMP
         WHERE stage = 1
           AND expectedstartdate < CONVERT(date, ''2026-08-01'');';
