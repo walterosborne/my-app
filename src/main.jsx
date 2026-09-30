@@ -154,7 +154,7 @@ const getPageTitle = (location) => {
     case '/submit-improvement':
       return 'Submit Improvement';
     case '/audit-statuses':
-      return 'Audit Stages';
+      return 'My Audit To-Do List';
     case '/admin':
       return 'Admin Menu';
     case '/tabletest':
