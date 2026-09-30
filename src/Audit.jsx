@@ -1911,6 +1911,121 @@ const Audit = () => {
         }
     };
 
+    const renderQuestionGroup = (group, groupIndex, { standard = false } = {}) => {
+        const sectionLabel = group.section !== null && group.section !== undefined
+            ? `${group.section}${group.subsection !== null && group.subsection !== undefined ? `.${group.subsection}` : ''}`
+            : null;
+        const standardLabel = standard ? getStandardTypeLabel(group.type) : null;
+        const hasEvidence = group.findings.some((finding) =>
+            Array.isArray(finding.evidenceFiles) && finding.evidenceFiles.length > 0
+        );
+
+        return (
+            <article
+                key={group.questionId || `${group.type}-${group.section ?? 'na'}-${group.subsection ?? 'na'}-${groupIndex}`}
+                className="question-findings-card"
+            >
+                <div className="question-findings-header">
+                    <div className="question-findings-heading">
+                        <div className="question-findings-meta">
+                            {standardLabel && <span>{standardLabel}</span>}
+                            {sectionLabel && <span>Section {sectionLabel}</span>}
+                            <span>{group.findings.length} {group.findings.length === 1 ? 'response' : 'responses'}</span>
+                        </div>
+                        <strong className="question-findings-label">Question</strong>
+                        <p>{group.question || <span className="no-response">No question provided</span>}</p>
+                    </div>
+                    {hasEvidence && group.questionId && (
+                        <button
+                            type="button"
+                            className="question-evidence-zip"
+                            onClick={() => handleDownloadQuestionEvidence(group.questionId)}
+                            disabled={downloadingQuestionEvidenceId === group.questionId}
+                        >
+                            {downloadingQuestionEvidenceId === group.questionId
+                                ? 'Downloading...'
+                                : 'Download Question Evidence (ZIP)'}
+                        </button>
+                    )}
+                </div>
+
+                <div className="question-findings-responses">
+                    {group.findings.map((finding, responseIndex) => {
+                        const chipMeta = getFindingChipMeta(finding.findingType);
+                        return (
+                            <div
+                                key={finding.ncId || `${group.questionId}-response-${responseIndex}`}
+                                className={`finding-card response-finding-card${chipMeta ? ` ${chipMeta.className}` : ''}${finding.evidenceFiles?.length ? ' has-finding-evidence' : ''}`}
+                            >
+                                <div className="finding-header">
+                                    <div className="finding-id-type">
+                                        <span className="response-number">Response {responseIndex + 1}</span>
+                                        {chipMeta && <span className="finding-type">{chipMeta.label}</span>}
+                                        {finding.findingType === 1 && (
+                                            <>
+                                                <span className="finding-id">
+                                                    NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}
+                                                </span>
+                                                {finding.severity && (
+                                                    <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
+                                                        Severity: {getSeverityLabel(finding.severity)}
+                                                    </span>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="finding-item">
+                                    <strong>Auditee Response:</strong>
+                                    <p>{finding.response || <span className="no-response">No response provided</span>}</p>
+                                </div>
+                                <div className="finding-item">
+                                    <strong>Auditor Comment:</strong>
+                                    <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
+                                </div>
+                                <div className="finding-item">
+                                    <strong>PrOPs:</strong>
+                                    <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
+                                </div>
+
+                                {finding.findingType === 1 && (showNcDetailFallbacks || finding.details || finding.AIN) && (
+                                    <>
+                                        <div className="finding-item">
+                                            <strong>Details:</strong>
+                                            <p>
+                                                {finding.details
+                                                    || (showNcDetailFallbacks
+                                                        ? <span className="no-response">No response provided</span>
+                                                        : null)}
+                                            </p>
+                                        </div>
+                                        <div className="finding-item">
+                                            <strong>Corrective Action Record Number:</strong>
+                                            <p>
+                                                {finding.AIN
+                                                    || (showNcDetailFallbacks
+                                                        ? <span className="no-response">No response provided</span>
+                                                        : null)}
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+
+                                <FindingEvidencePanel
+                                    finding={finding}
+                                    scheduleId={auditData.scheduleId}
+                                    downloadingNcId={downloadingEvidenceNcId}
+                                    onDownloadZip={handleDownloadFindingEvidence}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+            </article>
+        );
+    };
+
     const canChangeLifecycle = Boolean(auditData?.canManage && !isLocked && !isApproved);
     const hasWorkflowActions = Boolean(
         (!isLocked && stageValue >= 1 && stageValue <= 4)
