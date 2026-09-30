@@ -2698,13 +2698,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                             </div>
                                             {additionalCount > 0 && Array.from({ length: additionalCount }, (_, addIdx) => {
                                               if (deletedStandardQuestions[additionalKey]?.has(addIdx)) return null;
+                                              const questionKey = `std_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`;
+                                              const questionFieldName = `standardAdditionalQuestion_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`;
 
                                               return (
                                                 <div key={`${additionalKey}_add_${addIdx}`} style={{ width: '100%', marginBottom: '10px' }}>
-                                                  <div className='peq'>
+                                                  <div className="peq">
+                                                    <input
+                                                      type="hidden"
+                                                      {...register(getQuestionIdFieldName(questionKey))}
+                                                    />
                                                     <div className="fieldboxwhole">
                                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                                        <label style={{ margin: 0, alignSelf: 'center' }}>Standard Question {addIdx + 1}</label>
+                                                        <label style={{ margin: 0, alignSelf: 'center' }}>
+                                                          Standard Question {addIdx + 1}
+                                                        </label>
                                                         <button
                                                           type="button"
                                                           onClick={() => deleteStandardQuestion(standardId, sectionNum, question.subsection, addIdx)}
@@ -2720,49 +2728,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             whiteSpace: 'nowrap'
                                                           }}
                                                         >
-                                                          × Delete
+                                                          × Delete Question
                                                         </button>
                                                       </div>
                                                       <textarea
-                                                        {...register(`standardAdditionalQuestion_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`)}
+                                                        {...register(questionFieldName)}
                                                         style={{ width: '100%', height: '80px', resize: 'vertical' }}
-                                                        className='textfield'
+                                                        className="textfield"
                                                         placeholder="Enter your question here..."
                                                       />
+                                                      {errors[questionFieldName] && (
+                                                        <span className="fielderror">{errors[questionFieldName].message}</span>
+                                                      )}
                                                     </div>
-                                                    <div className="fieldboxwhole">
-                                                      <label>Finding Type</label>
-                                                      <Controller
-                                                        name={`standardAdditionalFindingType_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                        control={control}
-                                                        render={({ field }) => (
-                                                          <ToggleButtonGroup
-                                                            {...field}
-                                                            exclusive
-                                                            onChange={(event, newValue) => {
-                                                              if (newValue !== null) {
-                                                                field.onChange(newValue);
-                                                              }
-                                                            }}
-                                                            aria-label="finding type"
-                                                          >
-                                                            <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                                              Nonconformity
-                                                            </ToggleButton>
-                                                            <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                                              Conformity
-                                                            </ToggleButton>
-                                                            <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                                              OFI
-                                                            </ToggleButton>
-                                                            <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                                              OBS
-                                                            </ToggleButton>
-                                                          </ToggleButtonGroup>
-                                                        )}
-                                                      />
-                                                    </div>
-                                                    <div className='sectionrow'>
+
+                                                    {renderFindingResponses(questionKey)}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                            <div className='sectionrow'>
                                                       <div className="fieldboxhalf">
                                                         <label>Auditor Comment</label>
                                                         <textarea
