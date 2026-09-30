@@ -387,6 +387,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     .map((nc, idx) => ({
       id: idx + 1,
       NCID: nc.ncId,
+      QuestionID: nc.questionId ?? null,
+      ResponseNumber: nc.responseNumber ?? 1,
       Question: nc.question,
       RawType: nc.type,
       Type: getQuestionTypeLabel(nc.type),
@@ -980,7 +982,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                         <div className='section' key={nc.NCID}>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
-                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                              <h4 style={{ margin: '0 0 4px 0' }}>{nc.Question}</h4>
+                               <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                                 Response {nc.ResponseNumber} · NCID {nc.NCID}
+                               </div>
                             </div>
                           </div>
                           <div className='sectionrow'>
@@ -1036,7 +1041,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                         <div className='section' key={nc.NCID}>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
-                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                              <h4 style={{ margin: '0 0 4px 0' }}>{nc.Question}</h4>
+                               <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                                 Response {nc.ResponseNumber} · NCID {nc.NCID}
+                               </div>
                             </div>
                           </div>
                           <div className='sectionrow'>
@@ -1098,6 +1106,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 <div className="fieldboxwhole">
                                   <div style={{ margin: '0 0 10px 0' }}>
                                     <ReactMarkdown>{nc.Question || ''}</ReactMarkdown>
+                                     <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                       Response {nc.ResponseNumber} · NCID {nc.NCID}
+                                     </div>
                                   </div>
                                 </div>
                               </div>
