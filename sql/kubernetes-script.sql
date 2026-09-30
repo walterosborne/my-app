@@ -221,7 +221,7 @@ BEGIN TRY
     END;
 
     /* ============================================================
-       4. LEGACY STANDARD QUESTION TYPES
+       5. LEGACY STANDARD QUESTION TYPES
        PEQ, ETQ, and already-numeric types are untouched.
        ============================================================ */
 
