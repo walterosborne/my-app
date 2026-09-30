@@ -504,6 +504,23 @@ BEGIN TRY
         SET IDENTITY_INSERT ' + @AuditFindingsTable + N' OFF;';
     EXEC sys.sp_executesql @Sql;
 
+    -- Every legacy row must now have its preserved question/finding identity.
+    SET @Sql = N'
+        IF EXISTS (
+            SELECT 1
+            FROM ' + @QuestionsTable + N' AS nc
+            LEFT JOIN ' + @AuditQuestionsTable + N' AS q
+              ON q.questionid = nc.ncid
+            LEFT JOIN ' + @AuditFindingsTable + N' AS f
+              ON f.findingid = nc.ncid
+             AND f.questionid = q.questionid
+            WHERE q.questionid IS NULL
+               OR f.findingid IS NULL
+               OR q.scheduleid <> nc.scheduleid
+        )
+            THROW 50216, ''Legacy question/finding migration verification failed; entire migration rolled back.'', 1;';
+    EXEC sys.sp_executesql @Sql;
+
     -- Indexes are idempotent and intentionally created after the legacy load.
     IF NOT EXISTS (
         SELECT 1 FROM sys.indexes
