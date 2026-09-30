@@ -2433,7 +2433,7 @@ app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', asy
         res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(file.filename)}"`);
         res.send(file.filedata);
     } catch (error) {
-        console.error('Error downloading question objective evidence:', error);
+        console.error('Error downloading response objective evidence:', error);
         if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to download objective evidence.' });
     }
 });
