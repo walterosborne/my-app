@@ -443,6 +443,40 @@ BEGIN TRY
         EXEC sys.sp_executesql @Sql;
     END;
 
+    -- SELECT INTO also drops primary keys. Restore them before the FK/index
+    -- work below. Stable question/finding IDs are part of the application contract.
+    IF COLUMNPROPERTY(OBJECT_ID(@AuditQuestionsTable), N'questionid', 'IsIdentity') <> 1
+        THROW 50217, 'audit_questions_r.questionid is not an IDENTITY column; refusing an unsafe migration.', 1;
+
+    IF COLUMNPROPERTY(OBJECT_ID(@AuditFindingsTable), N'findingid', 'IsIdentity') <> 1
+        THROW 50218, 'audit_findings_r.findingid is not an IDENTITY column; refusing an unsafe migration.', 1;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.key_constraints
+        WHERE parent_object_id = OBJECT_ID(@AuditQuestionsTable)
+          AND [type] = N'PK'
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditQuestionsTable +
+            N' ADD CONSTRAINT [PK_' + @TargetSchema +
+            N'_audit_questions] PRIMARY KEY ([questionid]);';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.key_constraints
+        WHERE parent_object_id = OBJECT_ID(@AuditFindingsTable)
+          AND [type] = N'PK'
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [PK_' + @TargetSchema +
+            N'_audit_findings] PRIMARY KEY ([findingid]);';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
     -- Preserve legacy identifiers on first migration. Each current legacy
     -- record becomes one question with one finding, exactly as it exists today.
     SET @Sql = N'
