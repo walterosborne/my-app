@@ -104,6 +104,7 @@ const Audit = () => {
     const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
     const [downloadingObjectiveEvidence, setDownloadingObjectiveEvidence] = React.useState(false);
     const [downloadingEvidenceNcId, setDownloadingEvidenceNcId] = React.useState(null);
+    const [downloadingQuestionEvidenceId, setDownloadingQuestionEvidenceId] = React.useState(null);
     const [changingLifecycle, setChangingLifecycle] = React.useState(false);
 
     // Load all data from API on mount
@@ -295,26 +296,64 @@ const Audit = () => {
         return `NCID - ${value}`;
     };
 
-    const standardFindingsSorted = React.useMemo(() => {
-        const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
-        return nonconformances
-            .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
+    const questionGroups = React.useMemo(() => {
+        const groups = new Map();
+
+        nonconformances.forEach((finding, index) => {
+            const questionId = finding.questionId ?? finding.ncId ?? `finding-${index}`;
+            const key = String(questionId);
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    questionId: finding.questionId ?? null,
+                    type: finding.type,
+                    section: finding.section,
+                    subsection: finding.subsection,
+                    question: finding.question || '',
+                    sortOrder: Number(finding.questionSortOrder ?? index),
+                    findings: []
+                });
+            }
+            groups.get(key).findings.push(finding);
+        });
+
+        return [...groups.values()]
+            .map((group) => ({
+                ...group,
+                findings: group.findings.slice().sort((a, b) =>
+                    Number(a.findingSortOrder ?? 0) - Number(b.findingSortOrder ?? 0)
+                    || Number(a.ncId ?? 0) - Number(b.ncId ?? 0)
+                )
+            }))
+            .sort((a, b) =>
+                Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+                || Number(a.questionId ?? 0) - Number(b.questionId ?? 0)
+            );
+    }, [nonconformances]);
+
+    const peqQuestionGroups = React.useMemo(
+        () => questionGroups.filter((group) => group.type === 'PEQ'),
+        [questionGroups]
+    );
+    const etqQuestionGroups = React.useMemo(
+        () => questionGroups.filter((group) => group.type === 'ETQ'),
+        [questionGroups]
+    );
+    const standardQuestionGroups = React.useMemo(
+        () => questionGroups
+            .filter((group) => group.type !== 'PEQ' && group.type !== 'ETQ')
             .slice()
             .sort((a, b) => {
                 const labelA = getStandardTypeLabel(a.type);
                 const labelB = getStandardTypeLabel(b.type);
-                if (labelA !== labelB) {
-                    return (labelA || '').localeCompare(labelB || '');
-                }
-                const sectionA = Number(a.section ?? 0);
-                const sectionB = Number(b.section ?? 0);
-                if (sectionA !== sectionB) return sectionA - sectionB;
-                const subA = Number(a.subsection ?? 0);
-                const subB = Number(b.subsection ?? 0);
-                if (subA !== subB) return subA - subB;
-                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
-            });
-    }, [nonconformances, standardsList]);
+                if (labelA !== labelB) return (labelA || '').localeCompare(labelB || '');
+                const sectionDiff = Number(a.section ?? 0) - Number(b.section ?? 0);
+                if (sectionDiff !== 0) return sectionDiff;
+                const subsectionDiff = Number(a.subsection ?? 0) - Number(b.subsection ?? 0);
+                if (subsectionDiff !== 0) return subsectionDiff;
+                return Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
+            }),
+        [questionGroups, standardsList]
+    );
 
     const rosterLookup = React.useMemo(() => {
         const next = new Map();
