@@ -666,14 +666,15 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .catch((error) => console.error('Error loading selected interviewees:', error));
   }, [selectedAudit?.intervieweeIds, mergeRosterOptions]);
 
-  // Fetch nonconformances from database when schedule changes
+  // Fetch normalized questions/findings from database when schedule changes.
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchNonconformances() {
+    async function fetchAuditQuestions() {
       if (!selectedAudit?.scheduleId) {
         setAccessBlock(null);
         setEveryTimeQuestionsList([]);
+        setAuditQuestions([]);
         setNonconformances([]);
         setLoadedNonconformancesScheduleId(null);
         return;
@@ -681,55 +682,68 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       setAccessBlock(null);
       setEveryTimeQuestionsList([]);
+      setAuditQuestions([]);
       setNonconformances([]);
       setLoadedNonconformancesScheduleId(null);
 
       try {
         const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
         const divisionFilter = divisionIds.length === 1 ? divisionIds[0] : null;
-        const [ncResponse, everyTimeQuestions] = await Promise.all([
-          fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`)),
+        const [questionsResponse, everyTimeQuestions] = await Promise.all([
+          fetch(buildApiUrl(`audit-questions/${selectedAudit.scheduleId}`)),
           getEveryTimeQuestions(divisionFilter)
         ]);
         if (cancelled) return;
+
         const etqList = Array.isArray(everyTimeQuestions)
           ? everyTimeQuestions.filter((question) => (question.active ?? 1) === 1)
           : [];
         setEveryTimeQuestionsList(etqList);
 
-        const responseText = await ncResponse.text();
+        const responseText = await questionsResponse.text();
         let data;
         try {
           data = responseText ? JSON.parse(responseText) : [];
         } catch {
-          throw new Error('Nonconformances response was not valid JSON.');
+          throw new Error('Audit questions response was not valid JSON.');
         }
 
-        if (!ncResponse.ok) {
-          const isCuiDenied = ncResponse.status === 403 && data?.code === 'CUI_ACCESS_DENIED';
-          if (ncResponse.status === 403 || ncResponse.status === 404) {
+        if (!questionsResponse.ok) {
+          const isCuiDenied = questionsResponse.status === 403 && data?.code === 'CUI_ACCESS_DENIED';
+          if (questionsResponse.status === 403 || questionsResponse.status === 404) {
             setAccessBlock({
               kind: isCuiDenied ? 'cui' : 'forbidden',
               message: data?.error || 'You do not have access to this audit.'
             });
           }
-          throw new Error(data?.error || `Failed to load nonconformances (HTTP ${ncResponse.status}).`);
+          throw new Error(data?.error || `Failed to load audit questions (HTTP ${questionsResponse.status}).`);
         }
 
         if (!Array.isArray(data)) {
-          throw new Error('Nonconformances response was not an array.');
+          throw new Error('Audit questions response was not an array.');
         }
 
         setAccessBlock(null);
+        const validEtqIds = new Set(etqList.map((question) => Number(question.etqId)).filter(Number.isFinite));
         const validEtqQuestions = new Set(etqList.map((question) => question.question));
-        const convertedCount = data.filter(
-          (nc) => nc.type === 'ETQ' && !validEtqQuestions.has(nc.question)
+        const convertedCount = data.filter((question) =>
+          question.type === 'ETQ'
+          && !(
+            (Number.isFinite(Number(question.sourceId)) && validEtqIds.has(Number(question.sourceId)))
+            || validEtqQuestions.has(question.question)
+          )
         ).length;
-        const converted = data.map((nc) => {
-          if (nc.type === 'ETQ' && !validEtqQuestions.has(nc.question)) {
-            return { ...nc, type: 'PEQ' };
+        const converted = data.map((question) => {
+          if (
+            question.type === 'ETQ'
+            && !(
+              (Number.isFinite(Number(question.sourceId)) && validEtqIds.has(Number(question.sourceId)))
+              || validEtqQuestions.has(question.question)
+            )
+          ) {
+            return { ...question, type: 'PEQ', sourceId: null };
           }
-          return nc;
+          return question;
         });
 
         if (convertedCount > 0 && selectedAudit?.scheduleId) {
@@ -739,16 +753,19 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           }
         }
 
-        setNonconformances(converted);
+        setAuditQuestions(converted);
+        setNonconformances(flattenAuditQuestionFindings(converted));
         setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       } catch (error) {
         if (cancelled) return;
-        console.error('Error fetching nonconformances:', error);
+        console.error('Error fetching audit questions:', error);
+        setAuditQuestions([]);
         setNonconformances([]);
         setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       }
     }
-    fetchNonconformances();
+
+    fetchAuditQuestions();
     return () => {
       cancelled = true;
     };
