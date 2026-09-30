@@ -42,7 +42,7 @@ const AuditStatuses = () => {
         setProgramsList(programs);
         setSitesList(sites);
       } catch (error) {
-        console.error('Error loading audit stages:', error);
+        console.error('Error loading audit to-do list:', error);
       } finally {
         setLoading(false);
       }
@@ -184,7 +184,7 @@ const AuditStatuses = () => {
     return (
       <div className="entry-page">
         <div className="entry-container">
-          <div className="entry-message">Loading audit stages...</div>
+          <div className="entry-message">Loading your audit to-do list...</div>
         </div>
       </div>
     );
@@ -195,8 +195,8 @@ const AuditStatuses = () => {
       <div className="entry-container">
         <div className="audit-statuses-header tool-page-header">
           <div>
-            <p className="tool-page-subtitle">Tools · Audit Stages</p>
-            <h2 className="audit-statuses-title">Audit Stages</h2>
+            <p className="tool-page-subtitle">Tools · My Audit To-Do List</p>
+            <h2 className="audit-statuses-title">My Audit To-Do List</h2>
             <p className="audit-statuses-subtitle">
               Track your audits and any approvals that are currently awaiting your review.
             </p>
