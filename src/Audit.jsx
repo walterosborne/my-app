@@ -1196,10 +1196,12 @@ const Audit = () => {
         addSheet(wb, 'Results', resultsHeaders, [resultsValues]);
 
         // PEQs sheet
-        const peqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
+        const peqHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const peqRows = nonconformances
             .filter((nc) => nc.type === 'PEQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
@@ -1216,10 +1218,12 @@ const Audit = () => {
         addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
         // ETQs sheet
-        const etqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
+        const etqHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const etqRows = nonconformances
             .filter((nc) => nc.type === 'ETQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
@@ -1236,10 +1240,12 @@ const Audit = () => {
         addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
         // Standard-based questions sheet
-        const standardHeaders = ['NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Corrective Action Record Number'];
+        const standardHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Corrective Action Record Number'];
         const standardRows = nonconformances
             .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getStandardTypeLabel(nc.type),
                 nc.section ?? '',
@@ -1443,7 +1449,7 @@ const Audit = () => {
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
                     ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
-                    <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>
+                    <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>\n                    <div class="nc-field"><strong>Response:</strong> ${escapeHtml(nc.responseNumber || 1)}</div>
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
                     ${propRowsHtml}
