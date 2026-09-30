@@ -513,6 +513,100 @@
     line-height: 1.6;
 }
 
+/* Group multiple classified responses under a single audit question. */
+.question-findings-card {
+    margin-bottom: 1.5rem;
+    border: 1px solid #d7dde5;
+    border-radius: 10px;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.06);
+}
+
+.question-findings-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: #f4f7fb;
+    border-bottom: 1px solid #d7dde5;
+}
+
+.question-findings-heading {
+    min-width: 0;
+    flex: 1;
+}
+
+.question-findings-heading p {
+    margin: 0.35rem 0 0;
+    color: var(--color-section-heading);
+    font-size: 1.05rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.question-findings-label {
+    color: var(--color-audit-blue);
+}
+
+.question-findings-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+}
+
+.question-findings-meta span,
+.response-number {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.6rem;
+    border-radius: 999px;
+    background: #e8eef6;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.question-evidence-zip {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    padding: 0.65rem 0.8rem;
+    background: var(--color-audit-blue);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.question-evidence-zip:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.question-findings-responses {
+    padding: 1rem 1.25rem 0;
+}
+
+.response-finding-card {
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 760px) {
+    .question-findings-header {
+        flex-direction: column;
+    }
+
+    .question-evidence-zip {
+        width: 100%;
+    }
+
+    .question-findings-responses {
+        padding: 0.75rem;
+    }
+}
+
 /* Finding Cards */
 .finding-card {
     background-color: var(--color-white);
@@ -523,7 +617,7 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
-/* Per-question evidence stays beside the finding details on wide reports. */
+/* Per-response evidence stays beside that finding's details on wide reports. */
 .finding-card.has-finding-evidence {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(240px, 30%);
