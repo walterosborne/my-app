@@ -2396,7 +2396,7 @@ const getObjectiveEvidenceAudit = async (req, res, auditId) => {
     return audit;
 };
 
-// A file may be downloaded only if its ID is linked to this saved question.
+// A file may be downloaded only if its ID is linked to this saved finding/response.
 app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', async (req, res) => {
     try {
         const auditId = Number(req.params.scheduleId);
