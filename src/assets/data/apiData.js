@@ -273,11 +273,17 @@ export async function getProps() {
 
 export async function getNonconformances(scheduleId) {
     if (scheduleId) {
-        // Don't cache schedule-specific queries
+        // Don't cache schedule-specific queries. The endpoint is a flattened
+        // finding view: one row per response, with questionId/responseNumber.
         const response = await fetch(`${API_BASE}/nonconformances/${scheduleId}`);
-        return await response.json();
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP error! status: ${response.status}`);
+        }
+        return Array.isArray(data) ? data : [];
     }
-    return await fetchData('nonconformances');
+    const data = await fetchData('nonconformances');
+    return Array.isArray(data) ? data : [];
 }
 
 export async function getRiskFactors() {
