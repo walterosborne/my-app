@@ -1562,15 +1562,17 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(auditResult.error || 'Failed to save audit');
       }
 
-      // Save nonconformances to backend
-      const response = await fetch(buildApiUrl('save-nonconformances'), {
+      // Save the normalized question -> findings graph. Existing IDs are
+      // preserved so Nonconformities, CARs, evidence links, and reports keep
+      // referring to the same finding across edits.
+      const response = await fetch(buildApiUrl('save-audit-questions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           scheduleId: selectedAudit.scheduleId,
-          nonconformances: allNCs
+          questions: questionsPayload
         })
       });
 
@@ -1579,7 +1581,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       if (result.success) {
         const isProceeding = submitIntentRef.current === 'proceed';
         toast.success(isProceeding ? 'Results saved!' : 'Results saved.');
-        skipNextFormResetRef.current = 2;
+        const savedQuestions = Array.isArray(result.questions) ? result.questions : questionsPayload;
 
         setSelectedAudit((current) => {
           if (!current || Number(current.scheduleId) !== scheduleId) {
@@ -1605,7 +1607,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           };
         });
 
-        setNonconformances(allNCs);
+        setAuditQuestions(savedQuestions);
+        setNonconformances(flattenAuditQuestionFindings(savedQuestions));
 
         if (isProceeding) {
           if (reloadAudits) {
@@ -1614,7 +1617,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           navigate(`/entry?type=nonconformities&audit=${selectedAudit.scheduleId}`);
         }
       } else {
-        throw new Error(result.error || 'Failed to save nonconformances');
+        throw new Error(result.error || 'Failed to save audit questions and findings');
       }
 
       console.log(data);
