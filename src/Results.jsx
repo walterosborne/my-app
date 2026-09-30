@@ -1466,6 +1466,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
       const scheduleId = Number(selectedAudit.scheduleId);
       const questionsPayload = [];
+      const deletedQuestionIds = [];
+
+      deletedPEQs.forEach((index) => {
+        const questionId = Number(data[getQuestionIdFieldName(`peq_${index}`)]);
+        if (Number.isSafeInteger(questionId) && questionId > 0) {
+          deletedQuestionIds.push(questionId);
+        }
+      });
+
+      Object.entries(deletedStandardQuestions).forEach(([key, deletedIndexes]) => {
+        const [standardId, sectionNum, subsection] = key.split('_').map(Number);
+        (deletedIndexes || new Set()).forEach((questionIndex) => {
+          const questionKey = `std_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+          const questionId = Number(data[getQuestionIdFieldName(questionKey)]);
+          if (Number.isSafeInteger(questionId) && questionId > 0) {
+            deletedQuestionIds.push(questionId);
+          }
+        });
+      });
+
       let questionSortOrder = 0;
       const mapFindingsForSave = (questionKey) => collectFindingPayload(data, questionKey).map((finding) => ({
         ...finding,
@@ -1598,7 +1618,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         },
         body: JSON.stringify({
           scheduleId: selectedAudit.scheduleId,
-          questions: questionsPayload
+          questions: questionsPayload,
+          deletedQuestionIds
         })
       });
 
