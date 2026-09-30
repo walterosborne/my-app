@@ -371,6 +371,8 @@ BEGIN TRY
        OR COL_LENGTH(@AuditQuestionsTable, N'subsection') IS NULL
        OR COL_LENGTH(@AuditQuestionsTable, N'question') IS NULL
        OR COL_LENGTH(@AuditQuestionsTable, N'sortorder') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'createdat') IS NULL
+       OR COL_LENGTH(@AuditQuestionsTable, N'updatedat') IS NULL
         THROW 50214, 'audit_questions_r exists but does not match the Kubernetes schema.', 1;
 
     IF COL_LENGTH(@AuditFindingsTable, N'findingid') IS NULL
@@ -387,6 +389,8 @@ BEGIN TRY
        OR COL_LENGTH(@AuditFindingsTable, N'files') IS NULL
        OR COL_LENGTH(@AuditFindingsTable, N'severity') IS NULL
        OR COL_LENGTH(@AuditFindingsTable, N'sortorder') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'createdat') IS NULL
+       OR COL_LENGTH(@AuditFindingsTable, N'updatedat') IS NULL
         THROW 50215, 'audit_findings_r exists but does not match the Kubernetes schema.', 1;
 
     -- Preserve legacy identifiers on first migration. Each current legacy
