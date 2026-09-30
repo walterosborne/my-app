@@ -843,6 +843,76 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   )
 
+  const getQuestionIdFieldName = useCallback((questionKey) => `question_${questionKey}_id`, []);
+
+  const addFindingResponse = useCallback((questionKey) => {
+    setFindingCountsByQuestion((current) => ({
+      ...current,
+      [questionKey]: (current[questionKey] || 0) + 1
+    }));
+  }, []);
+
+  const deleteFindingResponse = useCallback((questionKey, findingIndex) => {
+    setDeletedFindingSlots((current) => ({
+      ...current,
+      [questionKey]: new Set([...(current[questionKey] || []), findingIndex])
+    }));
+  }, []);
+
+  const getVisibleFindingIndexes = useCallback((questionKey) => {
+    const count = findingCountsByQuestion[questionKey] || 0;
+    const deleted = deletedFindingSlots[questionKey] || new Set();
+    return Array.from({ length: count }, (_, index) => index)
+      .filter((index) => !deleted.has(index));
+  }, [findingCountsByQuestion, deletedFindingSlots]);
+
+  const collectFindingPayload = useCallback((data, questionKey) => {
+    const count = findingCountsByQuestion[questionKey] || 0;
+    const deleted = deletedFindingSlots[questionKey] || new Set();
+    const findings = [];
+
+    for (let index = 0; index < count; index += 1) {
+      if (deleted.has(index)) continue;
+
+      const findingId = data[getFindingFieldName(questionKey, index, 'id')] || null;
+      const findingType = data[getFindingFieldName(questionKey, index, 'findingType')] || null;
+      const response = data[getFindingFieldName(questionKey, index, 'response')] || '';
+      const auditorComment = data[getFindingFieldName(questionKey, index, 'auditorComment')] || '';
+      const qma = data[getFindingFieldName(questionKey, index, 'qma')] || [];
+      const sector = data[getFindingFieldName(questionKey, index, 'sector')] || [];
+      const division = data[getFindingFieldName(questionKey, index, 'division')] || [];
+      const other = data[getFindingFieldName(questionKey, index, 'other')] || [];
+      const files = data[getFindingFieldName(questionKey, index, 'files')] || [];
+      const hasContent = Boolean(
+        findingId
+        || findingType
+        || String(response).trim()
+        || String(auditorComment).trim()
+        || qma.length
+        || sector.length
+        || division.length
+        || other.length
+        || files.length
+      );
+
+      if (!hasContent) continue;
+      findings.push({
+        findingId,
+        findingType,
+        response,
+        auditorComment,
+        qma,
+        sector,
+        division,
+        other,
+        files,
+        sortOrder: findings.length + 1
+      });
+    }
+
+    return findings;
+  }, [findingCountsByQuestion, deletedFindingSlots]);
+
   const clearAuditQuestionUiState = useCallback(() => {
     setNewPEQs(0);
     setDeletedPEQs(new Set());
