@@ -2703,8 +2703,7 @@ const AdminMenu = () => {
             <div className="entry-container admin-card">
                 <header className="admin-header">
                     <div>
-                        <p className="admin-subtitle">Tools · Admin menu</p>
-                        <h1>Admin Menu</h1>
+                        <p className="admin-subtitle">Tools · Admin Menu</p>
                         {currentUser?.name && currentUser.name !== 'User' && (
                             <p className="admin-welcome">
                                 Welcome {currentUser.name}.{' '}
