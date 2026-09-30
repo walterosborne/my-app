@@ -47,6 +47,7 @@ DECLARE @QuestionsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[nonconfor
 DECLARE @StandardsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[standards_r]';
 DECLARE @AuditQuestionsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_questions_r]';
 DECLARE @AuditFindingsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_findings_r]';
+DECLARE @MigrationsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[ngat_migrations_r]';
 
 IF OBJECT_ID(@AuditsTable, N'U') IS NULL
     THROW 50203, 'Target audits_r table does not exist.', 1;
@@ -85,6 +86,9 @@ DECLARE @ExpectedQuestionUpdates BIGINT = 0;
 DECLARE @ActualQuestionUpdates BIGINT = 0;
 DECLARE @HasLegacyIso9001 BIT = 0;
 DECLARE @HasStandardId5 BIT = 0;
+DECLARE @QuestionFindingMigrationApplied BIT = 0;
+DECLARE @HadAuditQuestionsTable BIT = CASE WHEN OBJECT_ID(@AuditQuestionsTable, N'U') IS NULL THEN 0 ELSE 1 END;
+DECLARE @HadAuditFindingsTable BIT = CASE WHEN OBJECT_ID(@AuditFindingsTable, N'U') IS NULL THEN 0 ELSE 1 END;
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -318,7 +322,50 @@ BEGIN TRY
        A question can now own zero or many findings/responses.
        The legacy nonconformances_r table remains in place as migration
        history; the Kubernetes app reads/writes the normalized tables.
+       A migration marker prevents reruns from resurrecting legacy rows
+       that users intentionally delete after conversion.
        ============================================================ */
+    IF OBJECT_ID(@MigrationsTable, N'U') IS NULL
+    BEGIN
+        SET @Sql = N'
+            CREATE TABLE ' + @MigrationsTable + N' (
+                migrationkey NVARCHAR(100) NOT NULL PRIMARY KEY,
+                appliedat DATETIME2 NOT NULL DEFAULT (CURRENT_TIMESTAMP)
+            );';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF COL_LENGTH(@MigrationsTable, N'migrationkey') IS NULL
+       OR COL_LENGTH(@MigrationsTable, N'appliedat') IS NULL
+        THROW 50219, 'ngat_migrations_r exists but does not match the Kubernetes migration schema.', 1;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM sys.key_constraints
+        WHERE parent_object_id = OBJECT_ID(@MigrationsTable)
+          AND [type] = N'PK'
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @MigrationsTable +
+            N' ADD CONSTRAINT [PK_' + @TargetSchema +
+            N'_ngat_migrations] PRIMARY KEY ([migrationkey]);';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    SET @Sql = N'
+        SELECT @Applied = CASE WHEN EXISTS (
+            SELECT 1 FROM ' + @MigrationsTable + N'
+            WHERE migrationkey = N''question-findings-v1''
+        ) THEN 1 ELSE 0 END;';
+    EXEC sys.sp_executesql
+        @Sql,
+        N'@Applied BIT OUTPUT',
+        @Applied = @QuestionFindingMigrationApplied OUTPUT;
+
+    IF @QuestionFindingMigrationApplied = 1
+       AND (@HadAuditQuestionsTable = 0 OR @HadAuditFindingsTable = 0)
+        THROW 50220, 'Question/finding migration is marked applied but normalized tables are missing; refusing to recreate silently.', 1;
+
     IF OBJECT_ID(@AuditQuestionsTable, N'U') IS NULL
     BEGIN
         SET @Sql = N'
@@ -477,9 +524,12 @@ BEGIN TRY
         EXEC sys.sp_executesql @Sql;
     END;
 
-    -- Preserve legacy identifiers on first migration. Each current legacy
-    -- record becomes one question with one finding, exactly as it exists today.
-    SET @Sql = N'
+    -- Preserve legacy identifiers exactly once. Each current legacy record
+    -- becomes one question with one finding. Once marked complete, later reruns
+    -- never re-import deleted legacy records.
+    IF @QuestionFindingMigrationApplied = 0
+    BEGIN
+        SET @Sql = N'
         SET IDENTITY_INSERT ' + @AuditQuestionsTable + N' ON;
 
         INSERT INTO ' + @AuditQuestionsTable + N'
@@ -553,7 +603,18 @@ BEGIN TRY
                OR q.scheduleid <> nc.scheduleid
         )
             THROW 50216, ''Legacy question/finding migration verification failed; entire migration rolled back.'', 1;';
-    EXEC sys.sp_executesql @Sql;
+        EXEC sys.sp_executesql @Sql;
+
+        SET @Sql = N'
+            INSERT INTO ' + @MigrationsTable + N' (migrationkey, appliedat)
+            SELECT N''question-findings-v1'', CURRENT_TIMESTAMP
+            WHERE NOT EXISTS (
+                SELECT 1 FROM ' + @MigrationsTable + N'
+                WHERE migrationkey = N''question-findings-v1''
+            );';
+        EXEC sys.sp_executesql @Sql;
+        SET @QuestionFindingMigrationApplied = 1;
+    END;
 
     -- Indexes are idempotent and intentionally created after the legacy load.
     IF NOT EXISTS (
