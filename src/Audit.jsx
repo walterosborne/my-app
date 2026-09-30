@@ -836,7 +836,10 @@ const Audit = () => {
                 try {
                     const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}?includeEvidenceFiles=true`));
                     const data = await response.json();
-                    setNonconformances(data);
+                    if (!response.ok) {
+                        throw new Error(data?.error || 'Failed to load audit findings.');
+                    }
+                    setNonconformances(Array.isArray(data) ? data : []);
                 } catch (error) {
                     console.error('Error loading nonconformances:', error);
                     setNonconformances([]);
