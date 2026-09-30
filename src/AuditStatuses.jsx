@@ -196,7 +196,6 @@ const AuditStatuses = () => {
         <div className="audit-statuses-header tool-page-header">
           <div>
             <p className="tool-page-subtitle">Tools · My Audit To-Do List</p>
-            <h2 className="audit-statuses-title">My Audit To-Do List</h2>
             <p className="audit-statuses-subtitle">
               Track your audits and any approvals that are currently awaiting your review.
             </p>
