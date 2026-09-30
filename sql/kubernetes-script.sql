@@ -393,6 +393,56 @@ BEGIN TRY
        OR COL_LENGTH(@AuditFindingsTable, N'updatedat') IS NULL
         THROW 50215, 'audit_findings_r exists but does not match the Kubernetes schema.', 1;
 
+    -- SELECT INTO schema copies drop defaults. Restore the timestamp defaults
+    -- required by normal application inserts when these tables already exist.
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditQuestionsTable)
+          AND name = N'createdat' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditQuestionsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_questions_createdat] DEFAULT (CURRENT_TIMESTAMP) FOR [createdat];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditQuestionsTable)
+          AND name = N'updatedat' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditQuestionsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_questions_updatedat] DEFAULT (CURRENT_TIMESTAMP) FOR [updatedat];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'createdat' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_createdat] DEFAULT (CURRENT_TIMESTAMP) FOR [createdat];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(@AuditFindingsTable)
+          AND name = N'updatedat' AND default_object_id <> 0
+    )
+    BEGIN
+        SET @Sql = N'ALTER TABLE ' + @AuditFindingsTable +
+            N' ADD CONSTRAINT [DF_' + @TargetSchema +
+            N'_audit_findings_updatedat] DEFAULT (CURRENT_TIMESTAMP) FOR [updatedat];';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
     -- Preserve legacy identifiers on first migration. Each current legacy
     -- record becomes one question with one finding, exactly as it exists today.
     SET @Sql = N'
