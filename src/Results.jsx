@@ -237,7 +237,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const accessErrorToastRef = useRef(null);
   const uploadErrorToastIdRef = useRef('auditor-file-upload-error');
   const submitIntentRef = useRef('save');
-  const skipNextFormResetRef = useRef(0);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const oversizedUploadFiles = uploadFiles.filter((file) => file.size > MAX_UPLOAD_BYTES);
   const isUploadTooLarge = oversizedUploadFiles.length > 0;
@@ -1202,10 +1201,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       return;
     }
     if (schedule && selectedAudit) {
-      if (skipNextFormResetRef.current > 0) {
-        skipNextFormResetRef.current -= 1;
-        return;
-      }
       const scheduleId = Number(selectedAudit.scheduleId);
       const auditQuestionGroups = auditQuestions.filter(
         (question) => Number(question.scheduleId) === scheduleId
