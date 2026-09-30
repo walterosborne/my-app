@@ -586,6 +586,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       || hasFieldValue(nc.sector)
       || hasFieldValue(nc.division)
       || hasFieldValue(nc.other)
+      || hasFieldValue(nc.details)
+      || hasFieldValue(nc.AIN ?? nc.ain)
+      || hasFieldValue(nc.severity)
       || normalizeFileIds(nc.files).length > 0;
   }, [hasFieldValue, normalizeFileIds]);
 
