@@ -1074,53 +1074,61 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return buildStandardTextsByStandard(selectedStandardIds);
   }, [buildStandardTextsByStandard, selectedStandardIds]);
 
-  const buildAuditQuestionCollapseDefaults = useCallback((audit, auditNCs, etqQuestions, groupedStandardTexts) => {
+  const buildAuditQuestionCollapseDefaults = useCallback((audit, auditQuestionGroups, etqQuestions, groupedStandardTexts) => {
     const sectionDefaults = {};
     const subsectionDefaults = {};
     const everyTimeQuestionDefaults = {};
     const peqDefaults = {};
-    const scheduleId = Number(audit?.scheduleId);
-    const scheduleNCs = auditNCs.filter((nc) => Number(nc.scheduleId) === scheduleId);
+    const questionsForAudit = (auditQuestionGroups || []).filter(
+      (question) => Number(question.scheduleId) === Number(audit?.scheduleId)
+    );
+    const questionHasSavedContent = (question) => Boolean(
+      question
+      && (
+        hasFieldValue(question.question)
+        || (question.findings || []).some((finding) => hasSavedFindingMetadata(finding))
+      )
+    );
 
     Object.entries(groupedStandardTexts).forEach(([standardIdValue, sections]) => {
       const standardId = Number(standardIdValue);
-      Object.entries(sections).forEach(([sectionNumValue, questions]) => {
+      Object.entries(sections).forEach(([sectionNumValue, standardTextRows]) => {
         const sectionNum = Number(sectionNumValue);
         const sectionKey = `section_${standardId}_${sectionNum}`;
 
-        questions.forEach((question) => {
-          const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
-          const subsectionHasSavedContent = scheduleNCs.some((nc) =>
-            Number(nc.type) === standardId
-            && Number(nc.section) === sectionNum
-            && Number(nc.subsection) === Number(question.subsection)
-            && hasSavedStandardQuestionContent(nc)
+        standardTextRows.forEach((standardText) => {
+          const subsectionKey = `subsection_${standardId}_${sectionNum}_${standardText.subsection}`;
+          const subsectionHasSavedContent = questionsForAudit.some((question) =>
+            Number(question.type) === standardId
+            && Number(question.section) === sectionNum
+            && Number(question.subsection) === Number(standardText.subsection)
+            && questionHasSavedContent(question)
           );
-
           subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
         });
 
-        // Keep standard section headings open. Only individual questions
-        // are initially collapsed or expanded based on saved answers.
         sectionDefaults[sectionKey] = false;
       });
     });
 
-    (etqQuestions || []).forEach((question, index) => {
-      const etqNc = scheduleNCs.find((nc) => nc.type === 'ETQ' && nc.question === question.question);
-      everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(question, index)] = !hasSavedEveryTimeQuestionContent(etqNc);
+    (etqQuestions || []).forEach((definition, index) => {
+      const savedQuestion = questionsForAudit.find((question) =>
+        question.type === 'ETQ'
+        && (
+          (Number.isFinite(Number(definition.etqId)) && Number(question.sourceId) === Number(definition.etqId))
+          || question.question === definition.question
+        )
+      );
+      everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(definition, index)] =
+        !questionHasSavedContent(savedQuestion);
     });
 
-    // Match the same ordering used when the PEQ form is populated: original
-    // PEQs followed by any old ETQs that are now editable as PEQs.
-    const activeEtqQuestions = new Set((etqQuestions || []).map((question) => question.question));
-    const peqs = [
-      ...scheduleNCs.filter((nc) => nc.type === 'PEQ'),
-      ...scheduleNCs.filter((nc) => nc.type === 'ETQ' && !activeEtqQuestions.has(nc.question))
-    ];
-    peqs.forEach((nc, index) => {
-      peqDefaults[index] = !(hasFieldValue(nc.question) || hasSavedFindingMetadata(nc));
-    });
+    questionsForAudit
+      .filter((question) => question.type === 'PEQ')
+      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+      .forEach((question, index) => {
+        peqDefaults[index] = !questionHasSavedContent(question);
+      });
 
     return {
       peqDefaults,
@@ -1128,7 +1136,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       subsectionDefaults,
       everyTimeQuestionDefaults
     };
-  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent, hasSavedFindingMetadata, hasFieldValue]);
+  }, [getEveryTimeQuestionCollapseKey, hasSavedFindingMetadata, hasFieldValue]);
 
   useEffect(() => {
     const nextSectionDefaults = {};
