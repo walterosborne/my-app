@@ -205,14 +205,22 @@ h2 {
 }
 
 
+.audit-question-card {
+  background: #f7f8fa;
+  border-color: #c8d0da;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
 .finding-response-editor {
   width: 100%;
   box-sizing: border-box;
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid #d5dbe3;
+  border: 1px solid #cfd9e5;
+  border-left: 4px solid #9db4cc;
   border-radius: 8px;
-  background: #fbfcfe;
+  background: #fcfdff;
 }
 
 .finding-response-editor__header {
