@@ -549,7 +549,7 @@ const AllReports = () => {
     addSheet(wb, 'Results', resultsHeaders, resultsRows);
 
     // PEQs sheet
-    const peqHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
+    const peqHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
     const peqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -558,6 +558,8 @@ const AllReports = () => {
         .forEach((nc) => {
           peqRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getFindingTypeLabel(nc.findingType),
             getSeverityLabel(nc.severity),
@@ -572,7 +574,7 @@ const AllReports = () => {
     addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
     // ETQs sheet
-    const etqHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
+    const etqHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
     const etqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -581,6 +583,8 @@ const AllReports = () => {
         .forEach((nc) => {
           etqRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getFindingTypeLabel(nc.findingType),
             getSeverityLabel(nc.severity),
@@ -595,7 +599,7 @@ const AllReports = () => {
     addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
     // Standard-based questions sheet
-    const standardHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'Corrective Action Record Number'];
+    const standardHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'Corrective Action Record Number'];
     const standardRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -604,6 +608,8 @@ const AllReports = () => {
         .forEach((nc) => {
           standardRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getStandardTypeLabel(nc.type),
             nc.section ?? '',
