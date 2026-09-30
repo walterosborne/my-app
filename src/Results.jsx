@@ -1438,141 +1438,98 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         'OBS': 4
       };
 
-      // Get existing nonconformances not related to this audit
       const scheduleId = Number(selectedAudit.scheduleId);
-      const otherNCs = nonconformances.filter(nc => Number(nc.scheduleId) !== scheduleId);
+      const questionsPayload = [];
+      let questionSortOrder = 0;
+      const mapFindingsForSave = (questionKey) => collectFindingPayload(data, questionKey).map((finding) => ({
+        ...finding,
+        findingType: finding.findingType ? (findingTypeMap[finding.findingType] || null) : null
+      }));
 
-      // Collect new/updated nonconformances from form
-      const updatedNCs = [];
+      // Process Evaluation Questions: the question is stored once and owns any
+      // number of independently classified responses/findings.
+      for (let index = 0; index < newPEQs; index += 1) {
+        if (deletedPEQs.has(index)) continue;
+        const questionKey = `peq_${index}`;
+        const questionText = String(data[`peqQuestion${index}`] || '');
+        const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+        const findings = mapFindingsForSave(questionKey);
 
-      // Get max ncId for new records
-      let maxNcId = Math.max(...nonconformances.map(nc => nc.ncId), 0);
-
-      // Process PEQs
-      for (let i = 0; i < newPEQs; i++) {
-        // Skip deleted PEQs
-        if (deletedPEQs.has(i)) continue;
-
-        const question = data[`peqQuestion${i}`];
-        const response = data[`auditeeResponse${i}`];
-        const auditorComment = data[`auditorComment${i}`];
-
-        // Only save if there's actual content
-        if (question || response || auditorComment) {
-          // Find existing NC by matching question text
-          const existingNC = nonconformances.find(nc =>
-            Number(nc.scheduleId) === scheduleId &&
-            nc.type === 'PEQ' &&
-            nc.question === question
-          );
-          const existingConvertedEtq = !existingNC && !etqQuestionSet.has(question)
-            ? nonconformances.find(nc =>
-              Number(nc.scheduleId) === scheduleId &&
-              nc.type === 'ETQ' &&
-              nc.question === question
-            )
-            : null;
-          const resolvedNC = existingNC || existingConvertedEtq;
-
-          updatedNCs.push({
-            ncId: resolvedNC?.ncId || ++maxNcId,
-            scheduleId,
-            type: 'PEQ',
-            findingType: data[`findingType${i}`] ? findingTypeMap[data[`findingType${i}`]] : null,
-            section: null,
-            subsection: null,
-            question: question || '',
-            response: response || '',
-            auditorComment: auditorComment || '',
-            details: '',
-            AIN: '',
-            division: data[`prOPDivision${i}`] || [],
-            sector: data[`prOPSector${i}`] || [],
-            qma: data[`prOPCorporate${i}`] || [],
-            other: data[`prOPOther${i}`] || [],
-            files: data[`peqFiles${i}`] || []
-          });
+        if (!questionText.trim() && findings.length > 0) {
+          setError(`peqQuestion${index}`, { type: 'required', message: 'Question text is required when responses are present.' });
+          throw new Error(`Process Evaluation Question ${index + 1} needs question text.`);
         }
+        if (!questionId && !questionText.trim() && findings.length === 0) continue;
+
+        questionsPayload.push({
+          questionId,
+          scheduleId,
+          type: 'PEQ',
+          sourceId: null,
+          section: null,
+          subsection: null,
+          question: questionText,
+          sortOrder: ++questionSortOrder,
+          findings
+        });
       }
 
-      // Process ETQs
-      filteredEveryTimeQuestions.forEach((etq, idx) => {
-        const question = etq.question;
-        const response = data[`etqAuditeeResponse${idx}`];
-        const auditorComment = data[`etqAuditorComment${idx}`];
+      // Every Time Questions use the configured ETQ as the question and can
+      // now own zero, one, or many response/findings.
+      filteredEveryTimeQuestions.forEach((etq, index) => {
+        const questionKey = `etq_${index}`;
+        const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+        const findings = mapFindingsForSave(questionKey);
+        if (!questionId && findings.length === 0) return;
 
-        if (response || auditorComment) {
-          const existingNC = nonconformances.find(nc =>
-            Number(nc.scheduleId) === scheduleId &&
-            nc.type === 'ETQ' &&
-            nc.question === question
+        questionsPayload.push({
+          questionId,
+          scheduleId,
+          type: 'ETQ',
+          sourceId: etq.etqId ?? null,
+          section: null,
+          subsection: null,
+          question: etq.question || '',
+          sortOrder: ++questionSortOrder,
+          findings
+        });
+      });
+
+      // Standard-based questions remain user-entered under a standard clause,
+      // but each question can own multiple findings.
+      Object.keys(standardAdditional).forEach((key) => {
+        const [standardId, sectionNum, subsection] = key.split('_').map(Number);
+        const count = standardAdditional[key];
+        for (let questionIndex = 0; questionIndex < count; questionIndex += 1) {
+          if (deletedStandardQuestions[key]?.has(questionIndex)) continue;
+
+          const questionKey = `std_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+          const questionText = String(
+            data[`standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${questionIndex}`] || ''
           );
+          const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+          const findings = mapFindingsForSave(questionKey);
 
-          updatedNCs.push({
-            ncId: existingNC?.ncId || ++maxNcId,
+          if (!questionText.trim() && findings.length > 0) {
+            const fieldName = `standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+            setError(fieldName, { type: 'required', message: 'Question text is required when responses are present.' });
+            throw new Error('A standard-based question with responses is missing its question text.');
+          }
+          if (!questionId && !questionText.trim() && findings.length === 0) continue;
+
+          questionsPayload.push({
+            questionId,
             scheduleId,
-            type: 'ETQ',
-            findingType: data[`etqFindingType${idx}`] ? findingTypeMap[data[`etqFindingType${idx}`]] : null,
-            section: null,
-            subsection: null,
-            question: question,
-            response: response || '',
-            auditorComment: auditorComment || '',
-            details: '',
-            AIN: '',
-            division: data[`etqPrOPDivision${idx}`] || [],
-            sector: data[`etqPrOPSector${idx}`] || [],
-            qma: data[`etqPrOPCorporate${idx}`] || [],
-            other: data[`etqPrOPOther${idx}`] || [],
-            files: data[`etqFiles${idx}`] || []
+            type: standardId,
+            sourceId: null,
+            section: sectionNum,
+            subsection,
+            question: questionText,
+            sortOrder: ++questionSortOrder,
+            findings
           });
         }
       });
-
-      // Process standard-based questions
-      Object.keys(standardAdditional).forEach(key => {
-        const [standardId, sectionNum, subsection] = key.split('_').map(Number);
-        const count = standardAdditional[key];
-        for (let addIdx = 0; addIdx < count; addIdx++) {
-          if (deletedStandardQuestions[key]?.has(addIdx)) continue;
-
-          const question = data[`standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
-          const response = data[`standardAdditionalAuditeeResponse_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
-          const auditorComment = data[`standardAdditionalAuditorComment_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
-
-          if (question || response || auditorComment) {
-            const existingNC = nonconformances.find(nc =>
-              Number(nc.scheduleId) === scheduleId &&
-              Number(nc.type) === standardId &&
-              nc.section === sectionNum &&
-              nc.subsection === subsection &&
-              nc.question === question
-            );
-
-            updatedNCs.push({
-              ncId: existingNC?.ncId || ++maxNcId,
-              scheduleId,
-              type: standardId,
-              findingType: data[`standardAdditionalFindingType_${standardId}_${sectionNum}_${subsection}_${addIdx}`] ? findingTypeMap[data[`standardAdditionalFindingType_${standardId}_${sectionNum}_${subsection}_${addIdx}`]] : null,
-              section: sectionNum,
-              subsection: subsection,
-              question: question || '',
-              response: response || '',
-              auditorComment: auditorComment || '',
-              details: '',
-              AIN: '',
-              division: data[`standardAdditionalPrOPDivision_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              sector: data[`standardAdditionalPrOPSector_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              qma: data[`standardAdditionalPrOPCorporate_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              other: data[`standardAdditionalPrOPOther_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              files: data[`standardAdditionalFiles_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || []
-            });
-          }
-        }
-      });
-
-      // Combine and sort
-      const allNCs = [...updatedNCs].sort((a, b) => a.ncId - b.ncId);
 
       // Save audit record with updated fields
       const auditResponse = await fetch(buildApiUrl('audits'), {
