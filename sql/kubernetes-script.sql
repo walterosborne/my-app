@@ -15,6 +15,8 @@ Included:
    - Creates audit_questions_r and audit_findings_r.
    - Migrates every existing nonconformances_r row to one question + one finding.
    - Preserves each legacy ncid as the migrated finding ID.
+6. Per-rating Risk Analysis comments.
+7. Historical cleanup for Planning audits with expected start dates before 2026-08-01.
 
 Not included because they require no database change:
 - Objective-evidence report/download UI.
@@ -48,6 +50,7 @@ DECLARE @StandardsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[standards
 DECLARE @AuditQuestionsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_questions_r]';
 DECLARE @AuditFindingsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audit_findings_r]';
 DECLARE @MigrationsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[ngat_migrations_r]';
+DECLARE @RiskRatingsTable NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[RiskRatings_r]';
 
 IF OBJECT_ID(@AuditsTable, N'U') IS NULL
     THROW 50203, 'Target audits_r table does not exist.', 1;
@@ -61,6 +64,8 @@ IF OBJECT_ID(@QuestionsTable, N'U') IS NULL
     THROW 50207, 'Target nonconformances_r table does not exist.', 1;
 IF OBJECT_ID(@StandardsTable, N'U') IS NULL
     THROW 50208, 'Target standards_r table does not exist.', 1;
+IF OBJECT_ID(@RiskRatingsTable, N'U') IS NULL
+    THROW 50221, 'Target RiskRatings_r table does not exist.', 1;
 
 -- Failed attempts can leave local temp tables in the same SSMS session.
 DROP TABLE IF EXISTS #KubernetesLegacyTypeMapping;
@@ -103,6 +108,17 @@ BEGIN TRY
             N' ADD [stagebeforeinactive] INT NULL;';
         EXEC sys.sp_executesql @Sql;
     END;
+
+    -- Mark stale Planning audits as Historical. Preserve the prior stage so the
+    -- lifecycle history remains explicit if a record is ever reactivated.
+    SET @Sql = N'
+        UPDATE ' + @AuditsTable + N'
+        SET stagebeforeinactive = COALESCE(stagebeforeinactive, stage),
+            stage = -1,
+            updatedat = CURRENT_TIMESTAMP
+        WHERE stage = 1
+          AND expectedstartdate < CONVERT(date, ''2026-08-01'');';
+    EXEC sys.sp_executesql @Sql;
 
     /* ============================================================
        2. ORGANIZATIONAL HIERARCHY
@@ -158,7 +174,19 @@ BEGIN TRY
     END;
 
     /* ============================================================
-       3. AUDIT CREATED-AT DEFAULT
+       3. RISK ANALYSIS COMMENTS
+       One optional comment is stored with each subcategory rating.
+       ============================================================ */
+    IF COL_LENGTH(@RiskRatingsTable, N'comments') IS NULL
+    BEGIN
+        SET @Sql =
+            N'ALTER TABLE ' + @RiskRatingsTable +
+            N' ADD [comments] NVARCHAR(MAX) NULL;';
+        EXEC sys.sp_executesql @Sql;
+    END;
+
+    /* ============================================================
+       4. AUDIT CREATED-AT DEFAULT
        SELECT INTO does not preserve default constraints.
        Existing createdat values (including NULLs) are not changed.
        ============================================================ */
@@ -318,7 +346,7 @@ BEGIN TRY
         THROW 50213, 'Updated standard-question row count differs from expected count; entire migration rolled back.', 1;
 
     /* ============================================================
-       5. NORMALIZED QUESTION / FINDING MODEL
+       6. NORMALIZED QUESTION / FINDING MODEL
        A question can now own zero or many findings/responses.
        The legacy nonconformances_r table remains in place as migration
        history; the Kubernetes app reads/writes the normalized tables.
@@ -807,6 +835,8 @@ WHERE s.name = @TargetSchema
         ))
         OR
         (t.name = N'ngat_migrations_r' AND c.name IN (N'migrationkey', N'appliedat'))
+        OR
+        (t.name = N'RiskRatings_r' AND c.name = N'comments')
       )
 ORDER BY t.name, c.column_id;
 
