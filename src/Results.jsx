@@ -800,23 +800,32 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, [selectedAuditId, entryAudits]);
 
   function addPEQ() {
-    // A newly added question should open for immediate entry.
-    setCollapsedPEQs((current) => ({ ...current, [newPEQs]: false }));
+    const index = newPEQs;
+    setCollapsedPEQs((current) => ({ ...current, [index]: false }));
+    setFindingCountsByQuestion((current) => ({ ...current, [`peq_${index}`]: 1 }));
+    setDeletedFindingSlots((current) => ({ ...current, [`peq_${index}`]: new Set() }));
     setNewPEQs((current) => current + 1);
   }
+
   function deletePEQ(index) {
-    setDeletedPEQs(prev => new Set([...prev, index]));
+    setDeletedPEQs((prev) => new Set([...prev, index]));
   }
+
   function addStandardQuestion(standardId, section, subsection) {
     const key = `${standardId}_${section}_${subsection}`;
-    setStandardAdditional(prev => ({
+    const questionIndex = standardAdditional[key] || 0;
+    const questionKey = `std_${standardId}_${section}_${subsection}_${questionIndex}`;
+    setFindingCountsByQuestion((current) => ({ ...current, [questionKey]: 1 }));
+    setDeletedFindingSlots((current) => ({ ...current, [questionKey]: new Set() }));
+    setStandardAdditional((prev) => ({
       ...prev,
       [key]: (prev[key] || 0) + 1
     }));
   }
+
   function deleteStandardQuestion(standardId, section, subsection, index) {
     const key = `${standardId}_${section}_${subsection}`;
-    setDeletedStandardQuestions(prev => ({
+    setDeletedStandardQuestions((prev) => ({
       ...prev,
       [key]: new Set([...(prev[key] || []), index])
     }));
