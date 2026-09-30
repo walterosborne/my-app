@@ -2978,9 +2978,35 @@ app.post('/api/save-nonconformances', async (req, res) => {
             return sendCuiAccessDenied(res, { req, userInfo });
         }
 
+        const incomingFindings = Array.isArray(nonconformances) ? nonconformances : [];
+        const incomingFindingIds = [...new Set(
+            incomingFindings
+                .map((nc) => asPositiveIntegerOrNull(nc?.findingId ?? nc?.ncId))
+                .filter(Boolean)
+        )];
+        const findingQuestionMap = new Map();
+
+        if (incomingFindingIds.length > 0) {
+            const placeholders = incomingFindingIds.map((_, index) => `${index + 2}`).join(', ');
+            const mappingResult = await client.query(
+                `SELECT f.findingid, q.questionid
+                 FROM audit_findings_r AS f
+                 INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+                 WHERE q.scheduleid = $1
+                   AND f.findingid IN (${placeholders})`,
+                [scheduleId, ...incomingFindingIds]
+            );
+            mappingResult.rows.forEach((row) => {
+                findingQuestionMap.set(Number(row.findingid), Number(row.questionid));
+            });
+        }
+
         const grouped = new Map();
-        (Array.isArray(nonconformances) ? nonconformances : []).forEach((nc, index) => {
-            const existingQuestionId = asPositiveIntegerOrNull(nc?.questionId);
+        incomingFindings.forEach((nc, index) => {
+            const incomingFindingId = asPositiveIntegerOrNull(nc?.findingId ?? nc?.ncId);
+            const existingQuestionId = asPositiveIntegerOrNull(nc?.questionId)
+                || findingQuestionMap.get(incomingFindingId)
+                || null;
             const key = existingQuestionId ? `question:${existingQuestionId}` : `row:${index}`;
             if (!grouped.has(key)) {
                 grouped.set(key, {
