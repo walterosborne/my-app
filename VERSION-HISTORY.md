@@ -9,7 +9,7 @@
 ## 🚀 NGAT 3.0 — Kubernetes / OpenShift Generation
 
 **Release baseline:** October 2026  
-**Change window covered:** June 26, 2026 documentation baseline through October 1, 2026  
+**Change window covered:** September 20, 2026 through October 1, 2026  
 **Hosting:** OpenShift / Kubernetes  
 **Frontend:** React 19 + Vite  
 **Backend:** Express + MSSQL in the application container  
@@ -20,7 +20,7 @@
 
 NGAT 3.0 is the Kubernetes/OpenShift generation of NGAT. It moves the deployed application away from the IIS/Kerberos-centered 2.0 runtime and into a containerized React/Express deployment protected by OAuth2 Proxy and Entra ID. The existing audit workflow was preserved while the backend, identity model, environment safety, database migration tooling, resilience behavior, Conduct Audit data model, reporting, FOE tooling, and operational deployment model were substantially expanded.
 
-This entry covers the complete functional change set since the previous documentation update on June 26, 2026: 236 commits on the `kubernetes` branch.
+NGAT 3.0 begins with the first actual OpenShift implementation on September 20, 2026: commit `a769cda68301` (“Port NGAT backend and React hosting from IIS to OpenShift with Graph-validated Entra identity”). The June/July work after the 2.0 documentation baseline is separated below into NGAT 2.1 and 2.2.
 
 ---
 
@@ -222,7 +222,6 @@ The largest application/data-model change in 3.0 is the normalization of Conduct
 - Duplicate filenames are retained safely in ZIP exports.
 - Evidence metadata is exposed on nested question/finding report data.
 - Download logging and response/evidence relationships were clarified and hardened.
-- Earlier post-2.0 work also improved shared-location evidence handling, multi-file uploads, and collapse behavior around ETQ/standard-question evidence entry.
 
 ---
 
@@ -304,21 +303,7 @@ When the local hardcoded employee-ID identity fallback is being used:
 
 ## 🧠 FOE: From Linked Legacy App to Native NGAT Functionality
 
-FOE received two major waves of work after the previous documentation baseline.
-
-### Native FOE administration
-
-- Added a native FOE Admin Menu in React.
-- Added maintenance screens for:
-  - FOE Auditors
-  - Sites
-  - Audit Areas
-  - Customers
-  - Divisions
-  - Shifts
-- Added assignment/editing behavior and archive-aware maintenance.
-- FOE auditor records retain MyID, approved-site, lead-site, admin, and archive information.
-- FOE data-copy/schema scripts were added and organized with the rest of the database tooling.
+FOE administration arrived in NGAT 2.2. NGAT 3.0 completes the larger migration by replacing the remaining legacy FOE audit and download/report experiences with native NGAT functionality.
 
 ### Native FOE audit entry
 
@@ -399,20 +384,11 @@ NGAT 3.0 substantially expands the SQL migration tooling.
   - migration markers and verification
 - ISO 9001 legacy question mapping is explicitly handled in the standard-type migration.
 
-### Schema copy/backup utilities
+### Runtime schema enforcement
 
-Since the prior documentation baseline, SQL tooling was also added or reorganized for:
-
-- copying `*_r` and FOE tables between schemas
-- copying dbo data to dev
-- full schema backup/copy workflows
-- identifying tables missing expected suffixes
-- deleting/rebuilding development copies safely
-- restoring archived audits
-- ensuring `createdAt` defaults
-- protecting production `dbo` data during development migrations
-
-The central application SQL adapter now applies environment schema routing consistently to both normal audit tables and FOE tables.
+- The central application SQL adapter applies environment schema routing consistently to both normal audit tables and FOE tables.
+- Kubernetes-era migrations preserve the production-data protections introduced in NGAT 2.1 and extend them to the new lifecycle, hierarchy, and normalized question/finding structures.
+- Added restoration tooling for archived audits and safeguards/default restoration needed after development schema copies.
 
 ---
 
@@ -426,25 +402,6 @@ The central application SQL adapter now applies environment schema routing consi
 - “Time to complete audit” was moved from Nonconformities into the Conduct Audit PE introduction.
 - Several tool-page headings and navigation labels were simplified to remove duplication.
 - FOE responsive CSS was isolated so it does not bleed into unrelated NGAT pages.
-
----
-
-## 🧾 Earlier Post-2.0 Changes Included in This Release Window
-
-The June/July work after the last documentation update is also part of the 3.0 change set:
-
-- stronger `dbo` protection and schema-copy/delete utilities
-- evidence ZIP fixes and shared-location handling improvements
-- multi-file objective evidence upload improvements
-- ETQ / standard-question collapsing refinements
-- nonconformity response/comment fixes
-- environment-variable and deployed configuration fixes
-- native FOE Admin development
-- FOE filtering/editing improvements
-- SQL organization and FOE/schema copy tooling
-- Conduct Audit question fixes
-- expanded CUI guidance/handling
-- admin-access and network-ID diagnostics that informed the later Entra migration
 
 ---
 
@@ -486,12 +443,76 @@ NGAT 3.0 is not just a hosting change. The Kubernetes migration coincides with s
 - objective evidence handling
 - reports and exports
 - Risk Analysis
-- FOE administration, audit entry, and reporting
+- FOE audit entry and reporting, building on the 2.2 FOE administration work
 - email safety and notification behavior
 - guarded database migrations
 
 The core React audit workflow remains recognizable from NGAT 2.0, but the deployed architecture and several major data/workflow models are new enough to treat the Kubernetes generation as a distinct major release.
 
+
+---
+
+## 🔧 NGAT 2.2 — FOE Administration and Access Hardening
+
+**Change window covered:** July 9, 2026 through July 30, 2026  
+**Hosting:** IIS / Windows-hosted NGAT 2.x runtime  
+**Focus:** Native FOE administration, CUI guidance, Conduct Audit reliability, and authorization diagnostics
+
+### 🌟 Release Summary
+
+NGAT 2.2 was the second post-2.0 improvement wave. It moved FOE administration into the React application, tightened Conduct Audit and CUI behavior, and added better authorization diagnostics before the later Entra/OpenShift rewrite.
+
+### 🧠 Native FOE Administration
+
+- Added the native **FOE Admin Menu**.
+- Added React administration for FOE Auditors, Sites, Audit Areas, Customers, Divisions, and Shifts.
+- Added FOE editing/filtering behavior and archive-aware maintenance.
+- Added FOE-specific development-schema copy tooling and reorganized SQL utilities.
+
+### 🔎 Conduct Audit and Access Reliability
+
+- Hardened loading of nonconformance/question data when the backend returns invalid or non-JSON responses.
+- Preserved Every Time Question state when separate nonconformance loading fails.
+- Improved IIS-auth response diagnostics.
+- Expanded CUI access-denied guidance across audit detail, evidence, reminders, CAR/nonconformance, and Conduct Audit paths.
+- When possible, CUI-denied users are directed to the appropriate division lead through roster data.
+- Added richer Network ID / roster / auditor diagnostics.
+- Improved admin audit-edit authorization within permitted division scope.
+
+---
+
+## 🧰 NGAT 2.1 — Development Schema Safety and Audit Workflow Polish
+
+**Change window covered:** June 26, 2026 through June 29, 2026  
+**Hosting:** IIS / Windows-hosted NGAT 2.x runtime  
+**Focus:** Safer development database workflows, objective evidence reliability, and Conduct Audit usability
+
+### 🌟 Release Summary
+
+NGAT 2.1 was the first wave after the original 2.0 documentation. It concentrated on protecting production data while making development schema copies safer, plus several objective-evidence and Conduct Audit improvements.
+
+### 🗃️ Development Schema and Production-Data Protection
+
+- Added and refined scripts for copying, backing up, cleaning, and rebuilding development schemas.
+- Added explicit safeguards that refuse unsafe non-backup creates, overwrites, or drops against `dbo`.
+- Added foreign-key-aware schema cleanup and table-discovery utilities.
+- Added targeted copy support for `*_r` and FOE tables.
+- Improved environment-variable and IIS deployment configuration around the schema-aware backend.
+
+### 📎 Objective Evidence and Conduct Audit
+
+- Added multi-file objective evidence uploads.
+- Improved shared/network evidence-location handling.
+- Fixed evidence ZIP behavior and added clearer upload diagnostics/limits.
+- Refined Every Time Question and standard-question collapsing.
+- Fixed nonconformity response/comment behavior.
+- Improved interaction between Conduct Audit question state and saved nonconformance data.
+
+### 🧱 Runtime Cleanup
+
+- Continued consolidation around the SQL Server-backed `mssqlserver.js` runtime.
+- Updated deployed environment-variable and `web.config` behavior.
+- Removed obsolete backend code as the IIS/Express path became the maintained 2.x implementation.
 
 ---
 
