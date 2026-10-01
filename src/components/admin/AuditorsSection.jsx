@@ -123,7 +123,8 @@ const AuditorsSection = ({
                             flex: 1.2,
                             minWidth: 200,
                             sortable: false,
-                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                            valueGetter: (_value, row) => getDivisionName(row.divisionId) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
                         }
                     ]}
                     getRowId={(row) => row.auditorId}
