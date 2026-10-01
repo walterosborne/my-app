@@ -34,7 +34,22 @@ const { default: smtpConfig } = await import('./smtpConfig.js');
 // Fail at startup if OpenShift has not explicitly chosen its audit schema.
 const configuredEnvironmentMode = getEnvironmentModeForHost();
 const configuredAuditSchema = getDatabaseSchemaForHost();
-console.log('[NGAT ENV] Audit mode/schema:', configuredEnvironmentMode, configuredAuditSchema);
+
+// The environment banner and database schema are driven by the same NGAT_ENV
+// value. Fail closed if those ever disagree: a development banner must mean
+// every environment-scoped audit/FOE write is going to [dev], never [dbo].
+const expectedAuditSchemaByMode = {
+    dev: 'dev',
+    stg: 'stag',
+    prod: 'dbo'
+};
+const expectedAuditSchema = expectedAuditSchemaByMode[configuredEnvironmentMode];
+if (!expectedAuditSchema || configuredAuditSchema !== expectedAuditSchema) {
+    throw new Error(
+        `Unsafe NGAT environment/schema configuration: mode=${configuredEnvironmentMode}, schema=${configuredAuditSchema}, expected=${expectedAuditSchema || '<unknown>'}`
+    );
+}
+console.log('[NGAT ENV] Audit/FOE mode/schema:', configuredEnvironmentMode, configuredAuditSchema);
 const auditDbServer = process.env.auditserver || '';
 const auditDbDatabase = process.env.auditdb || '';
 const auditDbUser = process.env.audituser || '';
@@ -284,22 +299,39 @@ const formatSchemaIdentifierForSql = (schemaName) => {
 };
 
 const applyAuditSchemaToSql = (queryText, schemaName) => {
-    const sqlSchemaName = formatSchemaIdentifierForSql(schemaName);
+    const normalizedSchemaName = normalizeSchemaIdentifier(schemaName);
+    const sqlSchemaName = formatSchemaIdentifierForSql(normalizedSchemaName);
     if (!sqlSchemaName) {
         return queryText;
     }
 
-    // FOE tables are copied into the same environment schemas as the *_r
-    // audit tables. Keep legacy [dbo].[Fode*] SQL environment-safe so dev
-    // and staging can never read from or write to production FOE data.
+    // FOE is environment-scoped exactly like the normal *_r audit tables.
+    // Route any legacy/current explicit FOE environment qualifier through the
+    // runtime schema selected by NGAT_ENV. This keeps old SQL readable while
+    // guaranteeing dev -> [dev], staging -> [stag], and prod -> [dbo].
     const foeScopedSql = queryText.replace(
-        /\[dbo\]\.\[(Fode[A-Za-z0-9_]*)\]/gi,
+        /(?:\[(?:dbo|dev|stag)\]|(?:dbo|dev|stag))\s*\.\s*\[(Fode[A-Za-z0-9_]*)\]/gi,
         (_match, tableName) => `${sqlSchemaName}.[${tableName}]`
     );
 
-    return foeScopedSql.replace(/(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm, (match, prefix, tableName) => {
-        return `${prefix}${sqlSchemaName}.${tableName}`;
-    });
+    const auditScopedSql = foeScopedSql.replace(
+        /(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm,
+        (match, prefix, tableName) => `${prefix}${sqlSchemaName}.${tableName}`
+    );
+
+    // Defense in depth: a non-production process must never execute an
+    // explicitly dbo-qualified FOE query even if a future query shape escapes
+    // the rewrite above.
+    if (
+        normalizedSchemaName.toLowerCase() !== PRODUCTION_SCHEMA.toLowerCase()
+        && /(?:\[dbo\]|dbo)\s*\.\s*\[Fode[A-Za-z0-9_]*\]/i.test(auditScopedSql)
+    ) {
+        throw new Error(
+            `Blocked FOE query against dbo while NGAT audit schema is [${normalizedSchemaName}].`
+        );
+    }
+
+    return auditScopedSql;
 };
 
 const prepareSql = (queryText, { applyAuditSchema = false, schemaName = null } = {}) => {
@@ -876,7 +908,10 @@ app.use((req, _res, next) => {
 // The React banner reads the single runtime NGAT_ENV; no Vite or hostname guess.
 app.get('/api/environment', (_req, res) => {
     res.set('Cache-Control', 'no-store');
-    res.json({ mode: configuredEnvironmentMode });
+    res.json({
+        mode: configuredEnvironmentMode,
+        auditSchema: configuredAuditSchema
+    });
 });
 
 app.get(['/testheaders', '/api/testheaders'], (req, res) => {
