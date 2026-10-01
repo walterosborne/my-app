@@ -203,6 +203,92 @@ const attachFindings = (audits, findings) => {
     }));
 };
 
+const escapeEmailHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const getFoeAuditorNotificationRecipient = async ({
+    pool,
+    getRosterRowsByMyIds,
+    userId
+}) => {
+    if (!userId || typeof getRosterRowsByMyIds !== 'function') return null;
+
+    const auditorResult = await pool.query(
+        [
+            'SELECT TOP 1 [UserID], [Name], [MyID]',
+            'FROM [dbo].[FodeAuditors]',
+            'WHERE [UserID] = $1'
+        ].join('\n'),
+        [Number(userId)]
+    );
+    const auditor = auditorResult.rows[0];
+    if (!auditor) return null;
+
+    const myId = String(readValue(auditor, 'MyID') ?? '').trim();
+    if (!myId) return null;
+
+    const rosterRows = await getRosterRowsByMyIds([myId]);
+    const roster = rosterRows?.[0] || null;
+    const email = String(roster?.email ?? '').trim();
+    if (!email) return null;
+
+    return {
+        email,
+        name: String(
+            roster?.rostername
+            || readValue(auditor, 'Name')
+            || ''
+        ).trim(),
+        myId
+    };
+};
+
+const buildFoeAuditNotificationEmail = ({
+    title,
+    action,
+    siteName,
+    auditAreaName,
+    auditDate,
+    foeCategory,
+    auditUrl
+}) => {
+    const safeTitle = escapeEmailHtml(title);
+    const safeSite = escapeEmailHtml(siteName || 'Not specified');
+    const safeArea = escapeEmailHtml(auditAreaName || 'Not specified');
+    const safeDate = escapeEmailHtml(auditDate || 'Not specified');
+    const safeCategory = escapeEmailHtml(foeCategory || 'Not specified');
+    const safeUrl = escapeEmailHtml(auditUrl || '');
+    const actionLabel = action === 'edited' ? 'edited' : 'created';
+
+    return {
+        subject: `FOE Audit ${title} has been ${actionLabel}`,
+        body: `
+<div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
+  <h1 style="font-size: 24px; margin-bottom: 6px;">FOE Audit ${safeTitle} has been ${actionLabel}</h1>
+  <p style="font-size: 16px;">You are listed as the auditor for this FOE audit.</p>
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse: separate; width: 100%; background: #f3f4f6; border-radius: 6px; margin: 16px 0;">
+    <tr><td style="padding: 7px 16px;"><strong>Site:</strong> ${safeSite}</td></tr>
+    <tr><td style="padding: 7px 16px;"><strong>Audit Area:</strong> ${safeArea}</td></tr>
+    <tr><td style="padding: 7px 16px;"><strong>Audit Date:</strong> ${safeDate}</td></tr>
+    <tr><td style="padding: 7px 16px;"><strong>FOE Category:</strong> ${safeCategory}</td></tr>
+  </table>
+  ${safeUrl ? `
+  <p style="margin-top: 18px;">
+    <a href="${safeUrl}" style="display: inline-block; padding: 12px 18px; background: #1d4ed8; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 700;">
+      Open FOE Audits
+    </a>
+  </p>` : ''}
+  <p style="font-size: 12px; color: #6b7280; margin-top: 20px;">
+    You are receiving this email because you are the assigned auditor for this FOE audit.
+  </p>
+</div>`.trim()
+    };
+};
+
 const rollback = async (client, context) => {
     if (!client) return;
     try {
@@ -212,7 +298,14 @@ const rollback = async (client, context) => {
     }
 };
 
-export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
+export const registerFoeAuditRoutes = ({
+    app,
+    pool,
+    getCurrentUserInfo,
+    getRosterRowsByMyIds,
+    queueEmail,
+    buildAppRouteUrl
+}) => {
     app.get('/api/foe-audit-workspace', async (req, res) => {
         try {
             const currentUser = await getCurrentFoeAuditor(req, pool, getCurrentUserInfo);
@@ -573,7 +666,52 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
             client.release();
             client = null;
 
-            return res.json({ success: true, title: Number(title), draft: isDraft });
+            let emailWarning = null;
+            if (!isDraft) {
+                try {
+                    const recipient = await getFoeAuditorNotificationRecipient({
+                        pool,
+                        getRosterRowsByMyIds,
+                        userId: ownerUserId
+                    });
+
+                    if (!recipient) {
+                        emailWarning = 'FOE audit saved, but the assigned auditor email could not be resolved from MyID.';
+                    } else if (typeof queueEmail !== 'function') {
+                        emailWarning = 'FOE audit saved, but the email service is unavailable.';
+                    } else {
+                        const emailPayload = buildFoeAuditNotificationEmail({
+                            title: Number(title),
+                            action: existingAudit && !existingAudit.draft ? 'edited' : 'created',
+                            siteName: readValue(siteRow, 'Site') || existingAudit?.siteName || '',
+                            auditAreaName: readValue(areaRow, 'AuditArea') || existingAudit?.auditAreaName || '',
+                            auditDate,
+                            foeCategory,
+                            auditUrl: typeof buildAppRouteUrl === 'function'
+                                ? buildAppRouteUrl(req, '/foe?type=audits')
+                                : ''
+                        });
+                        const emailResult = await queueEmail(null, {
+                            toAddress: recipient.email,
+                            subject: emailPayload.subject,
+                            body: emailPayload.body
+                        });
+                        if (emailResult?.success === false) {
+                            emailWarning = 'FOE audit saved, but the auditor notification email failed. Contact the auditor directly.';
+                        }
+                    }
+                } catch (emailError) {
+                    console.error('Error sending FOE audit notification:', emailError);
+                    emailWarning = 'FOE audit saved, but the auditor notification email failed. Contact the auditor directly.';
+                }
+            }
+
+            return res.json({
+                success: true,
+                title: Number(title),
+                draft: isDraft,
+                emailWarning
+            });
         } catch (error) {
             await rollback(client, 'FOE audit save');
             client?.release?.();
