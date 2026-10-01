@@ -155,7 +155,7 @@ const FoeAudits = () => {
 
   const auditAreaOptions = useMemo(() => {
     return (workspace?.auditAreas || [])
-      .filter((area) => Number(area.parentSiteId) === Number(form.siteId))
+      .filter((area) => !form.siteId || Number(area.parentSiteId) === Number(form.siteId))
       .filter((area) => mode !== 'New Audit' || Number(area.active) === 1)
       .map((area) => ({
         value: Number(area.auditAreaId),
@@ -324,7 +324,8 @@ const FoeAudits = () => {
   }, [mode, form.siteId, siteOptions, workspace]);
 
   useEffect(() => {
-    if (mode !== 'New Audit' || form.auditAreaId || !form.siteId || auditAreaOptions.length !== 1) return;
+    if (mode !== 'New Audit' || form.auditAreaId || auditAreaOptions.length !== 1) return;
+    if (!form.siteId && siteOptions.length === 1) return;
     const auditAreaId = auditAreaOptions[0].value;
     const area = (workspace?.auditAreas || []).find(
       (item) => Number(item.auditAreaId) === Number(auditAreaId)
@@ -334,7 +335,7 @@ const FoeAudits = () => {
       auditAreaId,
       manager: area?.manager || ''
     }));
-  }, [mode, form.auditAreaId, form.siteId, auditAreaOptions, workspace]);
+  }, [mode, form.auditAreaId, form.siteId, auditAreaOptions, siteOptions, workspace]);
 
   const validate = () => {
     const required = [
@@ -354,7 +355,7 @@ const FoeAudits = () => {
 
   const submitAudit = async (draft) => {
     if (readOnly || submitting) return;
-    const validationErrors = validate();
+    const validationErrors = draft ? [] : validate();
     setMissingFields(validationErrors);
     if (validationErrors.length > 0) {
       toast.error('Missing Required Fields: ' + validationErrors.join(', '));
@@ -379,8 +380,8 @@ const FoeAudits = () => {
       const result = await saveFoeAudit({
         title: selectedAudit?.title ?? null,
         draft,
-        siteId: Number(form.siteId),
-        auditAreaId: Number(form.auditAreaId),
+        siteId: form.siteId === '' ? null : Number(form.siteId),
+        auditAreaId: form.auditAreaId === '' ? null : Number(form.auditAreaId),
         foeCategory: form.foeCategory,
         auditDate: form.auditDate,
         customer: form.customer || null,
@@ -558,7 +559,7 @@ const FoeAudits = () => {
                 <label>Audit Area<span className="foe-required">*</span></label>
                 <Select
                   isClearable
-                  isDisabled={readOnly || !form.siteId || (mode === 'New Audit' && auditAreaOptions.length === 1)}
+                  isDisabled={readOnly || (mode === 'New Audit' && auditAreaOptions.length === 1)}
                   options={auditAreaOptions}
                   styles={customStyles}
                   value={activeAuditAreaOption}
