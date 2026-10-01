@@ -67,6 +67,7 @@ const Navbar = () => {
         ],
         'Help': [
             { label: 'Info/Support', path: '/info-support' },
+            { label: 'Version History', path: '/version-history' },
             { label: 'Submit Improvement', path: '/submit-improvement' },
             { label: 'Request Auditor Access', path: '/request-auditor-access' }
         ]
