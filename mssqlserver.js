@@ -1170,16 +1170,46 @@ const sanitizeFilename = (name) => {
     return String(name || 'file').replace(/[/\\]/g, '_').replace(/"/g, '');
 };
 
+const decorateEmailForEnvironment = ({ subject, body }) => {
+    if (configuredEnvironmentMode === 'prod') {
+        return { subject, body };
+    }
+
+    const isDev = configuredEnvironmentMode === 'dev';
+    const label = isDev ? 'NGAT DEV' : 'NGAT STAGING';
+    const backgroundColor = isDev ? '#dc2626' : '#d97706';
+    const environmentName = isDev ? 'DEVELOPMENT' : 'STAGING';
+    const decoratedSubject = `[${label}] ${subject}`;
+    const banner = `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 0 0 20px 0;">
+  <tr>
+    <td bgcolor="${backgroundColor}" style="background-color: ${backgroundColor}; color: #ffffff; padding: 18px 20px; font-family: Arial, sans-serif; font-size: 18px; font-weight: 800; line-height: 1.35; text-align: center;">
+      ${environmentName} ENVIRONMENT — NOT PRODUCTION
+      <div style="font-size: 14px; font-weight: 600; margin-top: 6px;">
+        The action described in this email was taken in NGAT ${environmentName.toLowerCase()} mode.
+      </div>
+    </td>
+  </tr>
+</table>`.trim();
+
+    return {
+        subject: decoratedSubject,
+        body: `${banner}\n${body || ''}`
+    };
+};
+
 const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => {
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
         throw new Error('SMTP host not configured.');
     }
+
+    const decorated = decorateEmailForEnvironment({ subject, body });
     await smtpTransport.sendMail({
         from: SMTP_FROM,
         to: toAddress,
         cc: ccAddress || undefined,
-        subject,
-        html: body
+        subject: decorated.subject,
+        html: decorated.body
     });
 };
 
@@ -3220,7 +3250,14 @@ function startServer(host, canFallback = true) {
     });
 }
 
-registerFoeAuditRoutes({ app, pool, getCurrentUserInfo });
+registerFoeAuditRoutes({
+    app,
+    pool,
+    getCurrentUserInfo,
+    getRosterRowsByMyIds,
+    queueEmail,
+    buildAppRouteUrl
+});
 
 startServer(PREFERRED_HOST);
 
