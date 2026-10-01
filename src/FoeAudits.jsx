@@ -153,11 +153,6 @@ const FoeAudits = () => {
       .sort((a, b) => a.label.localeCompare(b.label));
   }, [workspace, accessibleSiteIds, mode]);
 
-  const currentSite = useMemo(
-    () => (workspace?.sites || []).find((site) => Number(site.siteId) === Number(form.siteId)),
-    [workspace, form.siteId]
-  );
-
   const auditAreaOptions = useMemo(() => {
     return (workspace?.auditAreas || [])
       .filter((area) => Number(area.parentSiteId) === Number(form.siteId))
@@ -273,7 +268,7 @@ const FoeAudits = () => {
       label: GROUP_LABELS[key],
       rows: all.filter((row) => String(row.number || '').slice(0, 1) === key)
     }));
-    const otherRows = all.filter((row) => !Object.keys(GROUP_LABELS).includes(String(row.number || '').slice(0, 1)));
+    const otherRows = all.filter((row) => String(row.number || '') === 'Undefined');
     return [...groups, { key: 'other', label: 'Other', rows: otherRows }];
   }, [workspace]);
 
@@ -321,17 +316,20 @@ const FoeAudits = () => {
       ['FOE Category', form.foeCategory],
       ['Audit Date', form.auditDate]
     ];
-    const missing = required.filter(([, value]) => value === null || value === undefined || value === '').map(([label]) => label);
+    const missing = required
+      .filter(([, value]) => value === null || value === undefined || value === '')
+      .map(([label]) => label);
     if (!currentUser?.userId) missing.push('UserID');
     if ((form.auditNote || '').length > 350) missing.push('Audit Note (max 350 characters)');
-    setMissingFields(missing);
-    return missing.length === 0;
+    return missing;
   };
 
   const submitAudit = async (draft) => {
     if (readOnly || submitting) return;
-    if (!validate()) {
-      toast.error('Missing Required Fields: ' + missingFields.join(', '));
+    const validationErrors = validate();
+    setMissingFields(validationErrors);
+    if (validationErrors.length > 0) {
+      toast.error('Missing Required Fields: ' + validationErrors.join(', '));
       return;
     }
 
@@ -665,6 +663,28 @@ const FoeAudits = () => {
               </div>
             </div>
           </div>
+
+          {selectedAudit && (selectedAudit.findings || []).length > 0 && (
+            <div className="section">
+              <label className="sectiontitle">Finding Summary</label>
+              <Box sx={{ height: 280, width: '100%' }}>
+                <DataGrid
+                  rows={(selectedAudit.findings || []).map((finding, index) => ({
+                    ...finding,
+                    id: finding.id || `${selectedAudit.title}-${index}`
+                  }))}
+                  columns={[
+                    { field: 'number', headerName: 'Number', minWidth: 140, flex: 0.6 },
+                    { field: 'quantity', headerName: 'Quantity', minWidth: 120, flex: 0.5 },
+                    { field: 'comment', headerName: 'Comment', minWidth: 260, flex: 1.5 }
+                  ]}
+                  pageSizeOptions={[5, 10, 20]}
+                  initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
+                  disableRowSelectionOnClick
+                />
+              </Box>
+            </div>
+          )}
 
           <div className="section">
             <label className="sectiontitle">Discrepancy Types</label>
