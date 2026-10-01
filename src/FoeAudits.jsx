@@ -711,9 +711,13 @@ const FoeAudits = () => {
                     id: finding.id || `${selectedAudit.title}-${index}`
                   }))}
                   columns={[
-                    { field: 'number', headerName: 'Number', minWidth: 140, flex: 0.6 },
-                    { field: 'quantity', headerName: 'Quantity', minWidth: 120, flex: 0.5 },
-                    { field: 'comment', headerName: 'Comment', minWidth: 260, flex: 1.5 }
+                    { field: 'id', headerName: 'ID', minWidth: 90, flex: 0.45 },
+                    { field: 'title', headerName: 'Title', minWidth: 90, flex: 0.45 },
+                    { field: 'number', headerName: 'Discrepancy Type Number', minWidth: 190, flex: 0.8 },
+                    { field: 'quantity', headerName: 'Discrepancy Type Quantity', minWidth: 190, flex: 0.8 },
+                    { field: 'comment', headerName: 'Discrepancy Type Comment', minWidth: 260, flex: 1.4 },
+                    { field: 'foeElement', headerName: 'Discrepancy Type FOE Element', minWidth: 210, flex: 1 },
+                    { field: 'riskCategory', headerName: 'Discrepancy Type Risk Category', minWidth: 220, flex: 1 }
                   ]}
                   pageSizeOptions={[5, 10, 20]}
                   initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
