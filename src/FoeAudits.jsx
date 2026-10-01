@@ -308,6 +308,34 @@ const FoeAudits = () => {
     }));
   };
 
+  useEffect(() => {
+    if (mode !== 'New Audit' || form.siteId || siteOptions.length !== 1) return;
+    const siteId = siteOptions[0].value;
+    const site = (workspace?.sites || []).find(
+      (item) => Number(item.siteId) === Number(siteId)
+    );
+    setForm((current) => ({
+      ...current,
+      siteId,
+      auditAreaId: '',
+      divisionId: site?.parentDivisionId ?? '',
+      manager: ''
+    }));
+  }, [mode, form.siteId, siteOptions, workspace]);
+
+  useEffect(() => {
+    if (mode !== 'New Audit' || form.auditAreaId || !form.siteId || auditAreaOptions.length !== 1) return;
+    const auditAreaId = auditAreaOptions[0].value;
+    const area = (workspace?.auditAreas || []).find(
+      (item) => Number(item.auditAreaId) === Number(auditAreaId)
+    );
+    setForm((current) => ({
+      ...current,
+      auditAreaId,
+      manager: area?.manager || ''
+    }));
+  }, [mode, form.auditAreaId, form.siteId, auditAreaOptions, workspace]);
+
   const validate = () => {
     const required = [
       ['Site', form.siteId],
@@ -510,7 +538,7 @@ const FoeAudits = () => {
                 <label>Site<span className="foe-required">*</span></label>
                 <Select
                   isClearable
-                  isDisabled={readOnly}
+                  isDisabled={readOnly || (mode === 'New Audit' && siteOptions.length === 1)}
                   options={siteOptions}
                   styles={customStyles}
                   value={activeSiteOption}
@@ -522,7 +550,7 @@ const FoeAudits = () => {
                 <label>Audit Area<span className="foe-required">*</span></label>
                 <Select
                   isClearable
-                  isDisabled={readOnly || !form.siteId}
+                  isDisabled={readOnly || !form.siteId || (mode === 'New Audit' && auditAreaOptions.length === 1)}
                   options={auditAreaOptions}
                   styles={customStyles}
                   value={activeAuditAreaOption}
