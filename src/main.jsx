@@ -23,6 +23,7 @@ import AdminMenu from './AdminMenu.jsx'
 import FOE from './FOE.jsx'
 import FoeAdminMenu from './FoeAdminMenu.jsx'
 import InfoSupport from './InfoSupport.jsx'
+import VersionHistory from './VersionHistory.jsx'
 import AuditStatuses from './AuditStatuses.jsx'
 import AuditReports from './AuditReports.jsx'
 import RequestAuditorAccess from './RequestAuditorAccess.jsx'
@@ -149,6 +150,8 @@ const getPageTitle = (location) => {
       return 'FOE Admin Menu';
     case '/info-support':
       return 'Info and Support';
+    case '/version-history':
+      return 'Version History';
     case '/request-auditor-access':
       return 'Request Auditor Access';
     case '/submit-improvement':
@@ -266,6 +269,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/foe" element={<FOE />} />
           <Route path="/foe/admin" element={<FoeAdminMenu />} />
           <Route path="/info-support" element={<InfoSupport />} />
+          <Route path="/version-history" element={<VersionHistory />} />
           <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
           <Route path="/submit-improvement" element={<ImprovementRequest />} />
           <Route path="/audit-statuses" element={<AuditStatuses />} />
