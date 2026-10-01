@@ -413,7 +413,7 @@ const FoeAudits = () => {
   const activeAuditAreaOption = auditAreaOptions.find((option) => Number(option.value) === Number(form.auditAreaId)) || null;
 
   return (
-    <div style={{ width: '100%' }}>
+    <div className="foe-audit-page" style={{ width: '100%' }}>
       <div style={{ width: '100%', textAlign: 'left' }}>
         <h1>FOE/FA Audit Entry Tool</h1>
         <h2 style={{ marginTop: '3px' }}>
