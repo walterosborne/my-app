@@ -94,6 +94,48 @@ export async function getFoeShifts(skipCache = false) {
     return await fetchData('foe-shifts', skipCache);
 }
 
+
+async function parseFoeResponse(response, fallbackMessage) {
+    let data = null;
+    try {
+        data = await response.json();
+    } catch {
+        data = null;
+    }
+    if (!response.ok) {
+        throw new Error(data?.error || fallbackMessage || `HTTP error! status: ${response.status}`);
+    }
+    return data;
+}
+
+export async function getFoeAuditWorkspace() {
+    const response = await fetch(buildApiUrl('foe-audit-workspace'), { cache: 'no-store' });
+    return await parseFoeResponse(response, 'Unable to load FOE audit workspace.');
+}
+
+export async function saveFoeAudit(payload) {
+    const response = await fetch(buildApiUrl('foe-audits'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+    return await parseFoeResponse(response, 'Unable to save FOE audit.');
+}
+
+export async function deleteFoeAudit(title) {
+    const response = await fetch(buildApiUrl(`foe-audits/${encodeURIComponent(title)}`), {
+        method: 'DELETE'
+    });
+    return await parseFoeResponse(response, 'Unable to delete FOE audit.');
+}
+
+export async function getFoeReportData() {
+    const response = await fetch(buildApiUrl('foe-report-data'), { cache: 'no-store' });
+    return await parseFoeResponse(response, 'Unable to load FOE report data.');
+}
+
 export async function getBusinessUnits() {
     return await fetchData('business-units');
 }
