@@ -95,7 +95,8 @@ const ProgramsSection = ({
                             flex: 1.1,
                             minWidth: 180,
                             sortable: false,
-                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                            valueGetter: (_value, row) => getDivisionName(row.divisionId) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
                         },
                         {
                             field: 'businessUnit',
@@ -103,7 +104,8 @@ const ProgramsSection = ({
                             flex: 1.1,
                             minWidth: 170,
                             sortable: false,
-                            renderCell: ({ row }) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned'
+                            valueGetter: (_value, row) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned',
+                            renderCell: ({ value }) => value
                         },
                         {
                             field: 'operatingUnit',
@@ -111,7 +113,8 @@ const ProgramsSection = ({
                             flex: 1.1,
                             minWidth: 170,
                             sortable: false,
-                            renderCell: ({ row }) => row.operatingUnitId ? getOperatingUnitName(row.operatingUnitId) : 'Not assigned'
+                            valueGetter: (_value, row) => row.operatingUnitId ? getOperatingUnitName(row.operatingUnitId) : 'Not assigned',
+                            renderCell: ({ value }) => value
                         },
                         {
                             field: 'status',
@@ -119,7 +122,8 @@ const ProgramsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
-                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ value }) => value
                         }
                     ]}
                     getRowId={(row) => row.programId}
