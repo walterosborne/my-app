@@ -14,6 +14,8 @@ const uniqueOptions = (values = []) => (
     .map((value) => ({ value, label: String(value) }))
 );
 
+const selectedOptionValues = (options = []) => new Set(options.map((option) => option.value));
+
 const normalizeDate = (value) => {
   if (!value) return '';
   try {
@@ -84,14 +86,12 @@ const FoeReports = () => {
   const programOptions = useMemo(() => uniqueOptions(audits.map((audit) => audit.program)), [audits]);
   const auditAreaOptions = useMemo(() => uniqueOptions(audits.map((audit) => audit.auditAreaName)), [audits]);
 
-  const selectedValues = (options) => new Set(options.map((option) => option.value));
-
   const filteredAudits = useMemo(() => {
-    const auditors = selectedValues(auditorFilter);
-    const sites = selectedValues(siteFilter);
-    const divisions = selectedValues(divisionFilter);
-    const programs = selectedValues(programFilter);
-    const auditAreas = selectedValues(auditAreaFilter);
+    const auditors = selectedOptionValues(auditorFilter);
+    const sites = selectedOptionValues(siteFilter);
+    const divisions = selectedOptionValues(divisionFilter);
+    const programs = selectedOptionValues(programFilter);
+    const auditAreas = selectedOptionValues(auditAreaFilter);
     const normalizedTitle = titleFilter.trim().toLowerCase();
 
     return audits.filter((audit) => {
