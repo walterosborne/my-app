@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { getEntraIdentity, getForwardedAccessToken } from './entraIdentity.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
+import { registerFoeAuditRoutes } from './foeAuditRoutes.js';
 
 // OpenShift owns its environment via Secret/Deployment env vars.
 // Locally, .env is authoritative even if Windows already defines the same keys.
@@ -3175,6 +3176,8 @@ function startServer(host, canFallback = true) {
         process.exit(1);
     });
 }
+
+registerFoeAuditRoutes({ app, pool, getCurrentUserInfo });
 
 startServer(PREFERRED_HOST);
 
