@@ -85,8 +85,13 @@ app.use(express.json());
 // A public Route must ONLY expose the OAuth2 Proxy, never this app Service.
 app.use('/api', async (req, res, next) => {
     if (req.path === '/healthz' || req.path === '/health') return next();
-    try { await getEntraIdentity(req); next(); }
-    catch (error) { res.status(error.status || 502).json({ error: error.message || 'Identity resolution failed.' }); }
+    try {
+        const identity = await getEntraIdentity(req);
+        req.ngatIdentitySource = identity?.source || null;
+        next();
+    } catch (error) {
+        res.status(error.status || 502).json({ error: error.message || 'Identity resolution failed.' });
+    }
 });
 app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'ngat' }));
 // This endpoint checks end-to-end service availability for the browser banner.
@@ -818,7 +823,8 @@ const buildAuthRequestSummary = (req) => {
         auditSchema: requestContext?.auditSchema || getDatabaseSchemaForHost(requestHost),
         derivedNetworkId,
         effectiveNetworkId,
-        usedHardcodedFallback: false,
+        usedHardcodedFallback: req.ngatIdentitySource === 'local-dev-employee-id',
+        identitySource: req.ngatIdentitySource || null,
         authFields: authTransport.populatedIdentityFields
     };
 };
@@ -901,7 +907,8 @@ app.use((req, _res, next) => {
     requestContextStorage.run({
         requestHost: getRequestEnvironmentHost(req), // for diagnostics, NOT mode selection
         environmentMode: configuredEnvironmentMode,
-        auditSchema: configuredAuditSchema
+        auditSchema: configuredAuditSchema,
+        identitySource: req.ngatIdentitySource || null
     }, next);
 });
 
@@ -1199,6 +1206,15 @@ const decorateEmailForEnvironment = ({ subject, body }) => {
 };
 
 const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => {
+    const identitySource = getCurrentRequestContext()?.identitySource || null;
+    if (identitySource === 'local-dev-employee-id') {
+        console.warn('[NGAT SMTP] Email suppressed because the request is using the local hardcoded development identity.', {
+            toAddress,
+            subject
+        });
+        return { suppressed: true, reason: 'local-dev-employee-id' };
+    }
+
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
         throw new Error('SMTP host not configured.');
     }
@@ -1211,12 +1227,17 @@ const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => 
         subject: decorated.subject,
         html: decorated.body
     });
+    return { suppressed: false };
 };
 
 const queueEmail = async (_client, { toAddress, ccAddress = null, subject, body }) => {
     try {
-        await sendSmtpEmail({ toAddress, ccAddress, subject, body });
-        return { success: true };
+        const sendResult = await sendSmtpEmail({ toAddress, ccAddress, subject, body });
+        return {
+            success: true,
+            suppressed: Boolean(sendResult?.suppressed),
+            suppressReason: sendResult?.reason || null
+        };
     } catch (error) {
         console.error(`SMTP send failed for ${toAddress}:`, error);
         return {
