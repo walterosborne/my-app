@@ -289,7 +289,15 @@ const applyAuditSchemaToSql = (queryText, schemaName) => {
         return queryText;
     }
 
-    return queryText.replace(/(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm, (match, prefix, tableName) => {
+    // FOE tables are copied into the same environment schemas as the *_r
+    // audit tables. Keep legacy [dbo].[Fode*] SQL environment-safe so dev
+    // and staging can never read from or write to production FOE data.
+    const foeScopedSql = queryText.replace(
+        /\[dbo\]\.\[(Fode[A-Za-z0-9_]*)\]/gi,
+        (_match, tableName) => `${sqlSchemaName}.[${tableName}]`
+    );
+
+    return foeScopedSql.replace(/(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm, (match, prefix, tableName) => {
         return `${prefix}${sqlSchemaName}.${tableName}`;
     });
 };
