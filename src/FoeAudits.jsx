@@ -400,6 +400,9 @@ const FoeAudits = () => {
         ? `You've saved draft audit ${result.title}`
         : `You've submitted audit ${result.title}`
       );
+      if (result?.emailWarning) {
+        toast.warn(result.emailWarning);
+      }
       await loadWorkspace();
       resetForm(true);
     } catch (error) {
