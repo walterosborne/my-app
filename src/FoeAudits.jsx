@@ -252,6 +252,7 @@ const FoeAudits = () => {
   };
 
   const auditColumns = [
+    { field: 'created', headerName: 'Created', minWidth: 165, flex: 0.8 },
     { field: 'title', headerName: 'Title', minWidth: 90, flex: 0.5 },
     { field: 'auditDate', headerName: 'Audit Date', minWidth: 120, flex: 0.7, valueGetter: (_value, row) => toDateInput(row.auditDate) },
     { field: 'auditorName', headerName: 'Auditor', minWidth: 160, flex: 1 },
