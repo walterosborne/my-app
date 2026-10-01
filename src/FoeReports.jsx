@@ -170,6 +170,7 @@ const FoeReports = () => {
       'Shift',
       'Audit Note',
       'Team',
+      'Sector',
       'Created',
       ...(includeDrafts ? ['Draft'] : [])
     ];
@@ -191,6 +192,7 @@ const FoeReports = () => {
       audit.shift || '',
       audit.auditNote || '',
       audit.auditAreaTeam || '',
+      audit.sector || '',
       audit.created ? String(audit.created) : '',
       ...(includeDrafts ? [audit.draft ? 'Yes' : 'No'] : [])
     ]);
