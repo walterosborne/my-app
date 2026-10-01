@@ -90,15 +90,15 @@
 }
 
 @media (max-width: 800px) {
-  .foe-action-row,
-  .sectionrow {
+  .foe-audit-page .foe-action-row,
+  .foe-audit-page .sectionrow {
     flex-direction: column;
   }
 
-  .foe-action-row .button,
-  .fieldboxquarter,
-  .fieldboxthird,
-  .fieldboxhalf {
+  .foe-audit-page .foe-action-row .button,
+  .foe-audit-page .fieldboxquarter,
+  .foe-audit-page .fieldboxthird,
+  .foe-audit-page .fieldboxhalf {
     width: 100%;
   }
 }
