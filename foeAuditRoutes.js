@@ -299,13 +299,35 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
 
             const requestedTitle = req.body?.title;
             const isDraft = Boolean(req.body?.draft);
-            const siteId = Number(req.body?.siteId);
-            const auditAreaId = Number(req.body?.auditAreaId);
+            const rawSiteId = req.body?.siteId;
+            const rawAuditAreaId = req.body?.auditAreaId;
+            const siteId = rawSiteId === null || rawSiteId === undefined || rawSiteId === ''
+                ? null
+                : Number(rawSiteId);
+            const auditAreaId = rawAuditAreaId === null || rawAuditAreaId === undefined || rawAuditAreaId === ''
+                ? null
+                : Number(rawAuditAreaId);
             const foeCategory = req.body?.foeCategory;
-            const auditDate = req.body?.auditDate;
+            const auditDate = req.body?.auditDate || null;
             const auditNote = req.body?.auditNote == null ? null : String(req.body.auditNote);
 
-            if (!siteId || !auditAreaId || foeCategory === null || foeCategory === undefined || foeCategory === '' || !auditDate) {
+            if (siteId !== null && !Number.isFinite(siteId)) {
+                return res.status(400).json({ success: false, error: 'Site is invalid.' });
+            }
+            if (auditAreaId !== null && !Number.isFinite(auditAreaId)) {
+                return res.status(400).json({ success: false, error: 'Audit Area is invalid.' });
+            }
+            if (
+                !isDraft
+                && (
+                    !siteId
+                    || !auditAreaId
+                    || foeCategory === null
+                    || foeCategory === undefined
+                    || foeCategory === ''
+                    || !auditDate
+                )
+            ) {
                 return res.status(400).json({
                     success: false,
                     error: 'Site, Audit Area, FOE Category, and Audit Date are required.'
@@ -343,7 +365,7 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
                 ...(currentUser.approvedSiteIds || []),
                 ...(currentUser.leadSiteIds || [])
             ].map(Number));
-            if (!permittedSiteIds.has(siteId)) {
+            if (siteId !== null && !permittedSiteIds.has(siteId)) {
                 return res.status(403).json({
                     success: false,
                     error: 'You are not approved to audit the selected site.'
@@ -353,7 +375,7 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
             if (
                 existingAudit
                 && !existingAudit.draft
-                && !(currentUser.leadSiteIds || []).map(Number).includes(siteId)
+                && (siteId === null || !(currentUser.leadSiteIds || []).map(Number).includes(siteId))
             ) {
                 return res.status(403).json({
                     success: false,
@@ -362,17 +384,28 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
             }
 
             const [siteResult, areaResult, discrepancyTypes] = await Promise.all([
-                pool.query('SELECT [SiteID], [Site], [ParentDiv], [Archive] FROM [dbo].[FodeSites] WHERE [SiteID] = $1', [siteId]),
-                pool.query('SELECT [AuditAreaID], [AuditArea], [Parent], [Archive], [Team], [Manager] FROM [dbo].[FodeAuditAreas] WHERE [AuditAreaID] = $1', [auditAreaId]),
+                siteId === null
+                    ? Promise.resolve({ rows: [] })
+                    : pool.query('SELECT [SiteID], [Site], [ParentDiv], [Archive] FROM [dbo].[FodeSites] WHERE [SiteID] = $1', [siteId]),
+                auditAreaId === null
+                    ? Promise.resolve({ rows: [] })
+                    : pool.query('SELECT [AuditAreaID], [AuditArea], [Parent], [Archive], [Team], [Manager] FROM [dbo].[FodeAuditAreas] WHERE [AuditAreaID] = $1', [auditAreaId]),
                 getDiscrepancyTypes(pool)
             ]);
-            const siteRow = siteResult.rows[0];
-            const areaRow = areaResult.rows[0];
+            const siteRow = siteResult.rows[0] || null;
+            const areaRow = areaResult.rows[0] || null;
 
-            if (!siteRow) {
+            if (siteId !== null && !siteRow) {
                 return res.status(400).json({ success: false, error: 'Selected FOE site does not exist.' });
             }
-            if (!areaRow || Number(readValue(areaRow, 'Parent')) !== siteId) {
+            if (auditAreaId !== null && !areaRow) {
+                return res.status(400).json({ success: false, error: 'Selected Audit Area does not exist.' });
+            }
+            if (
+                siteId !== null
+                && auditAreaId !== null
+                && Number(readValue(areaRow, 'Parent')) !== siteId
+            ) {
                 return res.status(400).json({
                     success: false,
                     error: 'Selected Audit Area does not belong to the selected Site.'
@@ -380,20 +413,21 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
             }
 
             const isNewAudit = !existingAudit;
-            if (isNewAudit && Number(readValue(siteRow, 'Archive') ?? 0) === 1) {
+            if (isNewAudit && siteRow && Number(readValue(siteRow, 'Archive') ?? 0) === 1) {
                 return res.status(400).json({
                     success: false,
                     error: 'Archived FOE sites cannot be used for new audits.'
                 });
             }
-            if (isNewAudit && Number(readValue(areaRow, 'Archive') ?? 0) === 1) {
+            if (isNewAudit && areaRow && Number(readValue(areaRow, 'Archive') ?? 0) === 1) {
                 return res.status(400).json({
                     success: false,
                     error: 'Archived Audit Areas cannot be used for new audits.'
                 });
             }
-            const divisionId = Number(readValue(siteRow, 'ParentDiv'));
-            if (!divisionId) {
+
+            const divisionId = siteRow ? Number(readValue(siteRow, 'ParentDiv')) || null : null;
+            if (!isDraft && !divisionId) {
                 return res.status(400).json({
                     success: false,
                     error: 'The selected FOE site does not have a parent Division.'
@@ -457,7 +491,7 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
                 Number(title),
                 auditAreaId,
                 divisionId,
-                String(foeCategory),
+                foeCategory === null || foeCategory === undefined || foeCategory === '' ? null : String(foeCategory),
                 auditDate,
                 auditorName,
                 siteId,
