@@ -84,7 +84,8 @@ const PropsSection = ({
                             flex: 1,
                             minWidth: 160,
                             sortable: false,
-                            renderCell: ({ row }) => getPropTypeLabel(row.propTypeId)
+                            valueGetter: (_value, row) => getPropTypeLabel(row.propTypeId) || '',
+                            renderCell: ({ value }) => value
                         },
                         {
                             field: 'propTarget',
@@ -92,7 +93,8 @@ const PropsSection = ({
                             flex: 1.4,
                             minWidth: 220,
                             sortable: false,
-                            renderCell: ({ row }) => getPropTargetLabel(row)
+                            valueGetter: (_value, row) => getPropTargetLabel(row) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
                         },
                         {
                             field: 'status',
@@ -100,7 +102,8 @@ const PropsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
-                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ value }) => value
                         }
                     ]}
                     getRowId={(row) => row.propId}
