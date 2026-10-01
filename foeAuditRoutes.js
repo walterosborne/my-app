@@ -2,6 +2,15 @@ import crypto from 'crypto';
 
 const normalizeKey = (value) => String(value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 
+const generateFoeHash = (size = 20) => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let value = '';
+    for (let index = 0; index < size; index += 1) {
+        value += characters[crypto.randomInt(characters.length)];
+    }
+    return value;
+};
+
 const readValue = (row, ...candidateNames) => {
     if (!row) return undefined;
     const candidates = new Set(candidateNames.map(normalizeKey));
@@ -439,7 +448,7 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
 
             let title = existingAudit?.title ?? null;
             if (title === null || title === undefined || title === '') {
-                const hash = crypto.randomBytes(10).toString('hex').toUpperCase();
+                const hash = generateFoeHash(20);
                 const titleInsert = await client.query(
                     'INSERT INTO [dbo].[FodeTitleHash] ([Hash], [Created]) VALUES ($1, GETDATE()) RETURNING [Title]',
                     [hash]
