@@ -91,7 +91,7 @@ const mapAudit = (row) => {
         auditDate: readValue(row, 'Audit Date') ?? null,
         auditorName: readValue(row, 'AuditorNameResolved', 'Auditor Name') ?? '',
         siteId: readValue(row, 'SiteID') ?? null,
-        program: readValue(row, 'Program') ?? null,
+        program: readValue(row, 'ProgramName', 'Program') ?? null,
         customer: readValue(row, 'Customer') ?? null,
         onProduct: readValue(row, 'On Product') ?? null,
         toolBoxNumber: readValue(row, 'Tool Box Number') ?? null,
@@ -167,12 +167,14 @@ const getAuditRows = async (pool) => {
             '    d.[Division] AS [DivisionName],',
             '    aa.[AuditArea] AS [AuditAreaName],',
             '    aa.[Team] AS [AuditAreaTeam],',
-            '    aa.[Manager] AS [AuditAreaManager]',
+            '    aa.[Manager] AS [AuditAreaManager],',
+            '    p.[Program] AS [ProgramName]',
             'FROM [dbo].[FodeAudits] a',
             'LEFT JOIN [dbo].[FodeAuditors] au ON au.[UserID] = a.[UserID]',
             'LEFT JOIN [dbo].[FodeSites] s ON s.[SiteID] = a.[SiteID]',
             'LEFT JOIN [dbo].[FodeDivisions] d ON d.[DivisionID] = a.[DivisionID]',
             'LEFT JOIN [dbo].[FodeAuditAreas] aa ON aa.[AuditAreaID] = a.[AuditAreaID]',
+            'LEFT JOIN [dbo].[FodePrograms] p ON p.[ProgramID] = a.[ProgramID]',
             'ORDER BY a.[Audit Date] DESC, a.[Title] DESC'
         ].join('\n')
     );
