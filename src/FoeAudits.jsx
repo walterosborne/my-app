@@ -498,31 +498,39 @@ const FoeAudits = () => {
       )}
 
       {showSelectionGrid && (
-        <Box sx={{ height: 400, width: '100%', marginTop: '10px' }}>
-          <DataGrid
-            rows={filteredModeAudits}
-            columns={auditColumns}
-            checkboxSelection
-            disableMultipleRowSelection
-            getRowId={(row) => String(row.title)}
-            rowSelectionModel={rowSelectionModel}
-            pageSizeOptions={[5, 10, 20]}
-            initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
-            onRowSelectionModelChange={(selectionModel) => {
-              setRowSelectionModel(selectionModel);
-              const ids = selectionModel?.ids ? Array.from(selectionModel.ids) : [];
-              const selectedTitle = ids[0];
-              const audit = filteredModeAudits.find((row) => String(row.title) === String(selectedTitle));
-              if (audit) loadSelectedAudit(audit);
-              else if (ids.length === 0) resetForm(true);
-            }}
-            sx={{
-              '& .MuiDataGrid-row': {
-                bgcolor: (theme) => theme.palette.mode === 'light' ? grey[200] : grey[900]
-              }
-            }}
-          />
-        </Box>
+        filteredModeAudits.length === 0 ? (
+          <div className="entry-message" style={{ marginTop: '10px' }}>
+            {mode === 'Edit Drafts'
+              ? 'You do not have any audit drafts.'
+              : 'No audits matched your search criteria.'}
+          </div>
+        ) : (
+          <Box sx={{ height: 400, width: '100%', marginTop: '10px' }}>
+            <DataGrid
+              rows={filteredModeAudits}
+              columns={auditColumns}
+              checkboxSelection
+              disableMultipleRowSelection
+              getRowId={(row) => String(row.title)}
+              rowSelectionModel={rowSelectionModel}
+              pageSizeOptions={[5, 10, 20]}
+              initialState={{ pagination: { paginationModel: { pageSize: 5, page: 0 } } }}
+              onRowSelectionModelChange={(selectionModel) => {
+                setRowSelectionModel(selectionModel);
+                const ids = selectionModel?.ids ? Array.from(selectionModel.ids) : [];
+                const selectedTitle = ids[0];
+                const audit = filteredModeAudits.find((row) => String(row.title) === String(selectedTitle));
+                if (audit) loadSelectedAudit(audit);
+                else if (ids.length === 0) resetForm(true);
+              }}
+              sx={{
+                '& .MuiDataGrid-row': {
+                  bgcolor: (theme) => theme.palette.mode === 'light' ? grey[200] : grey[900]
+                }
+              }}
+            />
+          </Box>
+        )
       )}
 
       {showSelectionGrid && selectedAudit && (
