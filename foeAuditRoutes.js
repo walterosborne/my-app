@@ -392,17 +392,6 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
                     error: 'Archived Audit Areas cannot be used for new audits.'
                 });
             }
-            if (
-                existingAudit
-                && Number(readValue(areaRow, 'Archive') ?? 0) === 1
-                && Number(existingAudit.auditAreaId) !== auditAreaId
-            ) {
-                return res.status(400).json({
-                    success: false,
-                    error: 'Archived Audit Areas cannot be newly assigned to an existing audit.'
-                });
-            }
-
             const divisionId = Number(readValue(siteRow, 'ParentDiv'));
             if (!divisionId) {
                 return res.status(400).json({
