@@ -279,7 +279,7 @@ const FoeAudits = () => {
       [key]: {
         quantity: Number(current[key]?.quantity || 0),
         comment: current[key]?.comment || '',
-        [field]: field === 'quantity' ? Math.max(0, Number(value) || 0) : value
+        [field]: field === 'quantity' ? Math.max(0, Math.trunc(Number(value) || 0)) : value
       }
     }));
   };
