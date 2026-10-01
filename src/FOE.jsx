@@ -57,10 +57,6 @@ const FOE = () => {
       return <FoeAudits />;
     }
 
-    if (type === 'download') {
-      return <FoeReports />;
-    }
-
     if (!type) {
       return (
         <div className="entry-message">
@@ -121,6 +117,10 @@ const FOE = () => {
       />
     );
   };
+
+  if (type === 'download') {
+    return <FoeReports />;
+  }
 
   return (
     <div className="entry-page">
