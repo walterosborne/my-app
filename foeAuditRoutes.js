@@ -496,7 +496,7 @@ export const registerFoeAuditRoutes = ({ app, pool, getCurrentUserInfo }) => {
             let findingIndex = 0;
 
             for (const finding of submittedFindings) {
-                const quantity = Math.max(0, Number(finding?.quantity || 0));
+                const quantity = Math.max(0, Math.trunc(Number(finding?.quantity || 0)));
                 if (!Number.isFinite(quantity) || quantity <= 0) continue;
 
                 const number = String(finding?.number ?? '');
