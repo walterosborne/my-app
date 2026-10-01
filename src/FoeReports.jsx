@@ -171,7 +171,7 @@ const FoeReports = () => {
       'Audit Note',
       'Team',
       'Created',
-      'Draft'
+      ...(includeDrafts ? ['Draft'] : [])
     ];
     const auditRows = filteredAudits.map((audit) => [
       audit.title,
@@ -192,7 +192,7 @@ const FoeReports = () => {
       audit.auditNote || '',
       audit.auditAreaTeam || '',
       audit.created ? String(audit.created) : '',
-      audit.draft ? 'Yes' : 'No'
+      ...(includeDrafts ? [audit.draft ? 'Yes' : 'No'] : [])
     ]);
     const auditSheetRows = [auditHeaders, ...auditRows];
     const auditsSheet = XLSX.utils.aoa_to_sheet(auditSheetRows);
@@ -380,14 +380,18 @@ const FoeReports = () => {
 
         <div className="reports-table">
           <h2>Audits to Export ({filteredAudits.length})</h2>
-          <DataGrid
-            rows={rows}
-            columns={columns}
-            pageSizeOptions={[5, 10, 20]}
-            initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }}
-            getRowId={(row) => row.id}
-            sx={{ width: '100%' }}
-          />
+          {filteredAudits.length === 0 ? (
+            <div className="reports-loading">No audits fit the criteria you've entered.</div>
+          ) : (
+            <DataGrid
+              rows={rows}
+              columns={columns}
+              pageSizeOptions={[5, 10, 20]}
+              initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }}
+              getRowId={(row) => row.id}
+              sx={{ width: '100%' }}
+            />
+          )}
         </div>
 
         <div className="reports-actions" />
