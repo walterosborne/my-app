@@ -64,55 +64,71 @@ const Home = () => {
         loadCurrentUser();
     }, []);
 
-    // Load audits from API and format for display
+    // Load audits from API and format for display.
+    // Keep this path lightweight: reuse the API cache, parse each audit date once,
+    // and use an O(1) auditor lookup instead of scanning the full auditor array
+    // once for every matching audit.
     React.useEffect(() => {
+        let cancelled = false;
+
         async function loadAudits() {
+            setLoading(true);
             try {
                 const [auditsData, auditorsData] = await Promise.all([
-                    getAuditsAll(true),
+                    getAuditsAll(),
                     getAuditors()
                 ]);
 
-                // Calculate date range for 30-day lookahead
                 const now = new Date();
                 now.setHours(0, 0, 0, 0);
-                const thirtyDaysFromNow = new Date();
+                const thirtyDaysFromNow = new Date(now);
+                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
                 thirtyDaysFromNow.setHours(23, 59, 59, 999);
-                thirtyDaysFromNow.setDate(now.getDate() + 30);
 
-                // Transform audit data to match the display format
+                const auditorNamesById = new Map(
+                    auditorsData.map((auditor) => [auditor.auditorId, auditor.auditorName])
+                );
+
                 const formatted = auditsData
-                    .filter(a => {
-                        if (!a.expectedStartDate) return false;
-                        const startDate = parseCalendarDate(a.expectedStartDate);
-                        if (!startDate) return false;
-                        // Only include audits with expected start date within next 30 days
-                        return startDate >= now && startDate <= thirtyDaysFromNow;
-                    })
-                    .map(a => {
-                        // Get auditor name from leadAuditorId
-                        const auditor = auditorsData.find(aud => aud.auditorId === a.leadAuditorId);
-                        const auditorName = auditor ? auditor.auditorName : 'TBD';
+                    .reduce((rows, audit) => {
+                        if (!audit.expectedStartDate) return rows;
 
-                        const title = a.title || 'Untitled Audit';
-                        return {
-                            id: String(a.scheduleId),
-                            date: formatDateForDisplay(a.expectedStartDate),
-                            auditor: auditorName,
-                            title,
-                            scheduleLabel: `Schedule ID: ${a.scheduleId}`,
-                            rawDate: a.expectedStartDate // Keep for sorting
-                        };
-                    })
-                    .sort((a, b) => parseCalendarDate(a.rawDate) - parseCalendarDate(b.rawDate)); // Sort by date
-                setUpcomingAudits(formatted);
-                setLoading(false);
+                        const startDate = parseCalendarDate(audit.expectedStartDate);
+                        if (!startDate || startDate < now || startDate > thirtyDaysFromNow) {
+                            return rows;
+                        }
+
+                        rows.push({
+                            id: String(audit.scheduleId),
+                            date: formatDateForDisplay(audit.expectedStartDate),
+                            auditor: auditorNamesById.get(audit.leadAuditorId) || 'TBD',
+                            title: audit.title || 'Untitled Audit',
+                            scheduleLabel: `Schedule ID: ${audit.scheduleId}`,
+                            sortTime: startDate.getTime()
+                        });
+                        return rows;
+                    }, [])
+                    .sort((a, b) => a.sortTime - b.sortTime);
+
+                if (!cancelled) {
+                    setUpcomingAudits(formatted);
+                }
             } catch (error) {
                 console.error('Error loading audits:', error);
-                setLoading(false);
+                if (!cancelled) {
+                    setUpcomingAudits([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false);
+                }
             }
         }
+
         loadAudits();
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     React.useLayoutEffect(() => {
@@ -126,7 +142,7 @@ const Home = () => {
         syncSidebarHeight();
         window.addEventListener('resize', syncSidebarHeight);
         return () => window.removeEventListener('resize', syncSidebarHeight);
-    }, [upcomingAudits.length]);
+    }, [upcomingAudits.length, loading]);
 
     return (
         <div className="home-container">
@@ -172,9 +188,8 @@ const Home = () => {
                         </button>
                         <button
                             className="step-button"
-                            onClick={() => navigate(`/audit`)}
+                            onClick={() => navigate('/audit')}
                             style={{ cursor: 'pointer' }}
-
                         >
                             Step 5: Generate Audit Report
                         </button>
@@ -213,21 +228,30 @@ const Home = () => {
                 <div className="audit-sidebar">
                     <h2 className="sidebar-title">Upcoming Audits (30 Day Lookahead)</h2>
                     <div className="audit-list">
-                        {upcomingAudits.map((audit, index) => (
-                            <div
-                                key={index}
-                                className="audit-item"
-                                onClick={() => navigate(`/audit/${audit.id}`)}
-                                style={{ cursor: 'pointer' }}
-                            >
-                                <div className="audit-id">
-                                    {audit.scheduleLabel} <em>({audit.title})</em>
-                                </div>
-                                <div className="audit-details">
-                                    <span className="audit-date">{audit.date}</span> {audit.auditor}
-                                </div>
+                        {loading ? (
+                            <div className="audit-loading" role="status" aria-live="polite">
+                                <span className="audit-loading-spinner" aria-hidden="true" />
+                                <span>Loading upcoming audits...</span>
                             </div>
-                        ))}
+                        ) : upcomingAudits.length === 0 ? (
+                            <div className="audit-empty">No audits scheduled in the next 30 days.</div>
+                        ) : (
+                            upcomingAudits.map((audit) => (
+                                <div
+                                    key={audit.id}
+                                    className="audit-item"
+                                    onClick={() => navigate(`/audit/${audit.id}`)}
+                                    style={{ cursor: 'pointer' }}
+                                >
+                                    <div className="audit-id">
+                                        {audit.scheduleLabel} <em>({audit.title})</em>
+                                    </div>
+                                    <div className="audit-details">
+                                        <span className="audit-date">{audit.date}</span> {audit.auditor}
+                                    </div>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
