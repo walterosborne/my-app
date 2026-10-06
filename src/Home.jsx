@@ -2,8 +2,8 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import teamImage from './assets/placeholder.jpg';
-import { getAuditsAll, getAuditors, getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData';
-import { formatDateForDisplay, parseCalendarDate } from './Utilities.jsx';
+import { buildApiUrl, getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData';
+import { formatDateForDisplay } from './Utilities.jsx';
 
 const Home = () => {
     const navigate = useNavigate();
@@ -64,51 +64,25 @@ const Home = () => {
         loadCurrentUser();
     }, []);
 
-    // Load audits from API and format for display.
-    // Keep this path lightweight: reuse the API cache, parse each audit date once,
-    // and use an O(1) auditor lookup instead of scanning the full auditor array
-    // once for every matching audit.
     React.useEffect(() => {
         let cancelled = false;
 
         async function loadAudits() {
             setLoading(true);
             try {
-                const [auditsData, auditorsData] = await Promise.all([
-                    getAuditsAll(),
-                    getAuditors()
-                ]);
+                const response = await fetch(buildApiUrl('home-lookahead'));
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
-                const now = new Date();
-                now.setHours(0, 0, 0, 0);
-                const thirtyDaysFromNow = new Date(now);
-                thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-                thirtyDaysFromNow.setHours(23, 59, 59, 999);
-
-                const auditorNamesById = new Map(
-                    auditorsData.map((auditor) => [auditor.auditorId, auditor.auditorName])
-                );
-
-                const formatted = auditsData
-                    .reduce((rows, audit) => {
-                        if (!audit.expectedStartDate) return rows;
-
-                        const startDate = parseCalendarDate(audit.expectedStartDate);
-                        if (!startDate || startDate < now || startDate > thirtyDaysFromNow) {
-                            return rows;
-                        }
-
-                        rows.push({
-                            id: String(audit.scheduleId),
-                            date: formatDateForDisplay(audit.expectedStartDate),
-                            auditor: auditorNamesById.get(audit.leadAuditorId) || 'TBD',
-                            title: audit.title || 'Untitled Audit',
-                            scheduleLabel: `Schedule ID: ${audit.scheduleId}`,
-                            sortTime: startDate.getTime()
-                        });
-                        return rows;
-                    }, [])
-                    .sort((a, b) => a.sortTime - b.sortTime);
+                const rows = await response.json();
+                const formatted = (Array.isArray(rows) ? rows : []).map((audit) => ({
+                    id: String(audit.scheduleId),
+                    date: formatDateForDisplay(audit.expectedStartDate),
+                    auditor: audit.auditorName || 'TBD',
+                    title: audit.title || 'Untitled Audit',
+                    scheduleLabel: `Schedule ID: ${audit.scheduleId}`
+                }));
 
                 if (!cancelled) {
                     setUpcomingAudits(formatted);
