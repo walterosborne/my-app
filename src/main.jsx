@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
 import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
+import BackendAvailability from './BackendAvailability.jsx'
 import Home from './Home.jsx'
 import Audit from './Audit.jsx'
 import AllReports from './AllReports.jsx'
@@ -22,6 +23,7 @@ import AdminMenu from './AdminMenu.jsx'
 import FOE from './FOE.jsx'
 import FoeAdminMenu from './FoeAdminMenu.jsx'
 import InfoSupport from './InfoSupport.jsx'
+import VersionHistory from './VersionHistory.jsx'
 import AuditStatuses from './AuditStatuses.jsx'
 import AuditReports from './AuditReports.jsx'
 import RequestAuditorAccess from './RequestAuditorAccess.jsx'
@@ -32,10 +34,7 @@ import RiskAnalysis from './RiskAnalysis.jsx'
 import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
 import RiskAnalysisView from './RiskAnalysisView.jsx'
 import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
-import { getIisAuthPayload, installIisAuthFetchShim } from './iisAuthClient.js'
-import { getEnvironmentModeForHost, getProductionAppUrlForPath, normalizeEnvironmentHost } from '../environment-config.js'
-
-installIisAuthFetchShim();
+import { getProductionAppUrlForPath } from '../environment-config.js'
 
 const AppBootstrapGate = ({ children }) => {
   const [isReady, setIsReady] = useState(false)
@@ -44,12 +43,6 @@ const AppBootstrapGate = ({ children }) => {
     let cancelled = false
 
     ;(async () => {
-      try {
-        await getIisAuthPayload()
-      } catch (error) {
-        console.warn('NGAT failed to warm IIS auth identity at app bootstrap:', error)
-      }
-
       try {
         await getHeaderDiagnostics()
       } catch (error) {
@@ -157,12 +150,14 @@ const getPageTitle = (location) => {
       return 'FOE Admin Menu';
     case '/info-support':
       return 'Info and Support';
+    case '/version-history':
+      return 'Version History';
     case '/request-auditor-access':
       return 'Request Auditor Access';
     case '/submit-improvement':
       return 'Submit Improvement';
     case '/audit-statuses':
-      return 'Audit Statuses';
+      return 'My Audit To-Do List';
     case '/admin':
       return 'Admin Menu';
     case '/tabletest':
@@ -199,19 +194,34 @@ const AppMetadata = () => {
 
 const AppEnvironmentBanner = () => {
   const location = useLocation()
-  const currentHost = typeof window !== 'undefined'
-    ? normalizeEnvironmentHost(window.location.hostname)
-    : ''
+  const [mode, setMode] = useState(null)
 
-  if (getEnvironmentModeForHost(currentHost) === 'prod') {
-    return null
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/environment', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Environment request failed: HTTP ${response.status}`)
+        return response.json()
+      })
+      .then((data) => {
+        if (!cancelled) setMode(data.mode)
+      })
+      .catch((error) => {
+        console.warn('NGAT could not verify its environment:', error)
+        if (!cancelled) setMode('unknown')
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  if (mode === null || mode === 'prod') return null
+  if (mode === 'unknown') {
+    return <div className="environment-banner">Unable to verify NGAT environment.</div>
   }
 
   const productionHref = getProductionAppUrlForPath(location.pathname || '/', location.search || '')
-
   return (
     <div className="environment-banner">
-      <span>You are working in a development environment.</span>
+      <span>You are working in a {mode === 'stg' ? 'staging' : 'development'} environment.</span>
       <a href={productionHref}>Go to production</a>
     </div>
   )
@@ -221,6 +231,7 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
       <AppMetadata />
+      <BackendAvailability>
       <AppEnvironmentBanner />
       <AppBootstrapGate>
         <ToastContainer
@@ -258,6 +269,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/foe" element={<FOE />} />
           <Route path="/foe/admin" element={<FoeAdminMenu />} />
           <Route path="/info-support" element={<InfoSupport />} />
+          <Route path="/version-history" element={<VersionHistory />} />
           <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
           <Route path="/submit-improvement" element={<ImprovementRequest />} />
           <Route path="/audit-statuses" element={<AuditStatuses />} />
@@ -265,6 +277,7 @@ createRoot(document.getElementById('root')).render(
           <Route path="/tabletest" element={<TableTest />} />
         </Routes>
       </AppBootstrapGate>
+      </BackendAvailability>
     </HashRouter>
   </StrictMode>,
 )

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import './Entry.css';
+import FoeAudits from './FoeAudits.jsx';
+import FoeReports from './FoeReports.jsx';
 import foeLinks from './config/foeLinks.js';
 import { getCurrentUser } from './assets/data/apiData';
 
@@ -28,6 +30,9 @@ const FOE = () => {
   };
 
   const getIframeConfig = (value) => {
+    if (value === 'audits' || value === 'download') {
+      return null;
+    }
     const config = foeLinks[value];
     if (!config || config.external) {
       return null;
@@ -46,6 +51,10 @@ const FOE = () => {
   const renderContent = () => {
     if (type === 'admin') {
       return <Navigate to="/foe/admin" replace />;
+    }
+
+    if (type === 'audits') {
+      return <FoeAudits />;
     }
 
     if (!type) {
@@ -108,6 +117,10 @@ const FOE = () => {
       />
     );
   };
+
+  if (type === 'download') {
+    return <FoeReports />;
+  }
 
   return (
     <div className="entry-page">

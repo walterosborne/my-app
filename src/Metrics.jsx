@@ -48,6 +48,7 @@ const STAGE_LABELS = [
   'Pending Approval',
   'Approved',
   'Historical',
+  'Cancelled',
   'Unknown Stage'
 ];
 
@@ -498,6 +499,8 @@ const Metrics = () => {
   };
 
   const nonconformanceBySchedule = useMemo(() => {
+    // The API is intentionally one row per finding/response. Multiple responses
+    // beneath one question therefore count as multiple findings in metrics.
     return nonconformances.reduce((acc, nc) => {
       const scheduleId = Number(nc.scheduleId ?? nc.scheduleid);
       if (!scheduleId) return acc;
@@ -534,6 +537,7 @@ const Metrics = () => {
     const locked = Number(audit?.locked) === 1;
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (approved) return 'Approved';
     if (locked) return 'Pending Approval';
     switch (stage) {
@@ -627,6 +631,9 @@ const Metrics = () => {
 
     return audits.filter((audit) => {
       const stageValue = Number(audit?.stage);
+      if (stageValue === -2) {
+        return false;
+      }
       if (!includeHistorical && stageValue === -1) {
         return false;
       }
@@ -681,7 +688,7 @@ const Metrics = () => {
         }
       }
 
-      if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && Number(audit.stage) !== -1) {
+      if (dateField === 'actualStartDate' && Number(audit.stage) < 3 && ![-1, -2].includes(Number(audit.stage))) {
         return false;
       }
 
@@ -1449,7 +1456,6 @@ const Metrics = () => {
       <div className="entry-container">
         <div className="metrics-header tool-page-header">
           <p className="tool-page-subtitle">Tools · Metrics</p>
-          <h2 className="tool-page-title">Metrics</h2>
         </div>
         <div className="metrics-layout">
           <div className="metrics-filters">
@@ -1538,6 +1544,7 @@ const Metrics = () => {
                   <label>Division</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                     options={divisionOptions}
                     styles={customStyles}
                     placeholder="Select Division"
@@ -1552,6 +1559,7 @@ const Metrics = () => {
                   <label>Function</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                     options={functionOptions}
                     styles={customStyles}
                     placeholder="Select Function"

@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
@@ -22,7 +23,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -49,7 +49,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -63,7 +62,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, severities] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -72,7 +71,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards(),
@@ -87,7 +85,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -225,12 +222,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     return auditType ? auditType.auditTypeName : auditTypeId;
   };
 
-  // Helper function to get status name from statusId
-  const getStatusName = (statusId) => {
-    const status = statusesList.find(s => s.statusId === statusId);
-    return status ? status.statusName : statusId;
-  };
-
   // Helper function to get function name(s) from functionId(s)
   const getFunctionName = (functionId) => {
     const ids = normalizeIdArray(functionId);
@@ -276,7 +267,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     ids: new Set()
   });
   const entryAudits = useMemo(() => {
-    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+    return allAudits.filter((audit) => ![-1, -2].includes(Number(audit?.stage)));
   }, [allAudits]);
   const isSameSelectionModel = (nextModel, currentModel) => {
     if (!nextModel || !currentModel) return false;
@@ -317,7 +308,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+    errorToast(accessBlock.message || 'You do not have access to this audit.', {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -396,6 +387,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
     .map((nc, idx) => ({
       id: idx + 1,
       NCID: nc.ncId,
+      QuestionID: nc.questionId ?? null,
+      ResponseNumber: nc.responseNumber ?? 1,
       Question: nc.question,
       RawType: nc.type,
       Type: getQuestionTypeLabel(nc.type),
@@ -584,9 +577,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
           });
 
           // Populate form with saved data
-          if (auditData.auditorstime !== null && auditData.auditorstime !== undefined) {
-            setValue('auditorsTime', auditData.auditorstime);
-          }
           if (auditData.approver !== null && auditData.approver !== undefined) {
             setValue('approver', auditData.approver);
           }
@@ -640,7 +630,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   async function onSubmit(data, lockedValue = false) {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -651,7 +641,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       // Prepare audit data update
       const auditUpdate = {
         scheduleId: selectedAudit.scheduleId,
-        auditorsTime: data.auditorsTime ? parseInt(data.auditorsTime) : null,
         approver: data.approver || null,
         leadAuditor: data.leadAuditor || null,
         additionalApprovers: data.additionalApprovers || [],
@@ -673,13 +662,16 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       });
       }).filter(car => car.car); // Only include CARs with actual data
 
-      // Prepare nonconformance updates
-      const ncUpdates = nonconformances.map(nc => ({
-        ncId: nc.ncId,
-        details: data[`ncDetails${nc.ncId}`] || '',
-        severity: normalizeNonconformitySeverityValue(data[`ncSeverity${nc.ncId}`]),
-        actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
-      }));
+      // Prepare one downstream detail update per Nonconformity response.
+      // Conformities/OFIs/observations never receive NC-only fields.
+      const ncUpdates = nonconformances
+        .filter((nc) => Number(nc.findingType) === 1)
+        .map((nc) => ({
+          ncId: nc.ncId,
+          details: data[`ncDetails${nc.ncId}`] || '',
+          severity: normalizeNonconformitySeverityValue(data[`ncSeverity${nc.ncId}`]),
+          actionItemNumber: data[`ncActionItemNumber${nc.ncId}`] || ''
+        }));
 
       console.log('Submitting audit data:', auditUpdate);
       console.log('Submitting CARs data:', carsData);
@@ -693,7 +685,8 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         },
         body: JSON.stringify({
           audit: auditUpdate,
-          cars: carsData
+          cars: carsData,
+          ncUpdates
         })
       });
 
@@ -701,24 +694,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
       console.log('Server response:', result);
 
       if (result.success) {
-        // Update nonconformance details
-        for (const ncUpdate of ncUpdates) {
-          const ncResponse = await fetch(buildApiUrl('update-nonconformance-details'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(ncUpdate)
-          });
-          const ncResult = await ncResponse.json();
-          if (!ncResult.success) {
-            console.error('Failed to update nonconformance:', ncUpdate.ncId, ncResult.error);
-          }
-        }
-
         toast.success(lockedValue ? 'Nonconformities submitted successfully!' : 'Changes saved successfully!');
         if (result.emailWarning) {
-          toast.error(result.emailWarning);
+          errorToast(result.emailWarning);
         }
 
         // Reload the audit data to refresh the form
@@ -756,7 +734,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
 
   async function unlockAudit() {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -786,19 +764,13 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
 
   function handleReset() {
     if (loadedAuditData && schedule?.scheduleId) {
       // Restore form to saved state
-      if (loadedAuditData.auditorstime !== null && loadedAuditData.auditorstime !== undefined) {
-        setValue('auditorsTime', loadedAuditData.auditorstime);
-      } else {
-        setValue('auditorsTime', '');
-      }
-
       if (loadedAuditData.approver !== null && loadedAuditData.approver !== undefined) {
         setValue('approver', loadedAuditData.approver);
       } else {
@@ -885,7 +857,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form onSubmit={handleSubmit(onSubmit)} style={{ width: '100%' }}>
@@ -991,35 +963,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                     </p>
                   )}
                   <div style={readOnlyStyle}>
-                  <div className='section'>
-                    <label className='sectiontitle'>Overview</label>
-                    <div className='sectionrow'>
-                      <div className="fieldboxwhole">
-                        <label>Auditor's Time to Complete Audit (hours)</label>
-                        <input
-                          type="number"
-                          {...register("auditorsTime", {
-                            validate: {
-                              isInteger: (value) => {
-                                if (value === '' || value === null) return true; // Allow empty
-                                return Number.isInteger(Number(value)) || "Please enter a whole number";
-                              },
-                              isNonNegative: (value) => {
-                                if (value === '' || value === null) return true; // Allow empty
-                                return Number(value) >= 0 || "Please enter a non-negative number";
-                              }
-                            }
-                          })}
-                          id='auditorsTime'
-                          className='textfield'
-                          placeholder='Enter a whole number here'
-                          min="0"
-                          step="1"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   {/* PEQs */}
                   {nonconformaties.filter(nc => nc.Type === 'PEQ').length > 0 && (
                     <>
@@ -1028,7 +971,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                         <div className='section' key={nc.NCID}>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
-                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                              <h4 style={{ margin: '0 0 4px 0' }}>{nc.Question}</h4>
+                               <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                                 Response {nc.ResponseNumber} · NCID {nc.NCID}
+                               </div>
                             </div>
                           </div>
                           <div className='sectionrow'>
@@ -1084,7 +1030,10 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                         <div className='section' key={nc.NCID}>
                           <div className='sectionrow'>
                             <div className="fieldboxwhole">
-                              <h4 style={{ margin: '0 0 10px 0' }}>{nc.Question}</h4>
+                              <h4 style={{ margin: '0 0 4px 0' }}>{nc.Question}</h4>
+                               <div style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+                                 Response {nc.ResponseNumber} · NCID {nc.NCID}
+                               </div>
                             </div>
                           </div>
                           <div className='sectionrow'>
@@ -1146,6 +1095,9 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                                 <div className="fieldboxwhole">
                                   <div style={{ margin: '0 0 10px 0' }}>
                                     <ReactMarkdown>{nc.Question || ''}</ReactMarkdown>
+                                     <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                                       Response {nc.ResponseNumber} · NCID {nc.NCID}
+                                     </div>
                                   </div>
                                 </div>
                               </div>
@@ -1317,6 +1269,7 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
                             <AsyncSelect
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               cacheOptions
                               defaultOptions={false}
                               loadOptions={loadRosterOptions}
@@ -1351,7 +1304,6 @@ function Nonconformities({ selectedAuditId, allAudits = [] }) {
               ) : null}
           </ form>
         </>
-      }
     </>
   )
 }

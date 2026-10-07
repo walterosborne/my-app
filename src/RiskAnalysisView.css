@@ -30,14 +30,27 @@
 }
 
 .risk-analysis-view-card-header h3 {
-    margin: 0.15rem 0 0;
+    margin: 0;
     color: var(--color-section-heading);
 }
 
-.risk-analysis-view-process-area {
-    margin: 0.35rem 0 0;
+.risk-analysis-view-process-area-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.risk-analysis-view-org-group {
+    margin: 0.3rem 0 0;
+    color: var(--color-text-primary);
+    font-size: 1.05rem;
+    font-weight: 400;
+}
+
+.risk-analysis-view-org-type {
+    margin: 0.18rem 0 0;
     color: var(--color-text-secondary);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-style: italic;
 }
 
@@ -110,6 +123,22 @@
 .risk-analysis-view-process {
     color: var(--color-text-primary);
     font-size: 0.95rem;
+}
+
+.risk-analysis-view-item-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.risk-analysis-view-comments {
+    margin: 0;
+    color: var(--color-text-secondary);
+    font-size: 0.86rem;
+    line-height: 1.35;
+    white-space: pre-wrap;
 }
 
 .risk-analysis-view-chip {

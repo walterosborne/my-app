@@ -15,9 +15,13 @@ const OperatingUnitsSection = ({
     operatingUnitInput,
     onOperatingUnitInputChange,
     operatingUnitDivisionId,
+    operatingUnitBusinessUnitId,
+    operatingUnitBusinessUnitOptions,
     onDivisionChange,
+    onBusinessUnitChange,
     sortedDivisions,
     onClearDivision,
+    onClearBusinessUnit,
     operatingUnitFieldErrors,
     onSubmit,
     onArchiveToggle,
@@ -25,7 +29,8 @@ const OperatingUnitsSection = ({
     submitting,
     operatingUnitMessage,
     operatingUnitError,
-    getDivisionName
+    getDivisionName,
+    getBusinessUnitName
 }) => (
     <section className="admin-section">
         <div className="admin-section-header">
@@ -80,7 +85,17 @@ const OperatingUnitsSection = ({
                             flex: 1.1,
                             minWidth: 180,
                             sortable: false,
-                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                            valueGetter: (_value, row) => getDivisionName(row.divisionId) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
+                        },
+                        {
+                            field: 'businessUnit',
+                            headerName: 'Business Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            valueGetter: (_value, row) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned',
+                            renderCell: ({ value }) => value
                         },
                         {
                             field: 'status',
@@ -88,7 +103,8 @@ const OperatingUnitsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
-                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ value }) => value
                         }
                     ]}
                     getRowId={(row) => row.operatingUnitId}
@@ -122,7 +138,7 @@ const OperatingUnitsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="operating-unit-division" className="admin-label">
-                        Parent Division <span className="admin-required">*</span>
+                        Parent Division
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -152,6 +168,32 @@ const OperatingUnitsSection = ({
                     </div>
                     {operatingUnitFieldErrors.divisionId && (
                         <p className="admin-field-error">{operatingUnitFieldErrors.divisionId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
+                    <label htmlFor="operating-unit-business-unit" className="admin-label">
+                        Parent Business Unit
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="operating-unit-business-unit"
+                            value={operatingUnitBusinessUnitId}
+                            onChange={onBusinessUnitChange}
+                            className="admin-input"
+                        >
+                            <option value="" disabled hidden>Select Business Unit</option>
+                            {operatingUnitBusinessUnitOptions.map((unit) => (
+                                <option key={unit.businessUnitId} value={unit.businessUnitId}>
+                                    {unit.businessUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {operatingUnitBusinessUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearBusinessUnit}>&times;</button>
+                        )}
+                    </div>
+                    {operatingUnitFieldErrors.businessUnitId && (
+                        <p className="admin-field-error">{operatingUnitFieldErrors.businessUnitId}</p>
                     )}
                 </div>
                 <div className="admin-button-row">

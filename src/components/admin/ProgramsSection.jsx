@@ -15,12 +15,22 @@ const ProgramsSection = ({
     editingProgram,
     onSelectProgram,
     getDivisionName,
+    getBusinessUnitName,
+    getOperatingUnitName,
     programInput,
     onProgramInputChange,
     programDivisionId,
+    programBusinessUnitId,
+    programOperatingUnitId,
+    programBusinessUnitOptions,
+    programOperatingUnitOptions,
     onDivisionChange,
+    onBusinessUnitChange,
+    onOperatingUnitChange,
     sortedDivisions,
     onClearDivision,
+    onClearBusinessUnit,
+    onClearOperatingUnit,
     auditorOptions,
     selectedAuditorIds,
     onAuditorChange,
@@ -85,7 +95,26 @@ const ProgramsSection = ({
                             flex: 1.1,
                             minWidth: 180,
                             sortable: false,
-                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                            valueGetter: (_value, row) => getDivisionName(row.divisionId) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
+                        },
+                        {
+                            field: 'businessUnit',
+                            headerName: 'Business Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            valueGetter: (_value, row) => row.businessUnitId ? getBusinessUnitName(row.businessUnitId) : 'Not assigned',
+                            renderCell: ({ value }) => value
+                        },
+                        {
+                            field: 'operatingUnit',
+                            headerName: 'Operating Unit',
+                            flex: 1.1,
+                            minWidth: 170,
+                            sortable: false,
+                            valueGetter: (_value, row) => row.operatingUnitId ? getOperatingUnitName(row.operatingUnitId) : 'Not assigned',
+                            renderCell: ({ value }) => value
                         },
                         {
                             field: 'status',
@@ -93,7 +122,8 @@ const ProgramsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
-                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ value }) => value
                         }
                     ]}
                     getRowId={(row) => row.programId}
@@ -127,7 +157,7 @@ const ProgramsSection = ({
                 </div>
                 <div className="admin-form-row">
                     <label htmlFor="program-division" className="admin-label">
-                        Parent Division <span className="admin-required">*</span>
+                        Parent Division
                     </label>
                     <div className="admin-select-wrapper">
                         <select
@@ -160,11 +190,64 @@ const ProgramsSection = ({
                     )}
                 </div>
                 <div className="admin-form-row">
+                    <label htmlFor="program-business-unit" className="admin-label">
+                        Parent Business Unit
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="program-business-unit"
+                            value={programBusinessUnitId}
+                            onChange={onBusinessUnitChange}
+                            className="admin-input"
+                        >
+                            <option value="" disabled hidden>Select Business Unit</option>
+                            {programBusinessUnitOptions.map((unit) => (
+                                <option key={unit.businessUnitId} value={unit.businessUnitId}>
+                                    {unit.businessUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {programBusinessUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearBusinessUnit}>&times;</button>
+                        )}
+                    </div>
+                    {programFieldErrors.businessUnitId && (
+                        <p className="admin-field-error">{programFieldErrors.businessUnitId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
+                    <label htmlFor="program-operating-unit" className="admin-label">
+                        Parent Operating Unit
+                    </label>
+                    <div className="admin-select-wrapper">
+                        <select
+                            id="program-operating-unit"
+                            value={programOperatingUnitId}
+                            onChange={onOperatingUnitChange}
+                            className="admin-input"
+                        >
+                            <option value="" disabled hidden>Select Operating Unit</option>
+                            {programOperatingUnitOptions.map((unit) => (
+                                <option key={unit.operatingUnitId} value={unit.operatingUnitId}>
+                                    {unit.operatingUnitName}
+                                </option>
+                            ))}
+                        </select>
+                        {programOperatingUnitId && (
+                            <button type="button" className="admin-clear-button" onClick={onClearOperatingUnit}>&times;</button>
+                        )}
+                    </div>
+                    {programFieldErrors.operatingUnitId && (
+                        <p className="admin-field-error">{programFieldErrors.operatingUnitId}</p>
+                    )}
+                </div>
+                <div className="admin-form-row">
                     <label className="admin-label">
                         Assigned Auditors
                     </label>
                     <Select
                         isMulti
+                        closeMenuOnSelect={false}
                         isClearable
                         options={auditorOptions}
                         styles={adminSelectStyles}

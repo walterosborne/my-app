@@ -1,0 +1,104 @@
+.foe-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.foe-mode-caption {
+  margin: 6px 0 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.foe-required {
+  color: red;
+  margin-left: 2px;
+}
+
+.foe-readonly-form {
+  opacity: 0.98;
+}
+
+.foe-textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  font-family: 'Source Sans Pro', sans-serif;
+  font-size: 15px;
+  color: #000;
+  background: whitesmoke;
+}
+
+.foe-comment {
+  min-height: 72px;
+}
+
+.foe-character-count {
+  align-self: flex-end;
+  margin-top: 3px;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.foe-discrepancy-group {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.foe-discrepancy-group h2 {
+  margin: 8px 0;
+}
+
+.foe-discrepancy-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  border: 1px solid lightgray;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 8px 0;
+  box-sizing: border-box;
+}
+
+.foe-discrepancy-description {
+  font-weight: 500;
+  margin-bottom: 3px;
+}
+
+.foe-discrepancy-card .textfield {
+  width: 100%;
+}
+
+.foe-action-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 16px;
+  padding-bottom: 12px;
+}
+
+.foe-action-row .button {
+  flex: 1;
+  width: auto;
+}
+
+@media (max-width: 800px) {
+  .foe-audit-page .foe-action-row,
+  .foe-audit-page .sectionrow {
+    flex-direction: column;
+  }
+
+  .foe-audit-page .foe-action-row .button,
+  .foe-audit-page .fieldboxquarter,
+  .foe-audit-page .fieldboxthird,
+  .foe-audit-page .fieldboxhalf {
+    width: 100%;
+  }
+}

@@ -1,0 +1,42 @@
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: ngat
+  namespace: ngat-dev
+  labels:
+    app: ngat
+    app.kubernetes.io/component: ngat
+    app.kubernetes.io/instance: ngat
+    app.kubernetes.io/name: ngat
+    app.openshift.io/runtime: nodejs
+    app.openshift.io/runtime-version: 20-ubi9
+spec:
+  output:
+    to:
+      kind: DockerImage
+      name: docker-ng-staging.northgrum.com/wosborne/ngat:latest
+  resources:
+    limits:
+      cpu: 600m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  successfulBuildsHistoryLimit: 5
+  failedBuildsHistoryLimit: 5
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+      buildArgs:
+        - name: BASE_IMAGE
+          value: registry.access.redhat.com/ubi9/nodejs-20:latest
+  source:
+    type: Git
+    git:
+      uri: https://github.northgrum.com/EnterpriseKubernetes/ngat-ops.git
+      ref: main
+    contextDir: /
+  triggers:
+    - type: ConfigChange
+  runPolicy: Serial

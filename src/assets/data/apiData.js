@@ -94,6 +94,48 @@ export async function getFoeShifts(skipCache = false) {
     return await fetchData('foe-shifts', skipCache);
 }
 
+
+async function parseFoeResponse(response, fallbackMessage) {
+    let data = null;
+    try {
+        data = await response.json();
+    } catch {
+        data = null;
+    }
+    if (!response.ok) {
+        throw new Error(data?.error || fallbackMessage || `HTTP error! status: ${response.status}`);
+    }
+    return data;
+}
+
+export async function getFoeAuditWorkspace() {
+    const response = await fetch(buildApiUrl('foe-audit-workspace'), { cache: 'no-store' });
+    return await parseFoeResponse(response, 'Unable to load FOE audit workspace.');
+}
+
+export async function saveFoeAudit(payload) {
+    const response = await fetch(buildApiUrl('foe-audits'), {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+    return await parseFoeResponse(response, 'Unable to save FOE audit.');
+}
+
+export async function deleteFoeAudit(title) {
+    const response = await fetch(buildApiUrl(`foe-audits/${encodeURIComponent(title)}`), {
+        method: 'DELETE'
+    });
+    return await parseFoeResponse(response, 'Unable to delete FOE audit.');
+}
+
+export async function getFoeReportData() {
+    const response = await fetch(buildApiUrl('foe-report-data'), { cache: 'no-store' });
+    return await parseFoeResponse(response, 'Unable to load FOE report data.');
+}
+
 export async function getBusinessUnits() {
     return await fetchData('business-units');
 }
@@ -108,10 +150,6 @@ export async function getAuditors() {
 
 export async function getAuditTypes() {
     return await fetchData('audit-types');
-}
-
-export async function getStatuses() {
-    return await fetchData('statuses');
 }
 
 export async function getFunctions() {
@@ -277,11 +315,19 @@ export async function getProps() {
 
 export async function getNonconformances(scheduleId) {
     if (scheduleId) {
-        // Don't cache schedule-specific queries
+        // Don't cache schedule-specific queries. The endpoint is a flattened
+        // finding view: one row per response, with questionId/responseNumber.
         const response = await fetch(`${API_BASE}/nonconformances/${scheduleId}`);
-        return await response.json();
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data?.error || `HTTP error! status: ${response.status}`);
+        }
+        return Array.isArray(data) ? data : [];
     }
-    return await fetchData('nonconformances');
+    // Findings change throughout Conduct Audit/Nonconformities, so a global
+    // results read must not reuse stale session cache data.
+    const data = await fetchData('nonconformances', true);
+    return Array.isArray(data) ? data : [];
 }
 
 export async function getRiskFactors() {

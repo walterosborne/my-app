@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
@@ -217,7 +218,7 @@ function RiskAnalysisEdit() {
     { field: 'orgGroupLabel', headerName: 'Org Group Level', flex: 1, minWidth: 180 },
     { field: 'orgTargetLabel', headerName: 'Org Group', flex: 1.4, minWidth: 220 },
     { field: 'processArea', headerName: 'Process Area', flex: 1.3, minWidth: 220 },
-    { field: 'year', headerName: 'Year', width: 110, type: 'number' }
+    { field: 'year', headerName: 'Year', width: 110, valueFormatter: (value) => String(value ?? '') }
   ]), []);
 
   const duplicateProcessAreaInNewMode = useMemo(() => {
@@ -353,7 +354,7 @@ function RiskAnalysisEdit() {
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      toast.error('Please fill out all required fields.', TOAST_OPTIONS);
+      errorToast('Please fill out all required fields.', TOAST_OPTIONS);
       return;
     }
 
@@ -393,7 +394,7 @@ function RiskAnalysisEdit() {
       }
     } catch (error) {
       const message = error.message || 'Failed to save risk analysis.';
-      toast.error(message, TOAST_OPTIONS);
+      errorToast(message, TOAST_OPTIONS);
     } finally {
       setSubmitting(false);
     }
@@ -421,7 +422,7 @@ function RiskAnalysisEdit() {
       setAssignmentResetKey((value) => value + 1);
       toast.success('Deleted!', SUCCESS_TOAST_OPTIONS);
     } catch (error) {
-      toast.error(error.message || 'Failed to delete risk analysis.', TOAST_OPTIONS);
+      errorToast(error.message || 'Failed to delete risk analysis.', TOAST_OPTIONS);
     } finally {
       setSubmitting(false);
     }
@@ -463,8 +464,7 @@ function RiskAnalysisEdit() {
     <div className="entry-page">
       <div className="entry-container">
         <div className="tool-page-header">
-          <p className="tool-page-subtitle">Tools · Risk Analysis</p>
-          <h1 className="tool-page-title">Edit Risk Analysis</h1>
+          <p className="tool-page-subtitle">Tools · Edit Risk Analysis</p>
           {currentUser?.name && currentUser.name !== 'User' && (
             <h2 style={{ marginTop: '3px' }}>
               Welcome {currentUser.name}.{' '}

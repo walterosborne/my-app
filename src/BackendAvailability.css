@@ -1,0 +1,89 @@
+.ngat-service-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--color-primary, #000080);
+  box-sizing: border-box;
+}
+
+.ngat-service-panel {
+  width: min(100%, 560px);
+  padding: 2rem;
+  border-radius: 16px;
+  background: #fff;
+  color: #202124;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, .22);
+}
+
+.ngat-service-panel h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+}
+
+.ngat-service-panel p {
+  line-height: 1.5;
+}
+
+.ngat-service-panel button,
+.ngat-service-banner button {
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: 7px;
+  padding: .55rem .9rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ngat-service-panel button:hover,
+.ngat-service-banner button:hover {
+  background: rgba(0, 0, 0, .07);
+}
+
+.ngat-service-note {
+  font-size: .875rem;
+  opacity: .75;
+}
+
+.ngat-service-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1300;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .75rem 1.5rem;
+  padding: .85rem 1.25rem;
+  box-sizing: border-box;
+  font-size: .95rem;
+  line-height: 1.4;
+}
+
+.ngat-service-banner--offline {
+  background: #fff1dc;
+  color: #50350d;
+  border-bottom: 2px solid #bf7515;
+}
+
+.ngat-service-banner--restored {
+  background: #e6f3ea;
+  color: #174b2a;
+  border-bottom: 2px solid #347a4b;
+}
+
+.ngat-service-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+
+@media (max-width: 600px) {
+  .ngat-service-screen { padding: 1rem; }
+  .ngat-service-panel { padding: 1.4rem; }
+  .ngat-service-banner { padding: .75rem 1rem; }
+}

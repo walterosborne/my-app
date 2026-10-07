@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Select from 'react-select';
@@ -17,7 +18,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -70,7 +70,6 @@ const ThirtySixtyNinety = () => {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -90,7 +89,6 @@ const ThirtySixtyNinety = () => {
   const [auditTypeFilter, setAuditTypeFilter] = useState(null);
   const [leadAuditorFilter, setLeadAuditorFilter] = useState(null);
   const [additionalAuditorsFilter, setAdditionalAuditorsFilter] = useState([]);
-  const [statusFilter, setStatusFilter] = useState(null);
   const [functionFilter, setFunctionFilter] = useState([]);
   const [intExtFilter, setIntExtFilter] = useState(null);
   const [standardsFilter, setStandardsFilter] = useState([]);
@@ -142,7 +140,6 @@ const ThirtySixtyNinety = () => {
           operatingUnits,
           auditors,
           auditTypes,
-          statuses,
           functions,
           intExt,
           standards,
@@ -162,7 +159,6 @@ const ThirtySixtyNinety = () => {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards(),
@@ -183,7 +179,6 @@ const ThirtySixtyNinety = () => {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -310,7 +305,6 @@ const ThirtySixtyNinety = () => {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [sitesList]);
   const auditTypeOptions = useMemo(() => buildSortedOptions(auditTypesList, 'auditTypeId', 'auditTypeName'), [auditTypesList]);
-  const statusOptions = useMemo(() => buildSortedOptions(statusesList, 'statusId', 'statusName'), [statusesList]);
   const functionOptions = useMemo(() => buildSortedOptions(functionsList, 'functionId', 'functionName'), [functionsList]);
   const businessUnitOptions = useMemo(() => buildSortedOptions(businessUnitsList, 'businessUnitId', 'businessUnitName'), [businessUnitsList]);
   const operatingUnitOptions = useMemo(() => buildSortedOptions(operatingUnitsList, 'operatingUnitId', 'operatingUnitName'), [operatingUnitsList]);
@@ -321,6 +315,7 @@ const ThirtySixtyNinety = () => {
   const getStageLabel = (audit) => {
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (audit?.approvedAt) return 'Approved';
     if (Number(audit?.locked) === 1) return 'Pending Approval';
     switch (stage) {
@@ -351,6 +346,7 @@ const ThirtySixtyNinety = () => {
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
+      if (Number(audit?.stage) === -2) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -361,7 +357,6 @@ const ThirtySixtyNinety = () => {
         if (!matchesDivision) return false;
       }
       if (auditTypeFilter && audit.auditTypeId !== auditTypeFilter.value) return false;
-      if (statusFilter && audit.statusId !== statusFilter.value) return false;
       if (functionFilter.length > 0) {
         const auditFunctionIds = normalizeIdArray(audit.functionId).map((id) => Number(id));
         const matchesFunction = functionFilter.some((option) => auditFunctionIds.includes(Number(option.value)));
@@ -415,7 +410,6 @@ const ThirtySixtyNinety = () => {
     auditTypeFilter,
     leadAuditorFilter,
     additionalAuditorsFilter,
-    statusFilter,
     functionFilter,
     intExtFilter,
     standardsFilter,
@@ -611,7 +605,6 @@ const ThirtySixtyNinety = () => {
     division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
-    status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
     expectedStartDate: formatDateForInput(audit.expectedStartDate),
     expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate)
   }));
@@ -622,7 +615,6 @@ const ThirtySixtyNinety = () => {
     { field: 'division', headerName: 'Division', width: 160 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
-    { field: 'status', headerName: 'Status', width: 140 },
     { field: 'expectedStartDate', headerName: 'Expected Start', width: 140 },
     { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 }
   ];
@@ -742,31 +734,39 @@ const ThirtySixtyNinety = () => {
           if (section === null || section === undefined || section === '') return false;
           if (auditStandardIds.size > 0 && !auditStandardIds.has(standardId)) return false;
           return true;
-        })
+        });
+
+      // Multiple findings can now belong to one question. A clause was audited
+      // once regardless of how many responses/findings were recorded beneath it.
+      const auditedClauseKeys = new Set();
+      matchingStandardFindings
         .sort((a, b) => {
           const standardDiff = Number(a.type) - Number(b.type);
           if (standardDiff !== 0) return standardDiff;
           const sectionDiff = Number(a.section) - Number(b.section);
           if (sectionDiff !== 0) return sectionDiff;
           return Number(a.subsection ?? 0) - Number(b.subsection ?? 0);
-        });
+        })
+        .forEach((nc) => {
+          const standardId = Number(nc.type);
+          const clauseKey = `${standardId}:${nc.section}:${nc.subsection ?? ''}`;
+          if (auditedClauseKeys.has(clauseKey)) return;
+          auditedClauseKeys.add(clauseKey);
 
-      matchingStandardFindings.forEach((nc) => {
-        const standardId = Number(nc.type);
-        clauseRows.push({
-          id: nc.ncId ?? `${audit.scheduleId}-${standardId}-${nc.section}-${nc.subsection ?? 'na'}-${clauseRows.length}`,
-          scheduleId: audit.scheduleId,
-          standard: formatSingle(standardId, standardsList, 'standardId', 'standardName') || `Standard ${standardId}`,
-          clause: formatClauseLabel(nc.section, nc.subsection),
-          divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
-          businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
-          operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
-          programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
-          auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
-          stage: getStageLabel(audit),
-          scheduledMonth: formatMonth(audit.expectedStartDate)
+          clauseRows.push({
+            id: `${audit.scheduleId}-${standardId}-${nc.section}-${nc.subsection ?? 'na'}`,
+            scheduleId: audit.scheduleId,
+            standard: formatSingle(standardId, standardsList, 'standardId', 'standardName') || `Standard ${standardId}`,
+            clause: formatClauseLabel(nc.section, nc.subsection),
+            divisions: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
+            businessUnits: formatArray(audit.businessUnitIds, businessUnitsList, 'businessUnitId', 'businessUnitName'),
+            operatingUnits: formatArray(audit.operatingUnitIds, operatingUnitsList, 'operatingUnitId', 'operatingUnitName'),
+            programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
+            auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+            stage: getStageLabel(audit),
+            scheduledMonth: formatMonth(audit.expectedStartDate)
+          });
         });
-      });
     });
 
     return clauseRows;
@@ -999,7 +999,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'planned-vs-completed') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1047,7 +1047,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'rollup-results') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1107,7 +1107,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'rollup-schedule') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1163,7 +1163,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'clauses-audited') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1217,7 +1217,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'processes-audited') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1271,7 +1271,7 @@ const ThirtySixtyNinety = () => {
 
     if (reportType === 'schedule-comments') {
       if (rows.length === 0) {
-        toast.error('No audits match the selected filters.');
+        errorToast('No audits match the selected filters.');
         return;
       }
 
@@ -1323,7 +1323,7 @@ const ThirtySixtyNinety = () => {
 
     const exportAudits = sortedFilteredAudits;
     if (exportAudits.length === 0) {
-      toast.error('No audits match the selected filters.');
+      errorToast('No audits match the selected filters.');
       return;
     }
 
@@ -1427,8 +1427,10 @@ const ThirtySixtyNinety = () => {
     <div className="reports-page">
       <div className="reports-container">
         <div className="reports-header">
-          <div>
-            <h1>{activeReport.title}</h1>
+          <div className="reports-heading">
+            <div className="reports-title-row">
+              <h1>{activeReport.title}</h1>
+            </div>
             {!activeReport.ready && <p>This report is coming soon.</p>}
           </div>
           <button className="button export-button" onClick={handleExport}>
@@ -1465,6 +1467,7 @@ const ThirtySixtyNinety = () => {
               <label>Division</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={divisionOptions}
@@ -1478,6 +1481,7 @@ const ThirtySixtyNinety = () => {
               <label>Program(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={programOptions}
@@ -1491,6 +1495,7 @@ const ThirtySixtyNinety = () => {
               <label>Site(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={siteOptions}
@@ -1514,22 +1519,10 @@ const ThirtySixtyNinety = () => {
             </div>
 
             <div className="filter-field">
-              <label>Status</label>
-              <Select
-                isClearable
-                className="reports-select"
-                classNamePrefix="reports-select"
-                options={statusOptions}
-                styles={customStyles}
-                value={statusFilter}
-                onChange={setStatusFilter}
-              />
-            </div>
-
-            <div className="filter-field">
               <label>Function</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={functionOptions}
@@ -1545,6 +1538,7 @@ const ThirtySixtyNinety = () => {
                   <label>Business Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={businessUnitOptions}
@@ -1558,6 +1552,7 @@ const ThirtySixtyNinety = () => {
                   <label>Operating Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={operatingUnitOptions}
@@ -1584,6 +1579,7 @@ const ThirtySixtyNinety = () => {
                   <label>Additional Auditors</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={auditorOptions}
@@ -1610,6 +1606,7 @@ const ThirtySixtyNinety = () => {
                   <label>Standard(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={standardsOptions}

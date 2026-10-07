@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import './Audit.css';
@@ -15,7 +16,6 @@ import {
     getOperatingUnits,
     getAuditors,
     getAuditTypes,
-    getStatuses,
     getFunctions,
     getIntExt,
     getStandards,
@@ -33,6 +33,41 @@ import {
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
 import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
+const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, onDownloadZip }) => {
+    const files = Array.isArray(finding.evidenceFiles) ? finding.evidenceFiles : [];
+    if (!files.length) return null;
+
+    return (
+        <aside className="finding-evidence" aria-label="Objective evidence files">
+            <div className="finding-evidence-heading">
+                <strong>Objective Evidence</strong>
+                <span>{files.length} {files.length === 1 ? 'file' : 'files'}</span>
+            </div>
+            <ul className="finding-evidence-list">
+                {files.map((file) => (
+                    <li key={file.fileId}>
+                        <a
+                            href={buildApiUrl(`audits/${scheduleId}/objective-evidence/${finding.ncId}/${file.fileId}/download`)}
+                            download={file.fileName}
+                            title={file.fileName}
+                        >
+                            {file.fileName}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+            <button
+                type="button"
+                className="finding-evidence-zip"
+                onClick={() => onDownloadZip(finding.ncId)}
+                disabled={downloadingNcId === finding.ncId}
+            >
+                {downloadingNcId === finding.ncId ? 'Downloading...' : 'Download ZIP'}
+            </button>
+        </aside>
+    );
+};
+
 const Audit = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -47,7 +82,6 @@ const Audit = () => {
     const [operatingUnitsList, setOperatingUnitsList] = React.useState([]);
     const [auditorsList, setAuditorsList] = React.useState([]);
     const [auditTypesList, setAuditTypesList] = React.useState([]);
-    const [statusesList, setStatusesList] = React.useState([]);
     const [functionsList, setFunctionsList] = React.useState([]);
     const [intExtList, setIntExtList] = React.useState([]);
     const [standardsList, setStandardsList] = React.useState([]);
@@ -55,6 +89,7 @@ const Audit = () => {
     const [rosterList, setRosterList] = React.useState([]);
     const [safetyEquipmentList, setSafetyEquipmentList] = React.useState([]);
     const [trainingRequirementsList, setTrainingRequirementsList] = React.useState([]);
+    const [auditQuestions, setAuditQuestions] = React.useState([]);
     const [nonconformances, setNonconformances] = React.useState([]);
     const [cars, setCars] = React.useState([]);
     const [causesList, setCausesList] = React.useState([]);
@@ -69,12 +104,15 @@ const Audit = () => {
     const [nudgingApprovers, setNudgingApprovers] = React.useState(false);
     const [unlockingSubmission, setUnlockingSubmission] = React.useState(false);
     const [downloadingObjectiveEvidence, setDownloadingObjectiveEvidence] = React.useState(false);
+    const [downloadingEvidenceNcId, setDownloadingEvidenceNcId] = React.useState(null);
+    const [downloadingQuestionEvidenceId, setDownloadingQuestionEvidenceId] = React.useState(null);
+    const [changingLifecycle, setChangingLifecycle] = React.useState(false);
 
     // Load all data from API on mount
     React.useEffect(() => {
         async function loadAllData() {
             try {
-                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
+                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
                     getAuditsReport(true),
                     getPrograms(),
                     getDivisions(),
@@ -84,7 +122,6 @@ const Audit = () => {
                     getOperatingUnits(),
                     getAuditors(),
                     getAuditTypes(),
-                    getStatuses(),
                     getFunctions(),
                     getIntExt(),
                     getStandards(),
@@ -99,7 +136,7 @@ const Audit = () => {
                     getCurrentUser()
                 ]);
 
-                setAudits(auditsData);
+                setAudits(auditsData.filter((audit) => Number(audit?.stage) !== -2));
                 setCurrentUser(userData);
                 setProgramsList(programs);
                 setDivisionsList(divisions);
@@ -109,7 +146,6 @@ const Audit = () => {
                 setOperatingUnitsList(operatingUnits);
                 setAuditorsList(auditors);
                 setAuditTypesList(auditTypes);
-                setStatusesList(statuses);
                 setFunctionsList(functions);
                 setIntExtList(intExt);
                 setStandardsList(standards);
@@ -217,12 +253,6 @@ const Audit = () => {
         return auditType ? auditType.auditTypeName : auditTypeId;
     };
 
-    // Helper function to get status name from statusId
-    const getStatusName = (statusId) => {
-        const status = statusesList.find(s => s.statusId === statusId);
-        return status ? status.statusName : statusId;
-    };
-
     // Helper function to get function name(s) from functionId(s)
     const getFunctionName = (functionId) => {
         const ids = normalizeIdArray(functionId);
@@ -267,26 +297,46 @@ const Audit = () => {
         return `NCID - ${value}`;
     };
 
-    const standardFindingsSorted = React.useMemo(() => {
-        const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
-        return nonconformances
-            .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
+    const questionGroups = React.useMemo(() => {
+        return (auditQuestions || [])
+            .map((question, questionIndex) => ({
+                ...question,
+                sortOrder: Number(question.sortOrder ?? questionIndex),
+                findings: (question.findings || []).slice().sort((a, b) =>
+                    Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+                    || Number(a.findingId ?? a.ncId ?? 0) - Number(b.findingId ?? b.ncId ?? 0)
+                )
+            }))
+            .sort((a, b) =>
+                Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+                || Number(a.questionId ?? 0) - Number(b.questionId ?? 0)
+            );
+    }, [auditQuestions]);
+
+    const peqQuestionGroups = React.useMemo(
+        () => questionGroups.filter((group) => group.type === 'PEQ'),
+        [questionGroups]
+    );
+    const etqQuestionGroups = React.useMemo(
+        () => questionGroups.filter((group) => group.type === 'ETQ'),
+        [questionGroups]
+    );
+    const standardQuestionGroups = React.useMemo(
+        () => questionGroups
+            .filter((group) => group.type !== 'PEQ' && group.type !== 'ETQ')
             .slice()
             .sort((a, b) => {
                 const labelA = getStandardTypeLabel(a.type);
                 const labelB = getStandardTypeLabel(b.type);
-                if (labelA !== labelB) {
-                    return (labelA || '').localeCompare(labelB || '');
-                }
-                const sectionA = Number(a.section ?? 0);
-                const sectionB = Number(b.section ?? 0);
-                if (sectionA !== sectionB) return sectionA - sectionB;
-                const subA = Number(a.subsection ?? 0);
-                const subB = Number(b.subsection ?? 0);
-                if (subA !== subB) return subA - subB;
-                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
-            });
-    }, [nonconformances, standardsList]);
+                if (labelA !== labelB) return (labelA || '').localeCompare(labelB || '');
+                const sectionDiff = Number(a.section ?? 0) - Number(b.section ?? 0);
+                if (sectionDiff !== 0) return sectionDiff;
+                const subsectionDiff = Number(a.subsection ?? 0) - Number(b.subsection ?? 0);
+                if (subsectionDiff !== 0) return subsectionDiff;
+                return Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0);
+            }),
+        [questionGroups, standardsList]
+    );
 
     const rosterLookup = React.useMemo(() => {
         const next = new Map();
@@ -390,12 +440,12 @@ const Audit = () => {
 
     const getStandardClauses = () => {
         const clauseMap = new Map();
-        nonconformances.forEach(nc => {
-            if (!nc.section) return;
-            const section = nc.section;
-            const subsection = nc.subsection;
-            const question = nc.question;
-            const key = `${section}-${subsection || ''}`;
+        questionGroups.forEach((questionGroup) => {
+            if (!questionGroup.section) return;
+            const section = questionGroup.section;
+            const subsection = questionGroup.subsection;
+            const question = questionGroup.question;
+            const key = `${questionGroup.type}-${section}-${subsection || ''}`;
             if (clauseMap.has(key)) return;
             const label = `Clause ${section}${subsection ? '.' + subsection : ''}${question ? ` - ${question}` : ''}`;
             clauseMap.set(key, label);
@@ -630,6 +680,7 @@ const Audit = () => {
 
     const getStageLabel = (stage, locked, approved) => {
         if (stage === -1) return 'Historical';
+        if (stage === -2) return 'Cancelled';
         if (approved) return 'Approved';
         if (locked) return 'Pending Approval';
         switch (stage) {
@@ -757,25 +808,59 @@ const Audit = () => {
         programsList
     ]);
 
-    // Load nonconformances for the selected audit
+    // Load the normalized question graph for the selected audit, including
+    // response-level evidence metadata. Keep a flattened finding view for
+    // summaries, exports, metrics-style helpers, and PDF generation.
     React.useEffect(() => {
-        async function loadNonconformances() {
+        const flattenQuestions = (questions) => (questions || []).flatMap((question) =>
+            (question.findings || []).map((finding, index) => ({
+                ...finding,
+                ncId: finding.findingId ?? finding.ncId,
+                findingId: finding.findingId ?? finding.ncId,
+                questionId: question.questionId,
+                scheduleId: question.scheduleId,
+                type: question.type,
+                sourceId: question.sourceId,
+                section: question.section,
+                subsection: question.subsection,
+                question: question.question,
+                questionSortOrder: question.sortOrder,
+                findingSortOrder: finding.sortOrder,
+                responseNumber: index + 1
+            }))
+        );
+
+        async function loadAuditQuestions() {
             if (isCuiAccessDenied) {
+                setAuditQuestions([]);
                 setNonconformances([]);
                 return;
             }
-            if (auditData?.scheduleId) {
-                try {
-                    const response = await fetch(buildApiUrl(`nonconformances/${auditData.scheduleId}`));
-                    const data = await response.json();
-                    setNonconformances(data);
-                } catch (error) {
-                    console.error('Error loading nonconformances:', error);
-                    setNonconformances([]);
+            if (!auditData?.scheduleId) {
+                setAuditQuestions([]);
+                setNonconformances([]);
+                return;
+            }
+
+            try {
+                const response = await fetch(buildApiUrl(
+                    `audit-questions/${auditData.scheduleId}?includeEvidenceFiles=true`
+                ));
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Failed to load audit questions and findings.');
                 }
+                const questions = Array.isArray(data) ? data : [];
+                setAuditQuestions(questions);
+                setNonconformances(flattenQuestions(questions));
+            } catch (error) {
+                console.error('Error loading audit questions and findings:', error);
+                setAuditQuestions([]);
+                setNonconformances([]);
             }
         }
-        loadNonconformances();
+
+        loadAuditQuestions();
     }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     const hasObjectiveEvidence = React.useMemo(() => {
@@ -840,13 +925,13 @@ const Audit = () => {
     React.useEffect(() => {
         if (loading) return;
         if (isCuiAccessDenied && !accessErrorShown) {
-            toast.error('This audit is marked CUI. You are not CUI approved and cannot view it.');
+            errorToast('This audit is marked CUI. You are not CUI approved and cannot view it.');
             setAccessErrorShown(true);
             return;
         }
         if (!id) return;
         if (auditNotFound && !accessErrorShown) {
-            toast.error('You either do not have access to this audit or it does not exist.');
+            errorToast('You either do not have access to this audit or it does not exist.');
             setAccessErrorShown(true);
         }
     }, [auditNotFound, accessErrorShown, id, isCuiAccessDenied, loading]);
@@ -1058,7 +1143,7 @@ const Audit = () => {
             'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
             'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
             'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-            'Status', 'Function', 'Comment'
+            'Function', 'Comment'
         ];
         const scheduleValues = [
             auditData.scheduleId || '',
@@ -1076,7 +1161,6 @@ const Audit = () => {
             formatDate(auditData.expectedCompletionDate),
             formatSingle(auditData.intExtId, intExtList, 'intExtId', 'intExtName'),
             formatArray(auditData.standardIds, standardsList, 'standardId', 'standardName'),
-            formatSingle(auditData.statusId, statusesList, 'statusId', 'statusName'),
             formatArray(auditData.functionId, functionsList, 'functionId', 'functionName'),
             auditData.comment || ''
         ];
@@ -1129,10 +1213,12 @@ const Audit = () => {
         addSheet(wb, 'Results', resultsHeaders, [resultsValues]);
 
         // PEQs sheet
-        const peqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
+        const peqHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const peqRows = nonconformances
             .filter((nc) => nc.type === 'PEQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
@@ -1149,10 +1235,12 @@ const Audit = () => {
         addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
         // ETQs sheet
-        const etqHeaders = ['NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
+        const etqHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Details', 'Corrective Action Record Number'];
         const etqRows = nonconformances
             .filter((nc) => nc.type === 'ETQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getFindingTypeLabel(nc.findingType),
                 getSeverityLabel(nc.severity),
@@ -1169,10 +1257,12 @@ const Audit = () => {
         addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
         // Standard-based questions sheet
-        const standardHeaders = ['NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Corrective Action Record Number'];
+        const standardHeaders = ['Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'PrOP - Corporate', 'PrOP - Sector', 'PrOP - Division', 'PrOP - Other', 'Cause', 'Corrective Action Record Number'];
         const standardRows = nonconformances
             .filter((nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ')
             .map((nc) => [
+                nc.questionId ?? '',
+                nc.responseNumber ?? '',
                 formatNcIdentifier(nc.ncId),
                 getStandardTypeLabel(nc.type),
                 nc.section ?? '',
@@ -1326,7 +1416,7 @@ const Audit = () => {
                         <span>${escapeHtml(name)}</span>
                     </div>
                     <div class="approver-cell status-cell">
-                        <div class="approver-cell-label">Status</div>
+                        <div class="approver-cell-label">Decision</div>
                         <span class="approver-status ${statusClass}">${statusLabel}</span>
                     </div>
                     <div class="approver-cell date-cell">
@@ -1353,7 +1443,6 @@ const Audit = () => {
             const severityHtml = (nc.severity !== null && nc.severity !== undefined && nc.severity !== '')
                 ? escapeHtml(getSeverityLabel(nc.severity))
                 : '';
-            const questionHtml = nc.question ? escapeHtml(nc.question) : '<span class="muted">No response provided.</span>';
             const responseHtml = nc.response ? escapeHtml(nc.response) : '<span class="muted">No response provided.</span>';
             const auditorCommentHtml = nc.auditorComment
                 ? escapeHtml(nc.auditorComment)
@@ -1372,11 +1461,10 @@ const Audit = () => {
             return `
                 <div class="nc-card">
                     <div class="nc-card-header">
-                        <span class="nc-id">NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
+                        <span class="nc-id">Response ${escapeHtml(nc.responseNumber || 1)} · NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
                     ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
-                    <div class="nc-field"><strong>Question:</strong> ${questionHtml}</div>
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
                     ${propRowsHtml}
@@ -1384,6 +1472,29 @@ const Audit = () => {
                     <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
                     <div class="nc-field"><strong>Corrective Action Record Number:</strong> ${ainHtml}</div>
                     ` : ''}
+                </div>
+            `;
+        };
+
+        const groupNcEntriesByQuestion = (entries) => {
+            const grouped = new Map();
+            entries.forEach((nc, index) => {
+                const key = String(nc.questionId ?? `legacy-${nc.ncId ?? index}`);
+                if (!grouped.has(key)) grouped.set(key, []);
+                grouped.get(key).push(nc);
+            });
+            return [...grouped.values()];
+        };
+
+        const renderNcQuestionGroup = (entries) => {
+            const first = entries[0] || {};
+            const questionHtml = first.question
+                ? escapeHtml(first.question)
+                : '<span class="muted">No response provided.</span>';
+            return `
+                <div class="nc-question-group">
+                    <div class="nc-question"><strong>Question:</strong> ${questionHtml}</div>
+                    ${entries.map((nc) => renderNcEntry(nc)).join('')}
                 </div>
             `;
         };
@@ -1400,7 +1511,7 @@ const Audit = () => {
             return `
                 <div class="nc-section">
                     <h3>${escapeHtml(heading)}</h3>
-                    ${entries.map((nc) => renderNcEntry(nc)).join('')}
+                    ${groupNcEntriesByQuestion(entries).map(renderNcQuestionGroup).join('')}
                 </div>
             `;
         };
@@ -1439,7 +1550,7 @@ const Audit = () => {
                 .map(([label, items]) => `
                     <div class="nc-standard-group">
                         <div class="nc-standard-label">${escapeHtml(label)}</div>
-                        ${items.map((nc) => renderNcEntry(nc)).join('')}
+                        ${groupNcEntriesByQuestion(items).map(renderNcQuestionGroup).join('')}
                     </div>
                 `)
                 .join('');
@@ -1473,7 +1584,7 @@ const Audit = () => {
   .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 14px; }
   .info-table td strong { font-weight: 700; }
   .section-box { border: 1px solid #000; padding: 12px; margin-bottom: 12px; font-size: 13px; }
-  .section-box, .nc-card, .counts-card, .approver-row, .nc-section, .nc-standard-group { page-break-inside: avoid; break-inside: avoid; }
+  .section-box, .nc-card, .nc-question-group, .counts-card, .approver-row, .nc-section, .nc-standard-group { page-break-inside: avoid; break-inside: avoid; }
   .section-box strong { display: block; font-size: 14px; margin-bottom: 6px; }
   .counts-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: 10px; margin-bottom: 12px; }
   .counts-card { border: 1px solid #000; padding: 8px; text-align: center; }
@@ -1491,6 +1602,8 @@ const Audit = () => {
   .nc-section { margin-bottom: 10px; }
   .nc-section h3 { margin: 0 0 6px; font-size: 16px; }
   .nc-standard-label { font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+  .nc-question-group { border: 1px solid #777; padding: 8px; margin-bottom: 10px; }
+  .nc-question { font-size: 13px; margin-bottom: 7px; }
   .nc-card { border: 1px solid #000; padding: 10px; margin-bottom: 8px; font-size: 13px; }
   .nc-card-header { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
   .nc-id { font-weight: 700; }
@@ -1540,7 +1653,7 @@ const Audit = () => {
       </div>
 
       <div class="section-box">
-        <strong>PrOP criteria/documents reviewed during audit (including revision):</strong>
+        <strong>PrOP criteria/documents reviewed during audit:</strong>
         <p>${propDocsHtml}</p>
       </div>
 
@@ -1652,10 +1765,10 @@ const Audit = () => {
             }
 
             if (result.emailWarning) {
-                toast.error(result.emailWarning);
+                errorToast(result.emailWarning);
             }
         } catch (error) {
-            toast.error(error.message || 'Failed to send approval reminders.');
+            errorToast(error.message || 'Failed to send approval reminders.');
         } finally {
             setNudgingApprovers(false);
         }
@@ -1701,7 +1814,7 @@ const Audit = () => {
 
             toast.success('Submission undone successfully.');
         } catch (error) {
-            toast.error(`Failed to undo submission: ${error.message}`);
+            errorToast(`Failed to undo submission: ${error.message}`);
         } finally {
             setUnlockingSubmission(false);
         }
@@ -1709,7 +1822,7 @@ const Audit = () => {
 
     const handleDownloadObjectiveEvidence = async () => {
         if (!auditData?.scheduleId) {
-            toast.error('No audit selected.');
+            errorToast('No audit selected.');
             return;
         }
         setDownloadingObjectiveEvidence(true);
@@ -1748,14 +1861,227 @@ const Audit = () => {
             link.remove();
             window.URL.revokeObjectURL(objectUrl);
         } catch (error) {
-            toast.error(error.message || 'Failed to download objective evidence.');
+            errorToast(error.message || 'Failed to download objective evidence.');
         } finally {
             setDownloadingObjectiveEvidence(false);
         }
     };
 
+    const downloadEvidenceZip = async ({ query, filename, setBusy, errorMessage }) => {
+        if (!auditData?.scheduleId) return;
+        setBusy(true);
+        try {
+            const response = await fetch(buildApiUrl(
+                `audits/${auditData.scheduleId}/objective-evidence.zip?${query}`
+            ));
+            if (!response.ok) {
+                const errorData = (response.headers.get('content-type') || '').includes('application/json')
+                    ? await response.json() : null;
+                throw new Error(errorData?.error || errorMessage);
+            }
+            const blob = await response.blob();
+            const objectUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(objectUrl);
+        } catch (error) {
+            errorToast(error.message || errorMessage);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const handleDownloadFindingEvidence = async (findingId) => {
+        if (!Number.isSafeInteger(Number(findingId))) return;
+        setDownloadingEvidenceNcId(findingId);
+        await downloadEvidenceZip({
+            query: `findingId=${encodeURIComponent(findingId)}`,
+            filename: `audit-${auditData.scheduleId}-finding-${findingId}-objective-evidence.zip`,
+            setBusy: (busy) => {
+                if (!busy) setDownloadingEvidenceNcId(null);
+            },
+            errorMessage: 'Failed to download response objective evidence.'
+        });
+    };
+
+    const handleDownloadQuestionEvidence = async (questionId) => {
+        if (!Number.isSafeInteger(Number(questionId))) return;
+        setDownloadingQuestionEvidenceId(questionId);
+        await downloadEvidenceZip({
+            query: `questionId=${encodeURIComponent(questionId)}`,
+            filename: `audit-${auditData.scheduleId}-question-${questionId}-objective-evidence.zip`,
+            setBusy: (busy) => {
+                if (!busy) setDownloadingQuestionEvidenceId(null);
+            },
+            errorMessage: 'Failed to download question objective evidence.'
+        });
+    };
+
+    const handleLifecycle = async (action) => {
+        if (!auditData?.scheduleId || changingLifecycle) return;
+        if (action === 'archive' && !window.confirm(
+            'Archive this audit? It will remain in the database but will no longer be available anywhere in NGAT. Contact an NGAT administrator to have it restored.'
+        )) return;
+
+        setChangingLifecycle(true);
+        try {
+            const response = await fetch(buildApiUrl(`audits/${auditData.scheduleId}/lifecycle`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to change audit stage.');
+            }
+            const refreshedAudits = await getAuditsReport(true);
+            const visibleAudits = refreshedAudits.filter((audit) => Number(audit?.stage) !== -2);
+            setAudits(visibleAudits);
+            if (action === 'archive' || action === 'cancel') {
+                toast.success(action === 'archive' ? 'Audit archived.' : 'Audit cancelled.');
+                const remaining = visibleAudits.find((audit) => audit.scheduleId !== auditData.scheduleId);
+                navigate(remaining ? `/audit/${remaining.scheduleId}` : '/audit');
+            } else {
+                toast.success('Audit reactivated.');
+            }
+            if (result.emailWarning) {
+                errorToast(result.emailWarning);
+            }
+        } catch (error) {
+            errorToast(error.message || 'Failed to change audit stage.');
+        } finally {
+            setChangingLifecycle(false);
+        }
+    };
+
+    const renderQuestionGroup = (group, groupIndex, { standard = false } = {}) => {
+        const sectionLabel = group.section !== null && group.section !== undefined
+            ? `${group.section}${group.subsection !== null && group.subsection !== undefined ? `.${group.subsection}` : ''}`
+            : null;
+        const standardLabel = standard ? getStandardTypeLabel(group.type) : null;
+        const hasEvidence = group.findings.some((finding) =>
+            Array.isArray(finding.evidenceFiles) && finding.evidenceFiles.length > 0
+        );
+
+        return (
+            <article
+                key={group.questionId || `${group.type}-${group.section ?? 'na'}-${group.subsection ?? 'na'}-${groupIndex}`}
+                className="question-findings-card"
+            >
+                <div className="question-findings-header">
+                    <div className="question-findings-heading">
+                        <div className="question-findings-meta">
+                            {standardLabel && <span>{standardLabel}</span>}
+                            {sectionLabel && <span>Section {sectionLabel}</span>}
+                            <span>{group.findings.length} {group.findings.length === 1 ? 'response' : 'responses'}</span>
+                        </div>
+                        <strong className="question-findings-label">Question</strong>
+                        <p>{group.question || <span className="no-response">No question provided</span>}</p>
+                    </div>
+                    {hasEvidence && group.questionId && (
+                        <button
+                            type="button"
+                            className="question-evidence-zip"
+                            onClick={() => handleDownloadQuestionEvidence(group.questionId)}
+                            disabled={downloadingQuestionEvidenceId === group.questionId}
+                        >
+                            {downloadingQuestionEvidenceId === group.questionId
+                                ? 'Downloading...'
+                                : 'Download Question Evidence (ZIP)'}
+                        </button>
+                    )}
+                </div>
+
+                <div className="question-findings-responses">
+                    {group.findings.map((finding, responseIndex) => {
+                        const chipMeta = getFindingChipMeta(finding.findingType);
+                        return (
+                            <div
+                                key={finding.ncId || `${group.questionId}-response-${responseIndex}`}
+                                className={`finding-card response-finding-card${chipMeta ? ` ${chipMeta.className}` : ''}${finding.evidenceFiles?.length ? ' has-finding-evidence' : ''}`}
+                            >
+                                <div className="finding-header">
+                                    <div className="finding-id-type">
+                                        <span className="response-number">Response {responseIndex + 1}</span>
+                                        {chipMeta && <span className="finding-type">{chipMeta.label}</span>}
+                                        {finding.findingType === 1 && (
+                                            <>
+                                                <span className="finding-id">
+                                                    NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}
+                                                </span>
+                                                {finding.severity && (
+                                                    <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
+                                                        Severity: {getSeverityLabel(finding.severity)}
+                                                    </span>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="finding-item">
+                                    <strong>Auditee Response:</strong>
+                                    <p>{finding.response || <span className="no-response">No response provided</span>}</p>
+                                </div>
+                                <div className="finding-item">
+                                    <strong>Auditor Comment:</strong>
+                                    <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
+                                </div>
+                                <div className="finding-item">
+                                    <strong>PrOPs:</strong>
+                                    <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
+                                </div>
+
+                                {finding.findingType === 1 && (showNcDetailFallbacks || finding.details || finding.AIN) && (
+                                    <>
+                                        <div className="finding-item">
+                                            <strong>Details:</strong>
+                                            <p>
+                                                {finding.details
+                                                    || (showNcDetailFallbacks
+                                                        ? <span className="no-response">No response provided</span>
+                                                        : null)}
+                                            </p>
+                                        </div>
+                                        <div className="finding-item">
+                                            <strong>Corrective Action Record Number:</strong>
+                                            <p>
+                                                {finding.AIN
+                                                    || (showNcDetailFallbacks
+                                                        ? <span className="no-response">No response provided</span>
+                                                        : null)}
+                                            </p>
+                                        </div>
+                                    </>
+                                )}
+
+                                <FindingEvidencePanel
+                                    finding={finding}
+                                    scheduleId={auditData.scheduleId}
+                                    downloadingNcId={downloadingEvidenceNcId}
+                                    onDownloadZip={handleDownloadFindingEvidence}
+                                />
+                            </div>
+                        );
+                    })}
+                </div>
+            </article>
+        );
+    };
+
+    const canChangeLifecycle = Boolean(auditData?.canManage && !isLocked && !isApproved);
+    const hasWorkflowActions = Boolean(
+        (!isLocked && stageValue >= 1 && stageValue <= 4)
+        || (isLocked && canApprove)
+        || canUndoSubmission
+        || canNudgeApprovers
+    );
     const stageLabel = getStageLabel(stageValue, isLocked, isApproved);
-    const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical')
+    const stageBadgeText = (stageLabel === 'Approved' || stageLabel === 'Historical' || stageLabel === 'Cancelled')
         ? stageLabel
         : `Next step: ${stageLabel}`;
 
@@ -1788,127 +2114,145 @@ const Audit = () => {
                             ? { backgroundColor: 'green', color: 'white' }
                             : stageLabel === 'Historical'
                                 ? { backgroundColor: '#9ca3af', color: '#ffffff' }
-                                : {})}
+                                : stageLabel === 'Cancelled'
+                                    ? { backgroundColor: '#6b7280', color: '#ffffff' }
+                                    : {})}
                         className="audit-status-badge"
                     >
                         {stageBadgeText}
                     </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Available actions stay visible, grouped by purpose rather than hidden in menus. */}
                 <div className="action-buttons">
-                    {/* Always show Export XLSX */}
-                    <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
-
-                    {/* Stage-specific buttons */}
-                    {!isLocked && stageValue === 1 && (
-                        <>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Schedule
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Planning
-                            </button>
-                        </>
+                    {hasWorkflowActions && (
+                        <section className="audit-action-group audit-action-group--workflow" aria-label="Audit workflow actions">
+                            <h2 className="audit-action-group-title">Workflow</h2>
+                            <div className="audit-action-group-controls">
+                                {!isLocked && stageValue >= 1 && stageValue <= 4 && (
+                                    <>
+                                        <button
+                                            className="action-btn"
+                                            onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
+                                        >
+                                            Edit Schedule
+                                        </button>
+                                        <button
+                                            className="action-btn"
+                                            onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
+                                        >
+                                            Edit Planning
+                                        </button>
+                                    </>
+                                )}
+                                {!isLocked && stageValue >= 2 && stageValue <= 4 && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
+                                    >
+                                        Conduct Audit
+                                    </button>
+                                )}
+                                {!isLocked && stageValue >= 3 && stageValue <= 4 && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
+                                    >
+                                        Enter Nonconformities
+                                    </button>
+                                )}
+                                {isLocked && canApprove && (
+                                    <a
+                                        className="action-btn"
+                                        href={`/approve/${auditData.scheduleId}`}
+                                        style={{ textDecoration: 'none', color: 'white' }}
+                                    >
+                                        Approve Audit
+                                    </a>
+                                )}
+                                {canUndoSubmission && (
+                                    <button
+                                        className="action-btn undo-submission-btn"
+                                        onClick={handleUndoSubmission}
+                                        disabled={unlockingSubmission}
+                                    >
+                                        {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
+                                    </button>
+                                )}
+                                {canNudgeApprovers && (
+                                    <button
+                                        className="action-btn"
+                                        onClick={handleNudgeApprovers}
+                                        disabled={nudgingApprovers}
+                                        style={{ backgroundColor: '#d97706' }}
+                                    >
+                                        {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
+                                    </button>
+                                )}
+                            </div>
+                        </section>
                     )}
 
-                    {!isLocked && stageValue === 2 && (
-                        <>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Schedule
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Planning
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
-                            >
-                                Conduct Audit
-                            </button>
-                        </>
-                    )}
+                    <section
+                        className={`audit-action-group audit-action-group--downloads${hasWorkflowActions ? '' : ' audit-action-group--wide'}`}
+                        aria-label="Audit downloads"
+                    >
+                        <h2 className="audit-action-group-title">Downloads</h2>
+                        <div className="audit-action-group-controls">
+                            <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
+                            {isLocked && (
+                                <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                            )}
+                            {hasObjectiveEvidence && (
+                                <button
+                                    type="button"
+                                    className="action-btn objective-evidence-download"
+                                    onClick={handleDownloadObjectiveEvidence}
+                                    disabled={downloadingObjectiveEvidence}
+                                >
+                                    {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
+                                </button>
+                            )}
+                        </div>
+                    </section>
 
-                    {!isLocked && (stageValue === 3 || stageValue === 4) && (
-                        <>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=schedule&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Schedule
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=planning&audit=${auditData.scheduleId}`)}
-                            >
-                                Edit Planning
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=results&audit=${auditData.scheduleId}`)}
-                            >
-                                Conduct Audit
-                            </button>
-                            <button
-                                className="action-btn"
-                                onClick={() => navigate(`/entry?type=nonconformities&audit=${auditData.scheduleId}`)}
-                            >
-                                Enter Nonconformities
-                            </button>
-                        </>
-                    )}
-
-                    {isLocked && canApprove && (
-                        <a
-                            className="action-btn"
-                            href={`/approve/${auditData.scheduleId}`}
-                            style={{ textDecoration: 'none', textAlign: 'center', fontSize: '18px', color: 'white' }}
-                        >
-                            Approve Audit
-                        </a>
-                    )}
-
-                    {canUndoSubmission && (
-                        <button
-                            className="action-btn undo-submission-btn"
-                            onClick={handleUndoSubmission}
-                            disabled={unlockingSubmission}
-                        >
-                            {unlockingSubmission ? 'Undoing Submission...' : 'Undo Submission'}
-                        </button>
-                    )}
-
-                    {canNudgeApprovers && (
-                        <button
-                            className="action-btn"
-                            onClick={handleNudgeApprovers}
-                            disabled={nudgingApprovers}
-                            style={{ backgroundColor: '#d97706' }}
-                        >
-                            {nudgingApprovers ? 'Sending Reminder...' : 'Nudge Approvers'}
-                        </button>
-                    )}
-
-                    {isLocked && (
-                        <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                    {canChangeLifecycle && (
+                        <section className="audit-action-group audit-action-group--management" aria-label="Audit status actions">
+                            <h2 className="audit-action-group-title">Audit Status</h2>
+                            <div className="audit-action-group-controls">
+                                {stageValue > 0 && (
+                                    <button
+                                        className="action-btn lifecycle-cancel"
+                                        onClick={() => handleLifecycle('cancel')}
+                                        disabled={changingLifecycle}
+                                    >
+                                        Cancel Audit
+                                    </button>
+                                )}
+                                {stageValue === -2 && (
+                                    <button
+                                        className="action-btn lifecycle-reactivate"
+                                        onClick={() => handleLifecycle('reactivate')}
+                                        disabled={changingLifecycle}
+                                    >
+                                        Reactivate Audit
+                                    </button>
+                                )}
+                                <button
+                                    className="action-btn lifecycle-archive"
+                                    onClick={() => handleLifecycle('archive')}
+                                    disabled={changingLifecycle}
+                                >
+                                    Archive Audit
+                                </button>
+                            </div>
+                        </section>
                     )}
                 </div>
 
                 {(isLocked || isApproved) && (
                     <div className="audit-section">
-                        <h2 className="section-title">Approval Status</h2>
+                        <h2 className="section-title">Approvals</h2>
                         {getApprovalEntries().length === 0 ? (
                             <p>No approvers assigned.</p>
                         ) : (
@@ -1939,12 +2283,6 @@ const Audit = () => {
                                 <div className="info-item">
                                     <label>Audit Type:</label>
                                     <span>{getAuditTypeName(auditData.auditTypeId)}</span>
-                                </div>
-                            )}
-                            {getStatusName(auditData.statusId) && (
-                                <div className="info-item">
-                                    <label>Status:</label>
-                                    <span>{getStatusName(auditData.statusId)}</span>
                                 </div>
                             )}
                             {getFunctionName(auditData.functionId) && (
@@ -2234,278 +2572,25 @@ const Audit = () => {
                     </div>
                 )}
 
-                {hasObjectiveEvidence && (
-                    <button
-                        type="button"
-                        onClick={handleDownloadObjectiveEvidence}
-                        disabled={downloadingObjectiveEvidence}
-                        style={{
-                            width: '100%',
-                            backgroundColor: '#1976d2',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '8px',
-                            padding: '12px 16px',
-                            fontSize: '16px',
-                            fontWeight: 600,
-                            cursor: downloadingObjectiveEvidence ? 'default' : 'pointer',
-                            opacity: downloadingObjectiveEvidence ? 0.75 : 1,
-                            marginBottom: '36px'
-                        }}
-                    >
-                        {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
-                    </button>
-                )}
-
-                {/* Process Evaluation Questions (PEQs) */}
-                {nonconformances.filter(nc => nc.type === 'PEQ').length > 0 && (
+                {/* Results grouped by question, with each independently classified response underneath. */}
+                {peqQuestionGroups.length > 0 && (
                     <div className="audit-section">
                         <h2 className="section-title">Process Evaluation Questions (PEQs)</h2>
-                        {nonconformances
-                            .filter(nc => nc.type === 'PEQ')
-                            .sort((a, b) => {
-                                // Sort by finding type: NC(1) -> OFI(3) -> OBS(4) -> Conformity(2)
-                                const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
-                                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
-                            })
-                            .map((finding, index) => {
-                                const chipMeta = getFindingChipMeta(finding.findingType);
-                                return (
-                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
-                                    <div className="finding-header">
-                                        <div className="finding-id-type">
-                                            {chipMeta && (
-                                                <span className="finding-type">{chipMeta.label}</span>
-                                            )}
-                                            {finding.findingType === 1 && (
-                                                <>
-                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
-                                                    {finding.severity && (
-                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
-                                                            Severity: {getSeverityLabel(finding.severity)}
-                                                        </span>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Question:</strong>
-                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditee Response:</strong>
-                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditor Comment:</strong>
-                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>PrOPs:</strong>
-                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    {finding.findingType === 1 && (
-                                        <>
-                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
-                                                <>
-                                                    <div className="finding-item">
-                                                        <strong>Details:</strong>
-                                                        <p>
-                                                            {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>Corrective Action Record Number:</strong>
-                                                        <p>
-                                                            {finding.AIN
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            )})}
+                        {peqQuestionGroups.map((group, index) => renderQuestionGroup(group, index))}
                     </div>
                 )}
 
-                {/* Every Time Questions (ETQs) */}
-                {nonconformances.filter(nc => nc.type === 'ETQ').length > 0 && (
+                {etqQuestionGroups.length > 0 && (
                     <div className="audit-section">
                         <h2 className="section-title">Every Time Questions (ETQs)</h2>
-                        {nonconformances
-                            .filter(nc => nc.type === 'ETQ')
-                            .sort((a, b) => {
-                                // Sort by finding type: NC(1) -> OFI(3) -> OBS(4) -> Conformity(2)
-                                const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
-                                return (order[a.findingType] || 999) - (order[b.findingType] || 999);
-                            })
-                            .map((finding, index) => {
-                                const chipMeta = getFindingChipMeta(finding.findingType);
-                                return (
-                                <div key={index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
-                                    <div className="finding-header">
-                                        <div className="finding-id-type">
-                                            {chipMeta && (
-                                                <span className="finding-type">{chipMeta.label}</span>
-                                            )}
-                                            {finding.findingType === 1 && (
-                                                <>
-                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
-                                                    {finding.severity && (
-                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
-                                                            Severity: {getSeverityLabel(finding.severity)}
-                                                        </span>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Question:</strong>
-                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditee Response:</strong>
-                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditor Comment:</strong>
-                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>PrOPs:</strong>
-                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    {finding.findingType === 1 && (
-                                        <>
-                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
-                                                <>
-                                                    <div className="finding-item">
-                                                        <strong>Details:</strong>
-                                                        <p>
-                                                            {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>Corrective Action Record Number:</strong>
-                                                        <p>
-                                                            {finding.AIN
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            )})}
+                        {etqQuestionGroups.map((group, index) => renderQuestionGroup(group, index))}
                     </div>
                 )}
 
-                {/* Standard-Based Questions */}
-                {standardFindingsSorted.length > 0 && (
+                {standardQuestionGroups.length > 0 && (
                     <div className="audit-section">
                         <h2 className="section-title">Standard-Based Questions</h2>
-                        {standardFindingsSorted.map((finding, index) => {
-                            const standardLabel = getStandardTypeLabel(finding.type);
-                            const sectionLabel = finding.section !== null && finding.section !== undefined
-                                ? `${finding.section}${finding.subsection !== null && finding.subsection !== undefined ? `.${finding.subsection}` : ''}`
-                                : null;
-                            const chipMeta = getFindingChipMeta(finding.findingType);
-
-                            return (
-                                <div key={finding.ncId || index} className={`finding-card${chipMeta ? ` ${chipMeta.className}` : ''}`}>
-                                    <div className="finding-header">
-                                        <div className="finding-id-type">
-                                            {chipMeta && (
-                                                <span className="finding-type">{chipMeta.label}</span>
-                                            )}
-                                            {finding.findingType === 1 && (
-                                                <>
-                                                    <span className="finding-id">NGAT Nonconformity Identifier: {formatNcIdentifier(finding.ncId)}</span>
-                                                    {standardLabel && (
-                                                        <span className="finding-type">{standardLabel}</span>
-                                                    )}
-                                                    {finding.severity && (
-                                                        <span className={`finding-type ${getSeverityLabel(finding.severity).toLowerCase()}`}>
-                                                            Severity: {getSeverityLabel(finding.severity)}
-                                                        </span>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {sectionLabel && (
-                                        <div className="finding-item">
-                                            <strong>Standard Section:</strong>
-                                            <p>{sectionLabel}</p>
-                                        </div>
-                                    )}
-
-                                    <div className="finding-item">
-                                        <strong>Question:</strong>
-                                        <p>{finding.question || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditee Response:</strong>
-                                        <p>{finding.response || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>Auditor Comment:</strong>
-                                        <p>{finding.auditorComment || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    <div className="finding-item">
-                                        <strong>PrOPs:</strong>
-                                        <p>{getFindingPropSummary(finding) || <span className="no-response">No response provided</span>}</p>
-                                    </div>
-
-                                    {finding.findingType === 1 && (
-                                        <>
-                                            {(showNcDetailFallbacks || finding.details || finding.AIN) && (
-                                                <>
-                                                    <div className="finding-item">
-                                                        <strong>Details:</strong>
-                                                        <p>
-                                                            {finding.details
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="finding-item">
-                                                        <strong>Corrective Action Record Number:</strong>
-                                                        <p>
-                                                            {finding.AIN
-                                                                || (showNcDetailFallbacks ? <span className="no-response">No response provided</span> : null)}
-                                                        </p>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        })}
+                        {standardQuestionGroups.map((group, index) => renderQuestionGroup(group, index, { standard: true }))}
                     </div>
                 )}
             </div>

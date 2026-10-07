@@ -35,9 +35,9 @@
 
 .filters-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, 300px);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1.25rem;
-    justify-content: space-around;
+    justify-content: stretch;
 }
 
 .filter-field {
@@ -65,6 +65,48 @@
     font-family: 'Source Sans Pro', sans-serif;
 }
 
+.reports-heading {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.reports-title-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 1.5rem;
+    row-gap: 0.6rem;
+    margin-bottom: 0.5rem;
+}
+
+.reports-title-row h1 {
+    margin: 0;
+}
+
+.reports-title-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    color: var(--color-grey-600);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.reports-title-checkbox input[type="checkbox"] {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    accent-color: var(--color-audit-blue, #0066cc);
+    cursor: pointer;
+}
+
 .reports-table {
     margin-top: 2rem;
     width: 100%;
@@ -81,6 +123,7 @@
 
 .export-button {
     width: 300px;
+    max-width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -129,21 +172,21 @@ button.toggle-button {
     }
 }
 
-@media (min-width: 1600px) {
-    .filters-grid {
-        grid-template-columns: repeat(4, 300px);
-    }
-}
-
 @media (max-width: 1300px) {
     .filters-grid {
-        grid-template-columns: repeat(3, 300px);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
 
 @media (max-width: 1000px) {
     .filters-grid {
-        grid-template-columns: repeat(2, 300px);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 650px) {
+    .filters-grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -152,6 +195,7 @@ button.toggle-button {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-wrap: wrap;
     gap: 1rem;
     width: 100%;
     padding-top: 20px;

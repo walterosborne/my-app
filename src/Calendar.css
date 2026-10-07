@@ -138,9 +138,9 @@
     font-size: 12px;
     text-align: left;
     color: #1e3a8a;
-    display: grid;
-    grid-template-columns: 60px 1fr;
-    gap: 6px;
+    display: flex;
+    align-items: center;
+    gap: 0;
     cursor: pointer;
 }
 
@@ -148,7 +148,13 @@
     font-weight: 700;
 }
 
+.calendar-event .event-separator {
+    flex: 0 0 auto;
+    margin: 0 3px;
+}
+
 .calendar-event .event-lead {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

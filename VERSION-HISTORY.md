@@ -6,6 +6,516 @@
 
 ---
 
+## 🚀 NGAT 3.0 — Kubernetes / OpenShift Generation
+
+**Release baseline:** October 2026  
+**Change window covered:** September 20, 2026 through October 1, 2026  
+**Hosting:** OpenShift / Kubernetes  
+**Frontend:** React 19 + Vite  
+**Backend:** Express + MSSQL in the application container  
+**Authentication:** Entra ID through OAuth2 Proxy with delegated Microsoft Graph identity validation  
+**Environment model:** `NGAT_ENV` explicitly selects `dev`, `stag`, or `dbo` audit/FOE schemas
+
+### 🌟 Release Summary
+
+NGAT 3.0 is the Kubernetes/OpenShift generation of NGAT. It moves the deployed application away from the IIS/Kerberos-centered 2.0 runtime and into a containerized React/Express deployment protected by OAuth2 Proxy and Entra ID. The existing audit workflow was preserved while the backend, identity model, environment safety, database migration tooling, resilience behavior, Conduct Audit data model, reporting, FOE tooling, and operational deployment model were substantially expanded.
+
+NGAT 3.0 begins with the first actual OpenShift implementation on September 20, 2026: commit `a769cda68301` (“Port NGAT backend and React hosting from IIS to OpenShift with Graph-validated Entra identity”). The June/July work after the 2.0 documentation baseline is separated below into NGAT 2.1 and 2.2.
+
+---
+
+## ☸️ OpenShift / Kubernetes Migration
+
+### Containerized application runtime
+
+- Added a UBI 9 / Node 20 Docker image.
+- The container builds the Vite frontend, prunes development dependencies, and runs `mssqlserver.js` on port 8080.
+- In production mode, Express serves the compiled React SPA directly from `dist/`.
+- The old deployed IIS model is no longer required for the Kubernetes runtime.
+- Removed the obsolete standalone `server.js` implementation.
+- Added OpenShift manifests for:
+  - the NGAT application Deployment
+  - internal NGAT Service
+  - OAuth2 Proxy Deployment and Service
+  - BuildConfig
+  - corporate Route
+  - SMTP environment wiring
+- Added `OPENSHIFT-NGAT.md` with migration, rollout, validation, authentication, environment, and rollback notes.
+- Added startup, readiness, and liveness probes suitable for OpenShift.
+- Fatal Node process failures now terminate the application process so Kubernetes can restart it.
+
+### Application availability and recovery
+
+- Added a browser-facing backend availability layer.
+- Database dependency health is checked separately from process health so a SQL outage does not create Kubernetes restart loops.
+- The frontend shows a recovery-aware outage experience when the backend is temporarily unavailable.
+- Persistent error handling was improved so entry forms remain visible while errors are shown.
+
+---
+
+## 🔐 Entra ID Authentication and Identity
+
+NGAT 3.0 replaces IIS/Windows-auth identity as the deployed authentication source.
+
+### OAuth2 Proxy
+
+- Added a dedicated OAuth2 Proxy deployment in front of the application.
+- Public Routes terminate at the auth proxy rather than exposing the application Service directly.
+- OAuth uses the Northrop Entra application registration and the U.S. Government Entra endpoints.
+- OAuth2 Proxy forwards a delegated Microsoft Graph access token to NGAT.
+- PKCE S256, secure HTTP-only cookies, SameSite handling, cookie refresh, and reverse-proxy settings are configured for the deployed flow.
+
+### Graph-validated current-user identity
+
+- Added `entraIdentity.js`.
+- Express calls Microsoft Graph `/me` using delegated `User.Read`.
+- Graph identity can resolve against the roster through:
+  - on-premises SAM account name
+  - employee/MyID
+  - mail / UPN
+- Once the roster match is established, existing NGAT authorization rules remain authoritative:
+  - auditor identity
+  - division
+  - program permissions
+  - admin access
+  - CUI approval
+- Browser-supplied identity headers and old IIS identity headers are no longer trusted as authentication.
+- Added identity tests and diagnostics for the new flow.
+
+### Local-only development identity fallback
+
+- Added `NGAT_DEV_EMPLOYEE_ID` for localhost development when Entra is unavailable.
+- The fallback is allowed only when both:
+  - Node is not running in production mode
+  - `NGAT_ENV` is development
+- The hardcoded MyID still has to resolve through the roster and normal auditor permissions.
+- The fallback cannot activate in OpenShift production mode.
+- When the local hardcoded identity fallback is actually in use, **all outgoing email is suppressed** so local testing cannot accidentally notify real users.
+
+---
+
+## 🧪 Environment and Schema Safety
+
+Environment handling was rewritten around one authoritative runtime setting.
+
+### `NGAT_ENV`
+
+- `NGAT_ENV=dev` → `[dev]`
+- `NGAT_ENV=stg` / staging → `[stag]`
+- `NGAT_ENV=prod` / production → `[dbo]`
+- Hostname, Vite build mode, and `NODE_ENV` no longer select the audit schema.
+- OpenShift must explicitly supply the environment; unsafe or unknown runtime configuration fails instead of silently selecting production data.
+- The React environment banner reads the same runtime environment selection used by the backend.
+
+### Development banner = development database
+
+- The non-production banner and backend schema are now driven from the same `NGAT_ENV` value.
+- A development banner therefore corresponds to the `dev` audit schema.
+- Startup validation rejects an environment/schema mismatch.
+- FOE tables now follow the exact same environment schema rules as the normal audit tables.
+- A non-production process blocks any FOE query that somehow retains an explicit `dbo.Fode*` target after SQL rewriting.
+
+### Local configuration behavior
+
+- Local dotenv precedence was corrected so repository-local environment values can override inherited Windows variables.
+- OpenShift Secret values retain precedence in Kubernetes.
+- SMTP configuration now loads after local environment files.
+- SMTP and HTTP port handling were separated so an SMTP `PORT=25` value cannot accidentally move the NGAT API listener.
+- Local development returned to API port 3001.
+
+---
+
+## 📅 Audit Schedule and Organizational Hierarchy
+
+- Removed the obsolete legacy **Status** field from the active scheduling/reporting experience while preserving underlying compatibility where needed.
+- Standards and Functions selectors were widened for easier use.
+- Audit creation now reliably populates `createdAt`.
+- New and resubmitted schedules require a Division.
+- Added admin-maintained parent assignments for Programs and Operating Units.
+- Added guarded database changes for the new hierarchy data.
+- Schedule Entry now validates Program / Operating Unit hierarchy relationships for new or resubmitted data while allowing older historical audits to remain viewable.
+- Schedule hierarchy fields are ordered parent-first to make valid selections clearer.
+- Existing historical data is not silently rewritten solely because newer hierarchy rules exist.
+- Multi-select controls across the application now stay open while users make consecutive selections.
+
+---
+
+## 🚦 Audit Lifecycle: Cancel, Reactivate, and Archive
+
+NGAT 3.0 adds an explicit lifecycle outside the normal active audit stages.
+
+### Cancel
+
+- Active audits can be cancelled before Pending Approval / Approved.
+- Cancelled audits are removed from actionable to-do workflows.
+- Cancelled audits are excluded from metrics and normal report selections by default.
+- Report pages include an **Include cancelled audits** option where historical cancelled data is relevant.
+- Cancellation sends a dedicated notification to assigned auditors.
+- Email-delivery failure is surfaced without undoing the lifecycle change.
+
+### Reactivate
+
+- Cancelled audits retain their prior active stage.
+- Eligible cancelled audits can be reactivated back to that stage.
+
+### Archive
+
+- Archived audits are removed from the normal NGAT application experience while remaining in the database.
+- Guarded restoration tooling exists for administrator/database recovery scenarios.
+- Lifecycle writes were hardened for migrated records whose copied `locked` value may be null.
+
+---
+
+## 🔎 Conduct Audit: Multi-Response Question Model
+
+The largest application/data-model change in 3.0 is the normalization of Conduct Audit questions and findings.
+
+### Multiple responses per question
+
+- A single audit question can now contain multiple independent responses/findings.
+- This behavior applies across:
+  - standard questions
+  - Every Time Questions
+  - PEQs
+- Each response can independently carry its finding classification and related details.
+- Reusable response-card UI was introduced for repeatable findings.
+- Question expansion is based on whether any saved response exists.
+- Unanswered individual questions remain collapsed by default; answered questions reopen automatically.
+- Response controls remain usable on narrow layouts.
+
+### Normalized question/finding schema
+
+- Added a normalized database model separating audit questions from their findings/responses.
+- Added migration logic to convert legacy Conduct Audit records into the normalized structure.
+- Legacy records are represented as a question plus one or more findings rather than being discarded.
+- Duplicate legacy ETQ behavior is preserved safely.
+- Deleted questions are only removed when deletion is explicitly requested; migration logic does not resurrect deleted records.
+- Primary keys, timestamp defaults, and normalized table defaults are restored after schema-copy operations.
+- Migration verification checks that every expected legacy finding is represented.
+
+### Safer saves
+
+- Conduct Audit question/finding saves are transactional and atomic.
+- Nonconformity-specific response details are saved inside the same transaction.
+- The frontend fails the save if any response fails rather than partially reporting success.
+- Legacy save paths were made non-destructive to normalized multi-response data.
+- Finding IDs refresh after save so subsequent edits target the persisted rows correctly.
+- Nonconformity-only metadata is cleared when a response changes to a type where those fields no longer apply.
+- Response type, CUI access, and NC detail ownership are validated server-side.
+
+### Finding semantics
+
+- Multiple findings under one question no longer inflate audited-clause counts.
+- Finding-level metrics remain finding-based where appropriate.
+- Flattened compatibility APIs expose both question identity and response number.
+- Findings summaries distinguish multiple responses to the same question.
+
+---
+
+## 📎 Objective Evidence
+
+- Added per-question evidence display on the Individual Audit Report.
+- Each question can show its linked evidence filenames.
+- Added per-question ZIP download actions.
+- Added support for normalized finding-level evidence downloads.
+- Overall Objective Evidence download was moved into the grouped audit action/download toolbar.
+- Duplicate filenames are retained safely in ZIP exports.
+- Evidence metadata is exposed on nested question/finding report data.
+- Download logging and response/evidence relationships were clarified and hardened.
+
+---
+
+## 📄 Individual Audit Reports, PDF, and Exports
+
+- Individual reports now group findings/responses beneath their source question.
+- Nested standard/PEQ/ETQ questions load directly with their saved response groups.
+- Nonconformity responses are labeled distinctly when more than one exists for a question.
+- PDF output groups multiple responses underneath the corresponding question.
+- Fixed recursive PDF question grouping issues.
+- Removed obsolete revision wording from the audit PDF.
+- Multi-audit and audit exports now include question identity and response identity.
+- Stage / cancelled state is represented where needed in reporting/export flows.
+- Cancelled audits are excluded from normal individual-report selection by default.
+- Dynamic finding data refreshes rather than relying on stale cached response information.
+
+---
+
+## 📊 Reporting, Metrics, Calendar, and To-Do UX
+
+### Report filtering
+
+- Added **Include cancelled audits** across the report surfaces where cancelled records may need to be reviewed.
+- The cancelled filter was repositioned beside report titles for cleaner layout.
+- Cancelled entries are visually distinguished where they are intentionally included.
+- Normal report views exclude cancelled data unless the user explicitly asks for it.
+
+### Metrics
+
+- Cancelled audits are excluded from metrics.
+- Existing finding/function/clause metrics were adapted to the normalized multi-response model.
+
+### Risk Analysis
+
+- Risk ratings now support persisted comments.
+- Risk Analysis view displays those comments with improved hierarchy.
+- Historical audit migration support was added for risk data.
+- Risk Analysis headers were simplified.
+- Year display formatting was cleaned up.
+
+### Calendar and navigation
+
+- Calendar audit labels were tightened for compact display.
+- Added direct navbar shortcuts for:
+  - My Audit To-Do List
+  - Calendar
+  - Metrics
+- Renamed the old Audit Stages surface to **My Audit To-Do List** throughout navigation/page titles.
+- Removed several duplicate page headings across Tools/Admin/Risk/Metrics views.
+
+---
+
+## 📬 Email System Changes
+
+### Audit notifications
+
+- New normal audits notify the lead auditor and additional assigned auditors.
+- Edits can notify the assigned auditors.
+- Audit cancellation has its own notification email.
+- Approval and approval-reminder workflows remain supported.
+- Email failures are treated as warnings after the underlying audit action succeeds.
+
+### Development safety
+
+All outgoing mail now passes through one environment-aware send path.
+
+When NGAT is running outside production:
+
+- the subject is prefixed with the environment, such as **`[NGAT DEV]`**
+- a large high-visibility banner is inserted at the top of the email
+- the banner explicitly states that the action occurred in a non-production environment
+
+When the local hardcoded employee-ID identity fallback is being used:
+
+- outbound email is completely disabled
+- the suppression is logged as intentional rather than treated as an SMTP failure
+
+---
+
+## 🧠 FOE: From Linked Legacy App to Native NGAT Functionality
+
+FOE administration arrived in NGAT 2.2. NGAT 3.0 completes the larger migration by replacing the remaining legacy FOE audit and download/report experiences with native NGAT functionality.
+
+### Native FOE audit entry
+
+The old FOE **Audits** iframe has been replaced with a native NGAT page modeled on Audit Schedule while preserving the legacy Python/Streamlit business rules.
+
+Preserved behavior includes:
+
+- New Audit
+- Edit Drafts
+- Review Audits
+- lead-auditor Review and/or Edit Audits
+- approved-site and lead-site permissions
+- archived areas excluded from new audits while historical records remain usable
+- Division derived from Site
+- Manager derived from Audit Area
+- current FOE auditor ownership
+- required final-submit fields
+- incomplete drafts
+- 350-character Audit Note limit
+- legacy FOE categories
+- customer / shift / effectivity fields
+- discrepancy groups and legacy “Other / Undefined” behavior
+- integer non-negative discrepancy quantities
+- comments for nonzero discrepancies
+- persistence of nonzero discrepancy rows only
+- legacy Finding Summary behavior
+- legacy title-hash generation
+- draft deletion and authorized completed-audit deletion
+
+### Native FOE reporting
+
+The old **Download Audit Info** iframe has been replaced with a native NGAT report patterned after All My Audits.
+
+It includes:
+
+- Include Drafts
+- Auditor
+- Audit Date range
+- Site
+- Division
+- Program
+- Audit Area
+- Title
+- empty-state behavior matching the legacy tool
+- Excel export with separate **Audits** and **Findings** sheets
+- legacy report fields including Sector
+- stable historical Program lookup behavior
+
+### FOE environment and email behavior
+
+- Every `Fode*` query now follows the same `NGAT_ENV` schema selection as normal audit data.
+- Development FOE reads/writes therefore stay in `[dev]`.
+- Completed FOE audit creation/submission sends an email to the assigned FOE auditor.
+- Editing an existing completed FOE audit notifies the originally assigned auditor.
+- FOE resolves the auditor's MyID from `FodeAuditors`, then resolves the email through the roster.
+- Draft saves do not send email.
+- FOE email failures are surfaced as warnings without rolling back the audit save.
+- FOE emails use the same non-production banner and hardcoded-identity suppression rules as the rest of NGAT.
+
+---
+
+## 🗃️ Database Migration and Production-Data Protections
+
+NGAT 3.0 substantially expands the SQL migration tooling.
+
+### Guarded Kubernetes migration
+
+- Added `sql/kubernetes-script.sql` as the consolidated migration path for the Kubernetes-era data-model changes.
+- The script defaults to development-oriented operation and contains explicit protections around `dbo`.
+- Added / consolidated migrations for:
+  - audit lifecycle state
+  - Program / Operating Unit hierarchy
+  - legacy standard-question types
+  - normalized Conduct Audit questions/findings
+  - migrated historical findings
+  - timestamp/default restoration
+  - primary-key restoration
+  - migration markers and verification
+- ISO 9001 legacy question mapping is explicitly handled in the standard-type migration.
+
+### Runtime schema enforcement
+
+- The central application SQL adapter applies environment schema routing consistently to both normal audit tables and FOE tables.
+- Kubernetes-era migrations preserve the production-data protections introduced in NGAT 2.1 and extend them to the new lifecycle, hierarchy, and normalized question/finding structures.
+- Added restoration tooling for archived audits and safeguards/default restoration needed after development schema copies.
+
+---
+
+## 🛠️ UI and Workflow Quality-of-Life Changes
+
+- Multi-select dropdowns remain open while multiple values are chosen.
+- Question/response boundaries were visually clarified for the new nested response model.
+- The Individual Audit Report toolbar was reorganized into clearer grouped actions/downloads/lifecycle controls.
+- Evidence actions were moved into more logical locations.
+- Responsive styling was added for grouped actions, evidence panels, FOE pages, and multi-response controls.
+- “Time to complete audit” was moved from Nonconformities into the Conduct Audit PE introduction.
+- Several tool-page headings and navigation labels were simplified to remove duplication.
+- FOE responsive CSS was isolated so it does not bleed into unrelated NGAT pages.
+
+---
+
+## 🏗️ 3.0 Architecture at a Glance
+
+The deployed request path is now:
+
+```text
+Browser
+  ↓
+OpenShift Route / TLS
+  ↓
+OAuth2 Proxy
+  ↓
+Entra ID / delegated Microsoft Graph token
+  ↓
+NGAT Express application
+  ├─ React SPA
+  ├─ Audit SQL connection
+  ├─ Roster SQL connection
+  └─ SMTP
+```
+
+The application container and auth proxy are separate workloads. The application Service is intended to remain internal; authenticated public traffic reaches NGAT through OAuth2 Proxy.
+
+---
+
+## 🔄 Upgrade Perspective
+
+NGAT 3.0 is not just a hosting change. The Kubernetes migration coincides with significant changes to:
+
+- identity and authentication
+- deployment/runtime recovery
+- environment/schema safety
+- audit lifecycle
+- organizational hierarchy
+- Conduct Audit persistence
+- multi-response findings
+- objective evidence handling
+- reports and exports
+- Risk Analysis
+- FOE audit entry and reporting, building on the 2.2 FOE administration work
+- email safety and notification behavior
+- guarded database migrations
+
+The core React audit workflow remains recognizable from NGAT 2.0, but the deployed architecture and several major data/workflow models are new enough to treat the Kubernetes generation as a distinct major release.
+
+
+---
+
+## 🔧 NGAT 2.2 — FOE Administration and Access Hardening
+
+**Change window covered:** July 9, 2026 through July 30, 2026  
+**Hosting:** IIS / Windows-hosted NGAT 2.x runtime  
+**Focus:** Native FOE administration, CUI guidance, Conduct Audit reliability, and authorization diagnostics
+
+### 🌟 Release Summary
+
+NGAT 2.2 was the second post-2.0 improvement wave. It moved FOE administration into the React application, tightened Conduct Audit and CUI behavior, and added better authorization diagnostics before the later Entra/OpenShift rewrite.
+
+### 🧠 Native FOE Administration
+
+- Added the native **FOE Admin Menu**.
+- Added React administration for FOE Auditors, Sites, Audit Areas, Customers, Divisions, and Shifts.
+- Added FOE editing/filtering behavior and archive-aware maintenance.
+- Added FOE-specific development-schema copy tooling and reorganized SQL utilities.
+
+### 🔎 Conduct Audit and Access Reliability
+
+- Hardened loading of nonconformance/question data when the backend returns invalid or non-JSON responses.
+- Preserved Every Time Question state when separate nonconformance loading fails.
+- Improved IIS-auth response diagnostics.
+- Expanded CUI access-denied guidance across audit detail, evidence, reminders, CAR/nonconformance, and Conduct Audit paths.
+- When possible, CUI-denied users are directed to the appropriate division lead through roster data.
+- Added richer Network ID / roster / auditor diagnostics.
+- Improved admin audit-edit authorization within permitted division scope.
+
+---
+
+## 🧰 NGAT 2.1 — Development Schema Safety and Audit Workflow Polish
+
+**Change window covered:** June 26, 2026 through June 29, 2026  
+**Hosting:** IIS / Windows-hosted NGAT 2.x runtime  
+**Focus:** Safer development database workflows, objective evidence reliability, and Conduct Audit usability
+
+### 🌟 Release Summary
+
+NGAT 2.1 was the first wave after the original 2.0 documentation. It concentrated on protecting production data while making development schema copies safer, plus several objective-evidence and Conduct Audit improvements.
+
+### 🗃️ Development Schema and Production-Data Protection
+
+- Added and refined scripts for copying, backing up, cleaning, and rebuilding development schemas.
+- Added explicit safeguards that refuse unsafe non-backup creates, overwrites, or drops against `dbo`.
+- Added foreign-key-aware schema cleanup and table-discovery utilities.
+- Added targeted copy support for `*_r` and FOE tables.
+- Improved environment-variable and IIS deployment configuration around the schema-aware backend.
+
+### 📎 Objective Evidence and Conduct Audit
+
+- Added multi-file objective evidence uploads.
+- Improved shared/network evidence-location handling.
+- Fixed evidence ZIP behavior and added clearer upload diagnostics/limits.
+- Refined Every Time Question and standard-question collapsing.
+- Fixed nonconformity response/comment behavior.
+- Improved interaction between Conduct Audit question state and saved nonconformance data.
+
+### 🧱 Runtime Cleanup
+
+- Continued consolidation around the SQL Server-backed `mssqlserver.js` runtime.
+- Updated deployed environment-variable and `web.config` behavior.
+- Removed obsolete backend code as the IIS/Express path became the maintained 2.x implementation.
+
+---
+
 ## 🚀 NGAT 2.0
 
 **Status:** Current repo baseline  

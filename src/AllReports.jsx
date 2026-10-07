@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
@@ -19,7 +20,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -76,7 +76,6 @@ const AllReports = () => {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -86,6 +85,7 @@ const AllReports = () => {
   const [causesList, setCausesList] = useState([]);
 
   const [titleFilter, setTitleFilter] = useState('');
+  const [includeCancelledAudits, setIncludeCancelledAudits] = useState(false);
   const [sectorFilter, setSectorFilter] = useState(null);
   const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
@@ -95,7 +95,6 @@ const AllReports = () => {
   const [auditTypeFilter, setAuditTypeFilter] = useState(null);
   const [leadAuditorFilter, setLeadAuditorFilter] = useState(null);
   const [additionalAuditorsFilter, setAdditionalAuditorsFilter] = useState([]);
-  const [statusFilter, setStatusFilter] = useState(null);
   const [functionFilter, setFunctionFilter] = useState([]);
   const [intExtFilter, setIntExtFilter] = useState(null);
   const [standardsFilter, setStandardsFilter] = useState([]);
@@ -119,7 +118,6 @@ const AllReports = () => {
           operatingUnits,
           auditors,
           auditTypes,
-          statuses,
           functions,
           intExt,
           standards,
@@ -138,7 +136,6 @@ const AllReports = () => {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards(),
@@ -158,7 +155,6 @@ const AllReports = () => {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -229,7 +225,6 @@ const AllReports = () => {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [sitesList]);
   const auditTypeOptions = useMemo(() => buildSortedOptions(auditTypesList, 'auditTypeId', 'auditTypeName'), [auditTypesList]);
-  const statusOptions = useMemo(() => buildSortedOptions(statusesList, 'statusId', 'statusName'), [statusesList]);
   const functionOptions = useMemo(() => buildSortedOptions(functionsList, 'functionId', 'functionName'), [functionsList]);
   const businessUnitOptions = useMemo(() => buildSortedOptions(businessUnitsList, 'businessUnitId', 'businessUnitName'), [businessUnitsList]);
   const operatingUnitOptions = useMemo(() => buildSortedOptions(operatingUnitsList, 'operatingUnitId', 'operatingUnitName'), [operatingUnitsList]);
@@ -237,13 +232,34 @@ const AllReports = () => {
   const intExtOptions = useMemo(() => buildSortedOptions(intExtList, 'intExtId', 'intExtName'), [intExtList]);
   const standardsOptions = useMemo(() => buildSortedOptions(standardsList, 'standardId', 'standardName'), [standardsList]);
 
+  // Cancellation is the visible stage; the saved previous stage tells the
+  // workbook which Planning/Results/finding sheets have applicable data.
   const getStageValue = (audit) => {
     const stage = Number(audit?.stage);
+    if (stage === -2) {
+      const previousStage = Number(audit?.stageBeforeInactive);
+      return Number.isInteger(previousStage) && previousStage >= 1 && previousStage <= 4
+        ? previousStage
+        : 0;
+    }
     return Number.isNaN(stage) ? 0 : stage;
+  };
+
+  const getStageLabel = (audit) => {
+    const stage = Number(audit?.stage);
+    if (stage === -2) return 'Cancelled';
+    if (stage === -1) return 'Historical';
+    if (audit?.approvedAt) return 'Approved';
+    if (Number(audit?.locked) === 1) return 'Pending Approval';
+    if (stage === 1) return 'Planning';
+    if (stage === 2) return 'Conduct Audit';
+    if (stage === 3 || stage === 4) return 'Nonconformities';
+    return 'Unknown';
   };
 
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
+      if (!includeCancelledAudits && Number(audit?.stage) === -2) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -254,7 +270,6 @@ const AllReports = () => {
         if (!matchesDivision) return false;
       }
       if (auditTypeFilter && audit.auditTypeId !== auditTypeFilter.value) return false;
-      if (statusFilter && audit.statusId !== statusFilter.value) return false;
       if (functionFilter.length > 0) {
         const auditFunctionIds = normalizeIdArray(audit.functionId).map((id) => Number(id));
         const matchesFunction = functionFilter.some((option) => auditFunctionIds.includes(Number(option.value)));
@@ -293,6 +308,7 @@ const AllReports = () => {
   }, [
     audits,
     titleFilter,
+    includeCancelledAudits,
     sectorFilter,
     divisionFilter,
     programFilter,
@@ -302,7 +318,6 @@ const AllReports = () => {
     auditTypeFilter,
     leadAuditorFilter,
     additionalAuditorsFilter,
-    statusFilter,
     functionFilter,
     intExtFilter,
     standardsFilter,
@@ -320,10 +335,10 @@ const AllReports = () => {
     id: audit.scheduleId,
     scheduleId: audit.scheduleId,
     title: audit.title,
+    stage: getStageLabel(audit),
     division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
-    status: formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
     expectedStartDate: formatDateForInput(audit.expectedStartDate),
     expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate),
     submittedDate: formatDateForInput(audit.submittedAt),
@@ -333,10 +348,10 @@ const AllReports = () => {
   const columns = [
     { field: 'scheduleId', headerName: 'Schedule ID', width: 130 },
     { field: 'title', headerName: 'Title', width: 260 },
+    { field: 'stage', headerName: 'Stage', width: 170 },
     { field: 'division', headerName: 'Division', width: 160 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
-    { field: 'status', headerName: 'Status', width: 140 },
     { field: 'expectedStartDate', headerName: 'Expected Start', width: 140 },
     { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 },
     { field: 'submittedDate', headerName: 'Submitted Date', width: 150 },
@@ -386,7 +401,7 @@ const AllReports = () => {
   const handleExport = async () => {
     const exportAudits = sortedFilteredAudits;
     if (exportAudits.length === 0) {
-      toast.error('No audits match the selected filters.');
+      errorToast('No audits match the selected filters.');
       return;
     }
 
@@ -452,7 +467,7 @@ const AllReports = () => {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Status', 'Function', 'Comment',
+      'Function', 'Comment', 'Stage',
       'Submission Date', 'Approval Date'
     ];
     const scheduleRows = exportAudits.map((audit) => ([
@@ -471,9 +486,9 @@ const AllReports = () => {
       formatDateForInput(audit.expectedCompletionDate),
       formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
-      formatSingle(audit.statusId, statusesList, 'statusId', 'statusName'),
       formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
       audit.comment || '',
+      getStageLabel(audit),
       formatDateForInput(audit.submittedAt),
       formatDateForInput(audit.approvedAt)
     ]));
@@ -534,7 +549,7 @@ const AllReports = () => {
     addSheet(wb, 'Results', resultsHeaders, resultsRows);
 
     // PEQs sheet
-    const peqHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
+    const peqHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
     const peqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -543,6 +558,8 @@ const AllReports = () => {
         .forEach((nc) => {
           peqRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getFindingTypeLabel(nc.findingType),
             getSeverityLabel(nc.severity),
@@ -557,7 +574,7 @@ const AllReports = () => {
     addSheet(wb, 'PEQs', peqHeaders, peqRows);
 
     // ETQs sheet
-    const etqHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
+    const etqHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Details', 'Corrective Action Record Number'];
     const etqRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -566,6 +583,8 @@ const AllReports = () => {
         .forEach((nc) => {
           etqRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getFindingTypeLabel(nc.findingType),
             getSeverityLabel(nc.severity),
@@ -580,7 +599,7 @@ const AllReports = () => {
     addSheet(wb, 'ETQs', etqHeaders, etqRows);
 
     // Standard-based questions sheet
-    const standardHeaders = ['Schedule ID', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'Corrective Action Record Number'];
+    const standardHeaders = ['Schedule ID', 'Question ID', 'Response #', 'NGAT Nonconformity Identifier', 'Standard', 'Section', 'Subclause', 'Finding Type', 'Severity', 'Question', 'Auditee Response', 'Auditor Comment', 'Cause', 'Corrective Action Record Number'];
     const standardRows = [];
     exportAudits.forEach((audit, idx) => {
       if (getStageValue(audit) < 3) return;
@@ -589,6 +608,8 @@ const AllReports = () => {
         .forEach((nc) => {
           standardRows.push([
             audit.scheduleId,
+            nc.questionId ?? '',
+            nc.responseNumber ?? '',
             formatNcIdentifier(nc.ncId),
             getStandardTypeLabel(nc.type),
             nc.section ?? '',
@@ -694,8 +715,18 @@ const AllReports = () => {
     <div className="reports-page">
       <div className="reports-container">
         <div className="reports-header">
-          <div>
-            <h1>All Reports</h1>
+          <div className="reports-heading">
+            <div className="reports-title-row">
+              <h1>All Reports</h1>
+              <label className="reports-title-checkbox">
+                <input
+                  type="checkbox"
+                  checked={includeCancelledAudits}
+                  onChange={(event) => setIncludeCancelledAudits(event.target.checked)}
+                />
+                <span>Include cancelled audits</span>
+              </label>
+            </div>
             <p>Filter audits below and export a consolidated Excel report.</p>
           </div>
           <button className="button export-button" onClick={handleExport}>
@@ -732,6 +763,7 @@ const AllReports = () => {
               <label>Division</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={divisionOptions}
@@ -745,6 +777,7 @@ const AllReports = () => {
               <label>Program(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={programOptions}
@@ -758,6 +791,7 @@ const AllReports = () => {
               <label>Site(s)</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={siteOptions}
@@ -781,22 +815,10 @@ const AllReports = () => {
             </div>
 
             <div className="filter-field">
-              <label>Status</label>
-              <Select
-                isClearable
-                className="reports-select"
-                classNamePrefix="reports-select"
-                options={statusOptions}
-                styles={customStyles}
-                value={statusFilter}
-                onChange={setStatusFilter}
-              />
-            </div>
-
-            <div className="filter-field">
               <label>Function</label>
               <Select
                 isMulti
+                closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={functionOptions}
@@ -812,6 +834,7 @@ const AllReports = () => {
                   <label>Business Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={businessUnitOptions}
@@ -825,6 +848,7 @@ const AllReports = () => {
                   <label>Operating Unit(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={operatingUnitOptions}
@@ -851,6 +875,7 @@ const AllReports = () => {
                   <label>Additional Auditors</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={auditorOptions}
@@ -877,6 +902,7 @@ const AllReports = () => {
                   <label>Standard(s)</label>
                   <Select
                     isMulti
+                    closeMenuOnSelect={false}
                 className="reports-select"
                 classNamePrefix="reports-select"
                 options={standardsOptions}

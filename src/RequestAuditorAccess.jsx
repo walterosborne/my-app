@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
 import { toast } from 'react-toastify';
@@ -87,7 +88,7 @@ const RequestAuditorAccess = () => {
             }
             toast.success('Submitted!');
             if (result?.emailWarning) {
-                toast.error(result.emailWarning);
+                errorToast(result.emailWarning);
             }
             setRequestSubmitted(true);
         } catch (error) {

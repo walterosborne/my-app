@@ -1,0 +1,1 @@
+Get-ChildItem -Recurse -File | Select-String -Pattern 'finalized','finzalized' | Select-Object Path, LineNumber, Line

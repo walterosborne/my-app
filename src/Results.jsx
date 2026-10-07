@@ -1,9 +1,9 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useForm, Controller, useWatch } from 'react-hook-form'
 import Select from "react-select"
 import AsyncSelect from 'react-select/async'
 import { Box } from '@mui/material';
-import { ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { DataGrid } from '@mui/x-data-grid';
 import { micromark } from 'micromark';
 import { toast } from 'react-toastify';
@@ -13,6 +13,7 @@ import './App.css'
 import './AdminMenu.css';
 import { grey } from '@mui/material/colors';
 import { buildRosterOption, customStyles, formatDateForInput, parseCalendarDate } from './Utilities.jsx';
+import FindingResponseFields, { getFindingFieldName } from './components/FindingResponseFields.jsx';
 import {
   buildApiUrl,
   getPrograms,
@@ -23,7 +24,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -46,6 +46,24 @@ const findingTypeReverseMap = {
   3: 'OFI',
   4: 'OBS'
 };
+
+const flattenAuditQuestionFindings = (questions) => (questions || []).flatMap((question) =>
+  (question.findings || []).map((finding, index) => ({
+    ...finding,
+    ncId: finding.findingId ?? finding.ncId,
+    findingId: finding.findingId ?? finding.ncId,
+    questionId: question.questionId,
+    scheduleId: question.scheduleId,
+    type: question.type,
+    sourceId: question.sourceId,
+    section: question.section,
+    subsection: question.subsection,
+    question: question.question,
+    questionSortOrder: question.sortOrder,
+    findingSortOrder: finding.sortOrder,
+    responseNumber: index + 1
+  }))
+);
 
 const normalizeMarkdownText = (value) => {
   const text = String(value || '');
@@ -195,13 +213,18 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [accessBlock, setAccessBlock] = useState(null);
   const [standardAdditional, setStandardAdditional] = useState({});
   const [deletedStandardQuestions, setDeletedStandardQuestions] = useState({});
+  const [collapsedPEQs, setCollapsedPEQs] = useState({});
   const [collapsedSections, setCollapsedSections] = useState({});
   const [collapsedSubsections, setCollapsedSubsections] = useState({});
   const [collapsedEveryTimeQuestions, setCollapsedEveryTimeQuestions] = useState({});
   const [expandedTexts, setExpandedTexts] = useState({});
   const [schedule, setSchedule] = useState(null);
   const [auditLocked, setAuditLocked] = useState(false);
+  const [auditQuestions, setAuditQuestions] = useState([]);
   const [nonconformances, setNonconformances] = useState([]);
+  const [findingCountsByQuestion, setFindingCountsByQuestion] = useState({});
+  const [deletedFindingSlots, setDeletedFindingSlots] = useState({});
+  const [loadedNonconformancesScheduleId, setLoadedNonconformancesScheduleId] = useState(null);
   const [auditorFiles, setAuditorFiles] = useState([]);
   const [showArchivedAuditorFiles, setShowArchivedAuditorFiles] = useState(false);
   const [objectiveEvidenceCollapsed, setObjectiveEvidenceCollapsed] = useState(false);
@@ -214,7 +237,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const accessErrorToastRef = useRef(null);
   const uploadErrorToastIdRef = useRef('auditor-file-upload-error');
   const submitIntentRef = useRef('save');
-  const skipNextFormResetRef = useRef(0);
   const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
   const oversizedUploadFiles = uploadFiles.filter((file) => file.size > MAX_UPLOAD_BYTES);
   const isUploadTooLarge = oversizedUploadFiles.length > 0;
@@ -225,7 +247,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     ids: new Set()
   });
   const entryAudits = useMemo(() => {
-    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+    return allAudits.filter((audit) => ![-1, -2].includes(Number(audit?.stage)));
   }, [allAudits]);
   const rowSelectionModelRef = useRef({
     type: 'include',
@@ -272,7 +294,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
     if (accessErrorToastRef.current === accessKey) return;
 
-    toast.error(accessBlock.message || 'You do not have access to this audit.', {
+    errorToast(accessBlock.message || 'You do not have access to this audit.', {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -307,10 +329,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     );
   }, [standardsList]);
 
-  const etqQuestionSet = useMemo(() => {
-    return new Set(filteredEveryTimeQuestions.map((question) => question.question));
-  }, [filteredEveryTimeQuestions]);
-
   const getQuestionTypeLabel = useCallback(
     (typeValue) => {
       if (!typeValue && typeValue !== 0) return 'No response provided';
@@ -330,6 +348,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     const rows = (nonconformances || []).map((nc, index) => ({
       id: nc.ncId ?? `nc-${index}`,
       question: nc.question || 'No response provided',
+      responseNumber: nc.responseNumber ?? 1,
       type: getQuestionTypeLabel(nc.type),
       findingType: getFindingTypeLabel(nc.findingType),
       comment: nc.auditorComment || nc.comment || 'No response provided'
@@ -395,7 +414,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleToggleAuditorFileArchived = useCallback(async (file) => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
 
@@ -406,7 +425,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
       toast.success(nextActive ? 'File restored.' : 'File archived.');
     } catch (error) {
-      toast.error(error.message || 'Failed to update file status.');
+      errorToast(error.message || 'Failed to update file status.');
     } finally {
       setArchivingFileId(null);
     }
@@ -447,11 +466,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const handleFileUpload = async () => {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     if (uploadFiles.length === 0) {
-      toast.error('Please select at least one file to upload.');
+      errorToast('Please select at least one file to upload.');
       return;
     }
     const selectedNameCounts = uploadFiles.reduce((counts, file) => {
@@ -465,7 +484,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .filter(([, count]) => count > 1)
       .map(([name]) => name);
     if (duplicateSelectedNames.length > 0) {
-      toast.error(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
+      errorToast(`Duplicate file names were selected: ${duplicateSelectedNames.join(', ')}.`);
       return;
     }
     const existingFileNames = new Set(
@@ -475,7 +494,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .map((file) => file.name)
       .filter((name) => existingFileNames.has(String(name || '').trim().toLowerCase()));
     if (duplicateExistingNames.length > 0) {
-      toast.error(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
+      errorToast(`A file with that name already exists: ${duplicateExistingNames.join(', ')}.`);
       return;
     }
     if (isUploadTooLarge) {
@@ -483,7 +502,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const oversizedMessage = oversizedNames.length === 1
         ? `"${oversizedNames[0]}" exceeds the NGAT upload limit. Please choose a file smaller than 50MB and try again.`
         : `${oversizedNames.length} selected files exceed the NGAT upload limit. Please choose files smaller than 50MB and try again.`;
-      toast.error(oversizedMessage, {
+      errorToast(oversizedMessage, {
         autoClose: false,
         closeOnClick: true,
         closeButton: true,
@@ -507,7 +526,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       await refreshAuditorFiles();
     } catch (error) {
       if (error?.persistToast) {
-        toast.error(error.message || 'Failed to upload file.', {
+        errorToast(error.message || 'Failed to upload file.', {
           autoClose: false,
           closeOnClick: true,
           closeButton: true,
@@ -517,7 +536,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           style: { borderLeft: '4px solid #d32f2f' }
         });
       } else {
-        toast.error(error.message || 'Failed to upload file.');
+        errorToast(error.message || 'Failed to upload file.');
       }
     } finally {
       setUploadingFile(false);
@@ -567,17 +586,11 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       || hasFieldValue(nc.sector)
       || hasFieldValue(nc.division)
       || hasFieldValue(nc.other)
+      || hasFieldValue(nc.details)
+      || hasFieldValue(nc.AIN ?? nc.ain)
+      || hasFieldValue(nc.severity)
       || normalizeFileIds(nc.files).length > 0;
   }, [hasFieldValue, normalizeFileIds]);
-
-  const hasSavedEveryTimeQuestionContent = useCallback((nc) => {
-    return hasSavedFindingMetadata(nc);
-  }, [hasSavedFindingMetadata]);
-
-  const hasSavedStandardQuestionContent = useCallback((nc) => {
-    if (!nc) return false;
-    return hasFieldValue(nc.question) || hasSavedFindingMetadata(nc);
-  }, [hasFieldValue, hasSavedFindingMetadata]);
 
   const getEveryTimeQuestionCollapseKey = useCallback((question, index) => {
     return `etq_${question?.etqId ?? index}`;
@@ -642,68 +655,96 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .catch((error) => console.error('Error loading selected interviewees:', error));
   }, [selectedAudit?.intervieweeIds, mergeRosterOptions]);
 
-  // Fetch nonconformances from database when schedule changes
+  // Fetch normalized questions/findings from database when schedule changes.
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchNonconformances() {
+    async function fetchAuditQuestions() {
       if (!selectedAudit?.scheduleId) {
         setAccessBlock(null);
         setEveryTimeQuestionsList([]);
+        setAuditQuestions([]);
         setNonconformances([]);
+        setLoadedNonconformancesScheduleId(null);
         return;
       }
 
       setAccessBlock(null);
       setEveryTimeQuestionsList([]);
+      setAuditQuestions([]);
       setNonconformances([]);
+      setLoadedNonconformancesScheduleId(null);
 
       try {
         const divisionIds = normalizeIdArray(selectedAudit?.divisionId);
         const divisionFilter = divisionIds.length === 1 ? divisionIds[0] : null;
-        const [ncResponse, everyTimeQuestions] = await Promise.all([
-          fetch(buildApiUrl(`nonconformances/${selectedAudit.scheduleId}`)),
+        const [questionsResponse, everyTimeQuestions] = await Promise.all([
+          fetch(buildApiUrl(`audit-questions/${selectedAudit.scheduleId}`)),
           getEveryTimeQuestions(divisionFilter)
         ]);
         if (cancelled) return;
+
         const etqList = Array.isArray(everyTimeQuestions)
           ? everyTimeQuestions.filter((question) => (question.active ?? 1) === 1)
           : [];
         setEveryTimeQuestionsList(etqList);
 
-        const responseText = await ncResponse.text();
+        const responseText = await questionsResponse.text();
         let data;
         try {
           data = responseText ? JSON.parse(responseText) : [];
         } catch {
-          throw new Error('Nonconformances response was not valid JSON.');
+          throw new Error('Audit questions response was not valid JSON.');
         }
 
-        if (!ncResponse.ok) {
-          const isCuiDenied = ncResponse.status === 403 && data?.code === 'CUI_ACCESS_DENIED';
-          if (ncResponse.status === 403 || ncResponse.status === 404) {
+        if (!questionsResponse.ok) {
+          const isCuiDenied = questionsResponse.status === 403 && data?.code === 'CUI_ACCESS_DENIED';
+          if (questionsResponse.status === 403 || questionsResponse.status === 404) {
             setAccessBlock({
               kind: isCuiDenied ? 'cui' : 'forbidden',
               message: data?.error || 'You do not have access to this audit.'
             });
           }
-          throw new Error(data?.error || `Failed to load nonconformances (HTTP ${ncResponse.status}).`);
+          throw new Error(data?.error || `Failed to load audit questions (HTTP ${questionsResponse.status}).`);
         }
 
         if (!Array.isArray(data)) {
-          throw new Error('Nonconformances response was not an array.');
+          throw new Error('Audit questions response was not an array.');
         }
 
         setAccessBlock(null);
-        const validEtqQuestions = new Set(etqList.map((question) => question.question));
-        const convertedCount = data.filter(
-          (nc) => nc.type === 'ETQ' && !validEtqQuestions.has(nc.question)
-        ).length;
-        const converted = data.map((nc) => {
-          if (nc.type === 'ETQ' && !validEtqQuestions.has(nc.question)) {
-            return { ...nc, type: 'PEQ' };
+        const etqById = new Map(
+          etqList
+            .map((question) => [Number(question.etqId), question])
+            .filter(([id]) => Number.isFinite(id))
+        );
+        const etqByText = new Map(etqList.map((question) => [question.question, question]));
+        const claimedEtqs = new Set();
+        let convertedCount = 0;
+        const converted = data.map((question) => {
+          if (question.type !== 'ETQ') return question;
+
+          const sourceId = Number(question.sourceId);
+          const definition = (Number.isFinite(sourceId) ? etqById.get(sourceId) : null)
+            || etqByText.get(question.question);
+          const definitionKey = definition
+            ? String(definition.etqId ?? definition.question)
+            : null;
+
+          // A configured ETQ appears once in the form. If legacy data happens
+          // to contain duplicate ETQ question rows, keep the first as the ETQ
+          // and expose the extras as PEQs instead of hiding or deleting them.
+          if (!definition || claimedEtqs.has(definitionKey)) {
+            convertedCount += 1;
+            return { ...question, type: 'PEQ', sourceId: null };
           }
-          return nc;
+
+          claimedEtqs.add(definitionKey);
+          return {
+            ...question,
+            sourceId: definition.etqId ?? question.sourceId,
+            question: definition.question || question.question
+          };
         });
 
         if (convertedCount > 0 && selectedAudit?.scheduleId) {
@@ -713,14 +754,19 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           }
         }
 
-        setNonconformances(converted);
+        setAuditQuestions(converted);
+        setNonconformances(flattenAuditQuestionFindings(converted));
+        setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       } catch (error) {
         if (cancelled) return;
-        console.error('Error fetching nonconformances:', error);
+        console.error('Error fetching audit questions:', error);
+        setAuditQuestions([]);
         setNonconformances([]);
+        setLoadedNonconformancesScheduleId(Number(selectedAudit.scheduleId));
       }
     }
-    fetchNonconformances();
+
+    fetchAuditQuestions();
     return () => {
       cancelled = true;
     };
@@ -755,21 +801,32 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   }, [selectedAuditId, entryAudits]);
 
   function addPEQ() {
-    setNewPEQs(newPEQs + 1);
+    const index = newPEQs;
+    setCollapsedPEQs((current) => ({ ...current, [index]: false }));
+    setFindingCountsByQuestion((current) => ({ ...current, [`peq_${index}`]: 1 }));
+    setDeletedFindingSlots((current) => ({ ...current, [`peq_${index}`]: new Set() }));
+    setNewPEQs((current) => current + 1);
   }
+
   function deletePEQ(index) {
-    setDeletedPEQs(prev => new Set([...prev, index]));
+    setDeletedPEQs((prev) => new Set([...prev, index]));
   }
+
   function addStandardQuestion(standardId, section, subsection) {
     const key = `${standardId}_${section}_${subsection}`;
-    setStandardAdditional(prev => ({
+    const questionIndex = standardAdditional[key] || 0;
+    const questionKey = `std_${standardId}_${section}_${subsection}_${questionIndex}`;
+    setFindingCountsByQuestion((current) => ({ ...current, [questionKey]: 1 }));
+    setDeletedFindingSlots((current) => ({ ...current, [questionKey]: new Set() }));
+    setStandardAdditional((prev) => ({
       ...prev,
       [key]: (prev[key] || 0) + 1
     }));
   }
+
   function deleteStandardQuestion(standardId, section, subsection, index) {
     const key = `${standardId}_${section}_${subsection}`;
-    setDeletedStandardQuestions(prev => ({
+    setDeletedStandardQuestions((prev) => ({
       ...prev,
       [key]: new Set([...(prev[key] || []), index])
     }));
@@ -787,20 +844,94 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     }
   )
 
+  const getQuestionIdFieldName = useCallback((questionKey) => `question_${questionKey}_id`, []);
+
+  const addFindingResponse = useCallback((questionKey) => {
+    setFindingCountsByQuestion((current) => ({
+      ...current,
+      [questionKey]: (current[questionKey] || 0) + 1
+    }));
+  }, []);
+
+  const deleteFindingResponse = useCallback((questionKey, findingIndex) => {
+    setDeletedFindingSlots((current) => ({
+      ...current,
+      [questionKey]: new Set([...(current[questionKey] || []), findingIndex])
+    }));
+  }, []);
+
+  const getVisibleFindingIndexes = useCallback((questionKey) => {
+    const count = findingCountsByQuestion[questionKey] || 0;
+    const deleted = deletedFindingSlots[questionKey] || new Set();
+    return Array.from({ length: count }, (_, index) => index)
+      .filter((index) => !deleted.has(index));
+  }, [findingCountsByQuestion, deletedFindingSlots]);
+
+  const collectFindingPayload = useCallback((data, questionKey) => {
+    const count = findingCountsByQuestion[questionKey] || 0;
+    const deleted = deletedFindingSlots[questionKey] || new Set();
+    const findings = [];
+
+    for (let index = 0; index < count; index += 1) {
+      if (deleted.has(index)) continue;
+
+      const findingId = data[getFindingFieldName(questionKey, index, 'id')] || null;
+      const findingType = data[getFindingFieldName(questionKey, index, 'findingType')] || null;
+      const response = data[getFindingFieldName(questionKey, index, 'response')] || '';
+      const auditorComment = data[getFindingFieldName(questionKey, index, 'auditorComment')] || '';
+      const qma = data[getFindingFieldName(questionKey, index, 'qma')] || [];
+      const sector = data[getFindingFieldName(questionKey, index, 'sector')] || [];
+      const division = data[getFindingFieldName(questionKey, index, 'division')] || [];
+      const other = data[getFindingFieldName(questionKey, index, 'other')] || [];
+      const files = data[getFindingFieldName(questionKey, index, 'files')] || [];
+      const hasContent = Boolean(
+        findingId
+        || findingType
+        || String(response).trim()
+        || String(auditorComment).trim()
+        || qma.length
+        || sector.length
+        || division.length
+        || other.length
+        || files.length
+      );
+
+      if (!hasContent) continue;
+      findings.push({
+        findingId,
+        findingType,
+        response,
+        auditorComment,
+        qma,
+        sector,
+        division,
+        other,
+        files,
+        sortOrder: findings.length + 1
+      });
+    }
+
+    return findings;
+  }, [findingCountsByQuestion, deletedFindingSlots]);
+
   const clearAuditQuestionUiState = useCallback(() => {
     setNewPEQs(0);
     setDeletedPEQs(new Set());
     setStandardAdditional({});
     setDeletedStandardQuestions({});
+    setFindingCountsByQuestion({});
+    setDeletedFindingSlots({});
+    setCollapsedPEQs({});
     setCollapsedSections({});
     setCollapsedSubsections({});
     setCollapsedEveryTimeQuestions({});
     setExpandedTexts({});
   }, []);
 
-  const buildResultsFormValues = useCallback((audit, auditNCs, etqQuestions) => {
+  const buildResultsFormValues = useCallback((audit, auditQuestionGroups, etqQuestions) => {
     const values = {
       overview: audit?.overview || '',
+      auditorsTime: audit?.auditorsTime ?? audit?.auditorstime ?? '',
       cui: audit?.cui ?? null,
       standards: audit?.standardIds || [],
       programs: audit?.programIds || [],
@@ -824,74 +955,83 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       });
     }
 
-    const etqQuestionsSet = new Set((etqQuestions || []).map((question) => question.question));
-    const peqNCs = auditNCs.filter((nc) => nc.type === 'PEQ');
-    const etqNCs = auditNCs.filter((nc) => nc.type === 'ETQ');
-    const validEtqNCs = etqNCs.filter((nc) => etqQuestionsSet.has(nc.question));
-    const convertedEtqNCs = etqNCs.filter((nc) => !etqQuestionsSet.has(nc.question));
-    const combinedPeqs = [
-      ...peqNCs,
-      ...convertedEtqNCs.map((nc) => ({ ...nc, type: 'PEQ' }))
-    ];
+    const findingCountsTemp = {};
+    const setFindingValues = (questionKey, findingIndex, finding = {}) => {
+      values[getFindingFieldName(questionKey, findingIndex, 'id')] = finding.findingId ?? finding.ncId ?? null;
+      values[getFindingFieldName(questionKey, findingIndex, 'findingType')] =
+        findingTypeReverseMap[finding.findingType] || null;
+      values[getFindingFieldName(questionKey, findingIndex, 'response')] = finding.response || '';
+      values[getFindingFieldName(questionKey, findingIndex, 'auditorComment')] = finding.auditorComment || '';
+      values[getFindingFieldName(questionKey, findingIndex, 'qma')] = finding.qma || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'sector')] = finding.sector || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'division')] = finding.division || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'other')] = finding.other || [];
+      values[getFindingFieldName(questionKey, findingIndex, 'files')] = normalizeFileIds(finding.files);
+    };
 
-    combinedPeqs.forEach((nc, idx) => {
-      values[`peqQuestion${idx}`] = nc.question || '';
-      values[`peq${idx}`] = nc.response || '';
-      values[`auditorComment${idx}`] = nc.auditorComment || '';
-      values[`auditeeResponse${idx}`] = nc.response || '';
-      values[`findingType${idx}`] = findingTypeReverseMap[nc.findingType] || null;
-      values[`prOPCorporate${idx}`] = nc.qma || [];
-      values[`prOPSector${idx}`] = nc.sector || [];
-      values[`prOPDivision${idx}`] = nc.division || [];
-      values[`prOPOther${idx}`] = nc.other || [];
-      values[`peqFiles${idx}`] = normalizeFileIds(nc.files);
+    const normalizedQuestions = [...(auditQuestionGroups || [])].sort((a, b) =>
+      Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0)
+      || Number(a.questionId ?? 0) - Number(b.questionId ?? 0)
+    );
+
+    const peqGroups = normalizedQuestions.filter((question) => question.type === 'PEQ');
+    peqGroups.forEach((question, idx) => {
+      const questionKey = `peq_${idx}`;
+      values[getQuestionIdFieldName(questionKey)] = question.questionId || null;
+      values[`peqQuestion${idx}`] = question.question || '';
+      const findings = Array.isArray(question.findings) ? question.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
-    (etqQuestions || []).forEach((question, idx) => {
-      const etqNc = validEtqNCs.find((nc) => nc.question === question.question);
-      values[`etqAuditeeResponse${idx}`] = etqNc?.response || '';
-      values[`etqAuditorComment${idx}`] = etqNc?.auditorComment || '';
-      values[`etqFindingType${idx}`] = etqNc ? (findingTypeReverseMap[etqNc.findingType] || null) : null;
-      values[`etqPrOPCorporate${idx}`] = etqNc?.qma || [];
-      values[`etqPrOPSector${idx}`] = etqNc?.sector || [];
-      values[`etqPrOPDivision${idx}`] = etqNc?.division || [];
-      values[`etqPrOPOther${idx}`] = etqNc?.other || [];
-      values[`etqFiles${idx}`] = etqNc ? normalizeFileIds(etqNc.files) : [];
+    const usedEtqQuestionIds = new Set();
+    (etqQuestions || []).forEach((definition, idx) => {
+      const definitionId = Number(definition.etqId);
+      const savedQuestion = normalizedQuestions.find((question) => {
+        if (question.type !== 'ETQ' || usedEtqQuestionIds.has(question.questionId)) return false;
+        const sourceMatches = Number.isFinite(definitionId)
+          && Number(question.sourceId) === definitionId;
+        return sourceMatches || question.question === definition.question;
+      });
+      if (savedQuestion?.questionId) usedEtqQuestionIds.add(savedQuestion.questionId);
+
+      const questionKey = `etq_${idx}`;
+      values[getQuestionIdFieldName(questionKey)] = savedQuestion?.questionId || null;
+      const findings = Array.isArray(savedQuestion?.findings) ? savedQuestion.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
     const standardAdditionalTemp = {};
     const activeStandardSet = new Set((audit?.standardIds || []).map((id) => Number(id)));
 
-    auditNCs.forEach((nc) => {
-      const standardId = Number(nc.type);
-      if (!Number.isFinite(standardId)) return;
-      if (!activeStandardSet.has(standardId)) return;
-      if (nc.section === null || nc.subsection === null) return;
+    normalizedQuestions.forEach((question) => {
+      const standardId = Number(question.type);
+      if (!Number.isFinite(standardId) || !activeStandardSet.has(standardId)) return;
+      if (question.section === null || question.section === undefined
+          || question.subsection === null || question.subsection === undefined) return;
 
-      const key = `${standardId}_${nc.section}_${nc.subsection}`;
-      if (!standardAdditionalTemp[key]) {
-        standardAdditionalTemp[key] = 0;
-      }
-      const addIdx = standardAdditionalTemp[key];
-      standardAdditionalTemp[key] += 1;
+      const additionalKey = `${standardId}_${question.section}_${question.subsection}`;
+      const questionIndex = standardAdditionalTemp[additionalKey] || 0;
+      standardAdditionalTemp[additionalKey] = questionIndex + 1;
+      const questionKey = `std_${standardId}_${question.section}_${question.subsection}_${questionIndex}`;
 
-      values[`standardAdditionalQuestion_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.question || '';
-      values[`standardAdditionalAuditeeResponse_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.response || '';
-      values[`standardAdditionalFindingType_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = findingTypeReverseMap[nc.findingType] || null;
-      values[`standardAdditionalAuditorComment_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.auditorComment || '';
-      values[`standardAdditionalPrOPCorporate_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.qma || [];
-      values[`standardAdditionalPrOPSector_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.sector || [];
-      values[`standardAdditionalPrOPDivision_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.division || [];
-      values[`standardAdditionalPrOPOther_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = nc.other || [];
-      values[`standardAdditionalFiles_${standardId}_${nc.section}_${nc.subsection}_${addIdx}`] = normalizeFileIds(nc.files);
+      values[getQuestionIdFieldName(questionKey)] = question.questionId || null;
+      values[`standardAdditionalQuestion_${standardId}_${question.section}_${question.subsection}_${questionIndex}`] =
+        question.question || '';
+
+      const findings = Array.isArray(question.findings) ? question.findings : [];
+      findingCountsTemp[questionKey] = Math.max(findings.length, 1);
+      findings.forEach((finding, findingIndex) => setFindingValues(questionKey, findingIndex, finding));
     });
 
     return {
       values,
-      combinedPeqs,
-      standardAdditionalTemp
+      combinedPeqs: peqGroups,
+      standardAdditionalTemp,
+      findingCountsTemp
     };
-  }, [normalizeFileIds]);
+  }, [normalizeFileIds, getQuestionIdFieldName]);
 
   const watchedStandards = useWatch({ control, name: 'standards' });
   const selectedStandardIds = useMemo(() => {
@@ -935,50 +1075,69 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     return buildStandardTextsByStandard(selectedStandardIds);
   }, [buildStandardTextsByStandard, selectedStandardIds]);
 
-  const buildAuditQuestionCollapseDefaults = useCallback((audit, auditNCs, etqQuestions, groupedStandardTexts) => {
+  const buildAuditQuestionCollapseDefaults = useCallback((audit, auditQuestionGroups, etqQuestions, groupedStandardTexts) => {
     const sectionDefaults = {};
     const subsectionDefaults = {};
     const everyTimeQuestionDefaults = {};
-    const scheduleId = Number(audit?.scheduleId);
-    const scheduleNCs = auditNCs.filter((nc) => Number(nc.scheduleId) === scheduleId);
+    const peqDefaults = {};
+    const questionsForAudit = (auditQuestionGroups || []).filter(
+      (question) => Number(question.scheduleId) === Number(audit?.scheduleId)
+    );
+    const questionHasSavedContent = (question) => Boolean(
+      question
+      && (
+        hasFieldValue(question.question)
+        || (question.findings || []).some((finding) => hasSavedFindingMetadata(finding))
+      )
+    );
 
     Object.entries(groupedStandardTexts).forEach(([standardIdValue, sections]) => {
       const standardId = Number(standardIdValue);
-      Object.entries(sections).forEach(([sectionNumValue, questions]) => {
+      Object.entries(sections).forEach(([sectionNumValue, standardTextRows]) => {
         const sectionNum = Number(sectionNumValue);
         const sectionKey = `section_${standardId}_${sectionNum}`;
-        let sectionHasSavedContent = false;
 
-        questions.forEach((question) => {
-          const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
-          const subsectionHasSavedContent = scheduleNCs.some((nc) =>
-            Number(nc.type) === standardId
-            && Number(nc.section) === sectionNum
-            && Number(nc.subsection) === Number(question.subsection)
-            && hasSavedStandardQuestionContent(nc)
+        standardTextRows.forEach((standardText) => {
+          const subsectionKey = `subsection_${standardId}_${sectionNum}_${standardText.subsection}`;
+          const subsectionHasSavedContent = questionsForAudit.some((question) =>
+            Number(question.type) === standardId
+            && Number(question.section) === sectionNum
+            && Number(question.subsection) === Number(standardText.subsection)
+            && questionHasSavedContent(question)
           );
-
           subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
-          if (subsectionHasSavedContent) {
-            sectionHasSavedContent = true;
-          }
         });
 
-        sectionDefaults[sectionKey] = !sectionHasSavedContent;
+        sectionDefaults[sectionKey] = false;
       });
     });
 
-    (etqQuestions || []).forEach((question, index) => {
-      const etqNc = scheduleNCs.find((nc) => nc.type === 'ETQ' && nc.question === question.question);
-      everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(question, index)] = !hasSavedEveryTimeQuestionContent(etqNc);
+    (etqQuestions || []).forEach((definition, index) => {
+      const savedQuestion = questionsForAudit.find((question) =>
+        question.type === 'ETQ'
+        && (
+          (Number.isFinite(Number(definition.etqId)) && Number(question.sourceId) === Number(definition.etqId))
+          || question.question === definition.question
+        )
+      );
+      everyTimeQuestionDefaults[getEveryTimeQuestionCollapseKey(definition, index)] =
+        !questionHasSavedContent(savedQuestion);
     });
 
+    questionsForAudit
+      .filter((question) => question.type === 'PEQ')
+      .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0))
+      .forEach((question, index) => {
+        peqDefaults[index] = !questionHasSavedContent(question);
+      });
+
     return {
+      peqDefaults,
       sectionDefaults,
       subsectionDefaults,
       everyTimeQuestionDefaults
     };
-  }, [getEveryTimeQuestionCollapseKey, hasSavedEveryTimeQuestionContent, hasSavedStandardQuestionContent]);
+  }, [getEveryTimeQuestionCollapseKey, hasSavedFindingMetadata, hasFieldValue]);
 
   useEffect(() => {
     const nextSectionDefaults = {};
@@ -988,7 +1147,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const standardId = Number(standardIdValue);
       Object.entries(sections).forEach(([sectionNumValue, questions]) => {
         const sectionNum = Number(sectionNumValue);
-        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = true;
+        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = false;
 
         questions.forEach((question) => {
           nextSubsectionDefaults[`subsection_${standardId}_${sectionNum}_${question.subsection}`] = true;
@@ -1051,29 +1210,43 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
     if (loading) {
       return;
     }
+    // Wait for this audit's saved questions before choosing initial expansion.
+    // An empty in-flight response must not make previously answered standards appear empty.
+    if (schedule && selectedAudit
+      && loadedNonconformancesScheduleId !== Number(selectedAudit.scheduleId)) {
+      return;
+    }
     if (schedule && selectedAudit) {
-      if (skipNextFormResetRef.current > 0) {
-        skipNextFormResetRef.current -= 1;
-        return;
-      }
       const scheduleId = Number(selectedAudit.scheduleId);
-      const auditNCs = nonconformances.filter(nc => Number(nc.scheduleId) === scheduleId);
+      const auditQuestionGroups = auditQuestions.filter(
+        (question) => Number(question.scheduleId) === scheduleId
+      );
       const {
         values,
         combinedPeqs,
-        standardAdditionalTemp
-      } = buildResultsFormValues(selectedAudit, auditNCs, filteredEveryTimeQuestions);
+        standardAdditionalTemp,
+        findingCountsTemp
+      } = buildResultsFormValues(selectedAudit, auditQuestionGroups, filteredEveryTimeQuestions);
       const groupedStandardTexts = buildStandardTextsByStandard(selectedAudit?.standardIds || []);
       const {
+        peqDefaults,
         sectionDefaults,
         subsectionDefaults,
         everyTimeQuestionDefaults
-      } = buildAuditQuestionCollapseDefaults(selectedAudit, auditNCs, filteredEveryTimeQuestions, groupedStandardTexts);
+      } = buildAuditQuestionCollapseDefaults(
+        selectedAudit,
+        auditQuestionGroups,
+        filteredEveryTimeQuestions,
+        groupedStandardTexts
+      );
 
       setNewPEQs(combinedPeqs.length);
       setDeletedPEQs(new Set());
       setStandardAdditional(standardAdditionalTemp);
       setDeletedStandardQuestions({});
+      setFindingCountsByQuestion(findingCountsTemp);
+      setDeletedFindingSlots({});
+      setCollapsedPEQs(peqDefaults);
       setCollapsedSections(sectionDefaults);
       setCollapsedSubsections(subsectionDefaults);
       setCollapsedEveryTimeQuestions(everyTimeQuestionDefaults);
@@ -1082,7 +1255,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       clearAuditQuestionUiState();
       reset();
     }
-  }, [schedule, selectedAudit, nonconformances, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
+  }, [schedule, selectedAudit, auditQuestions, loadedNonconformancesScheduleId, reset, filteredEveryTimeQuestions, loading, buildResultsFormValues, buildAuditQuestionCollapseDefaults, clearAuditQuestionUiState, buildStandardTextsByStandard]);
 
   useEffect(() => {
     if (!isDelayed) {
@@ -1204,6 +1377,38 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .sort((a, b) => (a.label || '').localeCompare(b.label || ''));
   }, [selectedAudit, propsList]);
 
+  const renderFindingResponses = (questionKey) => {
+    const findingIndexes = getVisibleFindingIndexes(questionKey);
+    return (
+      <>
+        {findingIndexes.map((findingIndex, visibleIndex) => (
+          <FindingResponseFields
+            key={`${questionKey}-finding-${findingIndex}`}
+            questionKey={questionKey}
+            findingIndex={findingIndex}
+            responseNumber={visibleIndex + 1}
+            control={control}
+            register={register}
+            corporatePrOPOptions={corporatePrOPOptions}
+            sectorPrOPOptions={sectorPrOPOptions}
+            divisionPrOPOptions={divisionPrOPOptions}
+            otherPrOPOptions={otherPrOPOptions}
+            getObjectiveEvidenceOptions={getObjectiveEvidenceOptions}
+            normalizeFileIds={normalizeFileIds}
+            onDelete={() => deleteFindingResponse(questionKey, findingIndex)}
+          />
+        ))}
+        <button
+          type="button"
+          className="add-response-button"
+          onClick={() => addFindingResponse(questionKey)}
+        >
+          + Add Response
+        </button>
+      </>
+    );
+  };
+
   const [paginationModel, setPaginationModel] = useState({
     page: 0,
     pageSize: 10
@@ -1240,7 +1445,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function onSubmit(data) {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!selectedAudit) {
@@ -1262,190 +1467,160 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         'OBS': 4
       };
 
-      // Get existing nonconformances not related to this audit
       const scheduleId = Number(selectedAudit.scheduleId);
-      const otherNCs = nonconformances.filter(nc => Number(nc.scheduleId) !== scheduleId);
+      const questionsPayload = [];
+      const deletedQuestionIds = [];
 
-      // Collect new/updated nonconformances from form
-      const updatedNCs = [];
-
-      // Get max ncId for new records
-      let maxNcId = Math.max(...nonconformances.map(nc => nc.ncId), 0);
-
-      // Process PEQs
-      for (let i = 0; i < newPEQs; i++) {
-        // Skip deleted PEQs
-        if (deletedPEQs.has(i)) continue;
-
-        const question = data[`peqQuestion${i}`];
-        const response = data[`auditeeResponse${i}`];
-        const auditorComment = data[`auditorComment${i}`];
-
-        // Only save if there's actual content
-        if (question || response || auditorComment) {
-          // Find existing NC by matching question text
-          const existingNC = nonconformances.find(nc =>
-            Number(nc.scheduleId) === scheduleId &&
-            nc.type === 'PEQ' &&
-            nc.question === question
-          );
-          const existingConvertedEtq = !existingNC && !etqQuestionSet.has(question)
-            ? nonconformances.find(nc =>
-              Number(nc.scheduleId) === scheduleId &&
-              nc.type === 'ETQ' &&
-              nc.question === question
-            )
-            : null;
-          const resolvedNC = existingNC || existingConvertedEtq;
-
-          updatedNCs.push({
-            ncId: resolvedNC?.ncId || ++maxNcId,
-            scheduleId,
-            type: 'PEQ',
-            findingType: data[`findingType${i}`] ? findingTypeMap[data[`findingType${i}`]] : null,
-            section: null,
-            subsection: null,
-            question: question || '',
-            response: response || '',
-            auditorComment: auditorComment || '',
-            details: '',
-            AIN: '',
-            division: data[`prOPDivision${i}`] || [],
-            sector: data[`prOPSector${i}`] || [],
-            qma: data[`prOPCorporate${i}`] || [],
-            other: data[`prOPOther${i}`] || [],
-            files: data[`peqFiles${i}`] || []
-          });
-        }
-      }
-
-      // Process ETQs
-      filteredEveryTimeQuestions.forEach((etq, idx) => {
-        const question = etq.question;
-        const response = data[`etqAuditeeResponse${idx}`];
-        const auditorComment = data[`etqAuditorComment${idx}`];
-
-        if (response || auditorComment) {
-          const existingNC = nonconformances.find(nc =>
-            Number(nc.scheduleId) === scheduleId &&
-            nc.type === 'ETQ' &&
-            nc.question === question
-          );
-
-          updatedNCs.push({
-            ncId: existingNC?.ncId || ++maxNcId,
-            scheduleId,
-            type: 'ETQ',
-            findingType: data[`etqFindingType${idx}`] ? findingTypeMap[data[`etqFindingType${idx}`]] : null,
-            section: null,
-            subsection: null,
-            question: question,
-            response: response || '',
-            auditorComment: auditorComment || '',
-            details: '',
-            AIN: '',
-            division: data[`etqPrOPDivision${idx}`] || [],
-            sector: data[`etqPrOPSector${idx}`] || [],
-            qma: data[`etqPrOPCorporate${idx}`] || [],
-            other: data[`etqPrOPOther${idx}`] || [],
-            files: data[`etqFiles${idx}`] || []
-          });
+      deletedPEQs.forEach((index) => {
+        const questionId = Number(data[getQuestionIdFieldName(`peq_${index}`)]);
+        if (Number.isSafeInteger(questionId) && questionId > 0) {
+          deletedQuestionIds.push(questionId);
         }
       });
 
-      // Process standard-based questions
-      Object.keys(standardAdditional).forEach(key => {
+      Object.entries(deletedStandardQuestions).forEach(([key, deletedIndexes]) => {
+        const [standardId, sectionNum, subsection] = key.split('_').map(Number);
+        (deletedIndexes || new Set()).forEach((questionIndex) => {
+          const questionKey = `std_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+          const questionId = Number(data[getQuestionIdFieldName(questionKey)]);
+          if (Number.isSafeInteger(questionId) && questionId > 0) {
+            deletedQuestionIds.push(questionId);
+          }
+        });
+      });
+
+      let questionSortOrder = 0;
+      const mapFindingsForSave = (questionKey) => collectFindingPayload(data, questionKey).map((finding) => ({
+        ...finding,
+        findingType: finding.findingType ? (findingTypeMap[finding.findingType] || null) : null
+      }));
+
+      // Process Evaluation Questions: the question is stored once and owns any
+      // number of independently classified responses/findings.
+      for (let index = 0; index < newPEQs; index += 1) {
+        if (deletedPEQs.has(index)) continue;
+        const questionKey = `peq_${index}`;
+        const questionText = String(data[`peqQuestion${index}`] || '');
+        const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+        const findings = mapFindingsForSave(questionKey);
+
+        if (!questionText.trim() && findings.length > 0) {
+          setError(`peqQuestion${index}`, { type: 'required', message: 'Question text is required when responses are present.' });
+          throw new Error(`Process Evaluation Question ${index + 1} needs question text.`);
+        }
+        if (!questionId && !questionText.trim() && findings.length === 0) continue;
+
+        questionsPayload.push({
+          questionId,
+          scheduleId,
+          type: 'PEQ',
+          sourceId: null,
+          section: null,
+          subsection: null,
+          question: questionText,
+          sortOrder: ++questionSortOrder,
+          findings
+        });
+      }
+
+      // Every Time Questions use the configured ETQ as the question and can
+      // now own zero, one, or many response/findings.
+      filteredEveryTimeQuestions.forEach((etq, index) => {
+        const questionKey = `etq_${index}`;
+        const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+        const findings = mapFindingsForSave(questionKey);
+        if (!questionId && findings.length === 0) return;
+
+        questionsPayload.push({
+          questionId,
+          scheduleId,
+          type: 'ETQ',
+          sourceId: etq.etqId ?? null,
+          section: null,
+          subsection: null,
+          question: etq.question || '',
+          sortOrder: ++questionSortOrder,
+          findings
+        });
+      });
+
+      // Standard-based questions remain user-entered under a standard clause,
+      // but each question can own multiple findings.
+      Object.keys(standardAdditional).forEach((key) => {
         const [standardId, sectionNum, subsection] = key.split('_').map(Number);
         const count = standardAdditional[key];
-        for (let addIdx = 0; addIdx < count; addIdx++) {
-          if (deletedStandardQuestions[key]?.has(addIdx)) continue;
+        for (let questionIndex = 0; questionIndex < count; questionIndex += 1) {
+          if (deletedStandardQuestions[key]?.has(questionIndex)) continue;
 
-          const question = data[`standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
-          const response = data[`standardAdditionalAuditeeResponse_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
-          const auditorComment = data[`standardAdditionalAuditorComment_${standardId}_${sectionNum}_${subsection}_${addIdx}`];
+          const questionKey = `std_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+          const questionText = String(
+            data[`standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${questionIndex}`] || ''
+          );
+          const questionId = data[getQuestionIdFieldName(questionKey)] || null;
+          const findings = mapFindingsForSave(questionKey);
 
-          if (question || response || auditorComment) {
-            const existingNC = nonconformances.find(nc =>
-              Number(nc.scheduleId) === scheduleId &&
-              Number(nc.type) === standardId &&
-              nc.section === sectionNum &&
-              nc.subsection === subsection &&
-              nc.question === question
-            );
-
-            updatedNCs.push({
-              ncId: existingNC?.ncId || ++maxNcId,
-              scheduleId,
-              type: standardId,
-              findingType: data[`standardAdditionalFindingType_${standardId}_${sectionNum}_${subsection}_${addIdx}`] ? findingTypeMap[data[`standardAdditionalFindingType_${standardId}_${sectionNum}_${subsection}_${addIdx}`]] : null,
-              section: sectionNum,
-              subsection: subsection,
-              question: question || '',
-              response: response || '',
-              auditorComment: auditorComment || '',
-              details: '',
-              AIN: '',
-              division: data[`standardAdditionalPrOPDivision_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              sector: data[`standardAdditionalPrOPSector_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              qma: data[`standardAdditionalPrOPCorporate_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              other: data[`standardAdditionalPrOPOther_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || [],
-              files: data[`standardAdditionalFiles_${standardId}_${sectionNum}_${subsection}_${addIdx}`] || []
-            });
+          if (!questionText.trim() && findings.length > 0) {
+            const fieldName = `standardAdditionalQuestion_${standardId}_${sectionNum}_${subsection}_${questionIndex}`;
+            setError(fieldName, { type: 'required', message: 'Question text is required when responses are present.' });
+            throw new Error('A standard-based question with responses is missing its question text.');
           }
+          if (!questionId && !questionText.trim() && findings.length === 0) continue;
+
+          questionsPayload.push({
+            questionId,
+            scheduleId,
+            type: standardId,
+            sourceId: null,
+            section: sectionNum,
+            subsection,
+            question: questionText,
+            sortOrder: ++questionSortOrder,
+            findings
+          });
         }
       });
 
-      // Combine and sort
-      const allNCs = [...updatedNCs].sort((a, b) => a.ncId - b.ncId);
+      const auditPayload = {
+        ...selectedAudit,
+        overview: data.overview,
+        auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
+        cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
+        standardIds: data.standards || [],
+        programIds: data.programs || [],
+        intervieweeIds: data.interviewees || [],
+        startDate: data.auditDate || null,
+        evaluator: data.evaluator,
+        relatedItems: data.relatedItems,
+        programManager: data.programManager,
+        maLeadManager: data.maLeadManager,
+        delayCause: isDelayed ? (data.delayCause || null) : null,
+        stage: nextStage,
+        targetStage: 3
+      };
 
-      // Save audit record with updated fields
-      const auditResponse = await fetch(buildApiUrl('audits'), {
+      // Save stage-3 audit fields and the normalized question/finding graph in
+      // one backend transaction. Either both persist or neither does.
+      const response = await fetch(buildApiUrl('save-audit-results'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          ...selectedAudit,
-          overview: data.overview,
-          cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
-          standardIds: data.standards || [],
-          programIds: data.programs || [],
-          intervieweeIds: data.interviewees || [],
-          startDate: data.auditDate || null,
-          evaluator: data.evaluator,
-          relatedItems: data.relatedItems,
-          programManager: data.programManager,
-          maLeadManager: data.maLeadManager,
-          delayCause: isDelayed ? (data.delayCause || null) : null,
-          stage: nextStage,
-          targetStage: 3
-        })
-      });
-
-      const auditResult = await auditResponse.json();
-
-      if (!auditResult.success) {
-        throw new Error(auditResult.error || 'Failed to save audit');
-      }
-
-      // Save nonconformances to backend
-      const response = await fetch(buildApiUrl('save-nonconformances'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          scheduleId: selectedAudit.scheduleId,
-          nonconformances: allNCs
+          audit: auditPayload,
+          questions: questionsPayload,
+          deletedQuestionIds
         })
       });
 
       const result = await response.json();
+      if (!response.ok || !result?.success) {
+        throw new Error(result?.error || 'Failed to save audit results');
+      }
 
       if (result.success) {
         const isProceeding = submitIntentRef.current === 'proceed';
         toast.success(isProceeding ? 'Results saved!' : 'Results saved.');
-        skipNextFormResetRef.current = 2;
+        const savedQuestions = Array.isArray(result.questions) ? result.questions : questionsPayload;
 
         setSelectedAudit((current) => {
           if (!current || Number(current.scheduleId) !== scheduleId) {
@@ -1455,6 +1630,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           return {
             ...current,
             overview: data.overview,
+            auditorsTime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
+            auditorstime: data.auditorsTime === '' || data.auditorsTime == null ? null : Number(data.auditorsTime),
             cui: data.cui === null || data.cui === undefined || data.cui === '' ? null : Number(data.cui),
             standardIds: data.standards || [],
             programIds: data.programs || [],
@@ -1469,7 +1646,8 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           };
         });
 
-        setNonconformances(allNCs);
+        setAuditQuestions(savedQuestions);
+        setNonconformances(flattenAuditQuestionFindings(savedQuestions));
 
         if (isProceeding) {
           if (reloadAudits) {
@@ -1478,7 +1656,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           navigate(`/entry?type=nonconformities&audit=${selectedAudit.scheduleId}`);
         }
       } else {
-        throw new Error(result.error || 'Failed to save nonconformances');
+        throw new Error(result.error || 'Failed to save audit questions and findings');
       }
 
       console.log(data);
@@ -1505,7 +1683,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields';
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -1522,7 +1700,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   async function unlockAudit() {
     try {
       if (isViewOnly) {
-        toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+        errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
         return;
       }
       if (!schedule?.scheduleId) {
@@ -1552,7 +1730,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
 
@@ -1617,7 +1795,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
         <h4 style={{ marginBottom: 0 }}>Use the checkboxes on the left side of the table below to select your audit.</h4>
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form id='results-form' onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
@@ -1892,6 +2070,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           <thead>
                             <tr>
                               <th>Question</th>
+                              <th>Response</th>
                               <th>Type</th>
                               <th>Finding Type</th>
                               <th>Comment</th>
@@ -1900,12 +2079,13 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           <tbody>
                             {existingFindingsRows.length === 0 ? (
                               <tr>
-                                <td colSpan={4}>No findings recorded yet.</td>
+                                <td colSpan={5}>No findings recorded yet.</td>
                               </tr>
                             ) : (
                               existingFindingsRows.map((row) => (
                                 <tr key={row.id}>
                                   <td>{row.question}</td>
+                                  <td>{row.responseNumber}</td>
                                   <td>{row.type}</td>
                                   <td>{row.findingType}</td>
                                   <td>{row.comment}</td>
@@ -1945,6 +2125,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Select
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               options={standards}
                               styles={customStyles}
                               placeholder="Standard(s)"
@@ -1964,6 +2145,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <AsyncSelect
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               cacheOptions
                               defaultOptions={false}
                               loadOptions={loadRosterOptions}
@@ -2057,6 +2239,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <Select
                               isClearable
                               isMulti
+                              closeMenuOnSelect={false}
                               options={programs}
                               styles={customStyles}
                               placeholder="Program(s)"
@@ -2105,6 +2288,32 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                         />
                       </div>
                     </div>
+                    <div className='sectionrow'>
+                      <div className="fieldboxwhole">
+                        <label>Auditor's Time to Complete Audit (hours)</label>
+                        <input
+                          type="number"
+                          {...register("auditorsTime", {
+                            validate: {
+                              isInteger: (value) => {
+                                if (value === '' || value === null) return true;
+                                return Number.isInteger(Number(value)) || "Please enter a whole number";
+                              },
+                              isNonNegative: (value) => {
+                                if (value === '' || value === null) return true;
+                                return Number(value) >= 0 || "Please enter a non-negative number";
+                              }
+                            }
+                          })}
+                          id='auditorsTime'
+                          className='textfield'
+                          placeholder='Enter a whole number here'
+                          min="0"
+                          step="1"
+                        />
+                        {errors.auditorsTime && <p className='fielderror'>{errors.auditorsTime.message}</p>}
+                      </div>
+                    </div>
 
                   </div>
                   {isCuiQuestionsBlocked ? (
@@ -2121,192 +2330,83 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       <div className='section'>
                         <label className='sectiontitle'>Process Evaluation Questions</label>
                         {Array.from({ length: newPEQs }, (_, index) => {
-                          // Don't render deleted PEQs
                           if (deletedPEQs.has(index)) return null;
+                          const questionKey = `peq_${index}`;
+                          const isCollapsed = collapsedPEQs[index] ?? true;
 
                           return (
                             <div key={index} style={{ width: '100%' }}>
-                              <div className='peq'>
-                                <div className="fieldboxwhole">
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                    <label style={{ margin: 0, alignSelf: 'center' }}>Process Evaluation Question {index + 1}</label>
-                                    <button
-                                      type="button"
-                                      onClick={() => deletePEQ(index)}
-                                      style={{
-                                        background: '#f44336',
-                                        color: 'white',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        padding: '6px 16px',
-                                        cursor: 'pointer',
-                                        fontSize: '12px',
-                                        fontWeight: 'bold',
-                                        whiteSpace: 'nowrap'
-                                      }}
-                                    >
-                                      × Delete
-                                    </button>
-                                  </div>
-                                  <textarea
-                                    {...register(`peqQuestion${index}`)}
-                                    style={{ width: '100%', height: '80px', resize: 'vertical' }}
-                                    id={`peqQuestion${index}`}
-                                    className='textfield'
-                                    placeholder="Enter your question here..."
+                              <button
+                                type="button"
+                                aria-expanded={!isCollapsed}
+                                onClick={() => setCollapsedPEQs((current) => ({
+                                  ...current,
+                                  [index]: !(current[index] ?? true)
+                                }))}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  backgroundColor: '#f5f5f5',
+                                  color: '#000',
+                                  border: 0,
+                                  borderRadius: '4px',
+                                  padding: '8px',
+                                  marginBottom: '8px',
+                                  fontWeight: 'bold'
+                                }}
+                              >
+                                <span aria-hidden="true">{isCollapsed ? '▶' : '▼'}</span>
+                                <span>Process Evaluation Question {index + 1}</span>
+                              </button>
+
+                              {!isCollapsed && (
+                                <div className="peq audit-question-card">
+                                  <input
+                                    type="hidden"
+                                    {...register(getQuestionIdFieldName(questionKey))}
                                   />
-                                </div>
-                                <div className="fieldboxwhole">
-                                  <label>Finding Type</label>
-                                  <Controller
-                                    name={`findingType${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <ToggleButtonGroup
-                                        {...field}
-                                        exclusive
-                                        onChange={(event, newValue) => {
-                                          if (newValue !== null) {
-                                            field.onChange(newValue);
-                                          }
-                                        }}
-                                        aria-label="finding type"
-                                      >
-                                        <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                          Nonconformity
-                                        </ToggleButton>
-                                        <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                          Conformity
-                                        </ToggleButton>
-                                        <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                          OFI
-                                        </ToggleButton>
-                                        <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                          OBS
-                                        </ToggleButton>
-                                      </ToggleButtonGroup>
-                                    )}
-                                  />
-                                </div>
-                                <div className='sectionrow'>
-                                  <div className="fieldboxhalf">
-                                    <label>Auditor Comment</label>
-                                    <textarea
-                                      {...register(`auditorComment${index}`)}
-                                      style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                      id={`auditorComment${index}`}
-                                      className='textfield'
-                                    />
-                                  </div>
-                                  <div className="fieldboxhalf">
-                                    <label>Auditee Response</label>
-                                    <textarea
-                                      {...register(`auditeeResponse${index}`)}
-                                      style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                      id={`auditeeResponse${index}`}
-                                      className='textfield'
-                                    />
-                                  </div>
-                                </div>
-                                <div className='sectionrow'>
-                                  <div className="fieldboxquarter">
-                                    <label>Corporate PrOP</label>
-                                    <Controller
-                                      name={`prOPCorporate${index}`}
-                                      control={control}
-                                      render={({ field }) => (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          options={corporatePrOPOptions}
-                                          styles={customStyles}
-                                          placeholder="Corporate"
-                                          value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="fieldboxquarter">
-                                    <label>Sector PrOP</label>
-                                    <Controller
-                                      name={`prOPSector${index}`}
-                                      control={control}
-                                      render={({ field }) => (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          options={sectorPrOPOptions}
-                                          styles={customStyles}
-                                          placeholder="Sector"
-                                          value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="fieldboxquarter">
-                                    <label>Division PrOP</label>
-                                    <Controller
-                                      name={`prOPDivision${index}`}
-                                      control={control}
-                                      render={({ field }) => (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          options={divisionPrOPOptions}
-                                          styles={customStyles}
-                                          placeholder="Division"
-                                          value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      )}
-                                    />
-                                  </div>
-                                  <div className="fieldboxquarter">
-                                    <label>Other PrOP</label>
-                                    <Controller
-                                      name={`prOPOther${index}`}
-                                      control={control}
-                                      render={({ field }) => (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          options={otherPrOPOptions}
-                                          styles={customStyles}
-                                          placeholder="Other"
-                                          value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      )}
-                                    />
-                                  </div>
-                                </div>
-                                <div className='sectionrow'>
                                   <div className="fieldboxwhole">
-                                    <label>Objective Evidence</label>
-                                    <Controller
-                                      name={`peqFiles${index}`}
-                                      control={control}
-                                      render={({ field }) => {
-                                        const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                        const selectedFileIds = normalizeFileIds(field.value);
-                                        return (
-                                          <Select
-                                            isClearable
-                                            isMulti
-                                            options={objectiveEvidenceOptions}
-                                            styles={customStyles}
-                                            placeholder="Select files"
-                                            value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                            onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                          />
-                                        );
-                                      }}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+                                      <label style={{ margin: 0, alignSelf: 'center' }}>
+                                        Process Evaluation Question {index + 1}
+                                      </label>
+                                      <button
+                                        type="button"
+                                        onClick={() => deletePEQ(index)}
+                                        style={{
+                                          background: '#f44336',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '4px',
+                                          padding: '6px 16px',
+                                          cursor: 'pointer',
+                                          fontSize: '12px',
+                                          fontWeight: 'bold',
+                                          whiteSpace: 'nowrap'
+                                        }}
+                                      >
+                                        × Delete Question
+                                      </button>
+                                    </div>
+                                    <textarea
+                                      {...register(`peqQuestion${index}`)}
+                                      style={{ width: '100%', height: '80px', resize: 'vertical' }}
+                                      id={`peqQuestion${index}`}
+                                      className="textfield"
+                                      placeholder="Enter your question here..."
                                     />
+                                    {errors[`peqQuestion${index}`] && (
+                                      <span className="fielderror">{errors[`peqQuestion${index}`].message}</span>
+                                    )}
                                   </div>
+
+                                  {renderFindingResponses(questionKey)}
                                 </div>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2317,192 +2417,50 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                       <div className='section'>
                         <label className='sectiontitle'>Every Time Questions</label>
                         {filteredEveryTimeQuestions.map((question, index) => {
-                      const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
-                      const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
+                          const etqCollapseKey = getEveryTimeQuestionCollapseKey(question, index);
+                          const isEtqCollapsed = collapsedEveryTimeQuestions[etqCollapseKey];
+                          const questionKey = `etq_${index}`;
 
-                      return (
-                        <div className='peq' key={etqCollapseKey}>
-                          <div
-                            onClick={() => setCollapsedEveryTimeQuestions((prev) => ({ ...prev, [etqCollapseKey]: !prev[etqCollapseKey] }))}
-                            style={{
-                              cursor: 'pointer',
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '8px',
-                              padding: '8px',
-                              backgroundColor: '#f5f5f5',
-                              borderRadius: '4px',
-                              marginBottom: isEtqCollapsed ? 0 : '12px'
-                            }}
-                          >
-                            <span style={{ fontSize: '14px', marginTop: '2px' }}>
-                              {isEtqCollapsed ? '▶' : '▼'}
-                            </span>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <label style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
-                                Every Time Question {index + 1}
-                              </label>
-                              <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: 0, cursor: 'pointer' }}>
-                                {question.question}
-                              </label>
+                          return (
+                            <div className="peq audit-question-card" key={etqCollapseKey}>
+                              <input
+                                type="hidden"
+                                {...register(getQuestionIdFieldName(questionKey))}
+                              />
+                              <div
+                                onClick={() => setCollapsedEveryTimeQuestions((prev) => ({
+                                  ...prev,
+                                  [etqCollapseKey]: !prev[etqCollapseKey]
+                                }))}
+                                style={{
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'flex-start',
+                                  gap: '8px',
+                                  padding: '8px',
+                                  backgroundColor: '#f5f5f5',
+                                  borderRadius: '4px',
+                                  marginBottom: isEtqCollapsed ? 0 : '12px',
+                                  width: '100%',
+                                  boxSizing: 'border-box'
+                                }}
+                              >
+                                <span style={{ fontSize: '14px', marginTop: '2px' }}>
+                                  {isEtqCollapsed ? '▶' : '▼'}
+                                </span>
+                                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                  <label style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer' }}>
+                                    Every Time Question {index + 1}
+                                  </label>
+                                  <label style={{ fontSize: '18px', marginTop: '10px', marginBottom: 0, cursor: 'pointer' }}>
+                                    {question.question}
+                                  </label>
+                                </div>
+                              </div>
+
+                              {!isEtqCollapsed && renderFindingResponses(questionKey)}
                             </div>
-                          </div>
-                          {!isEtqCollapsed && (
-                            <>
-                              <div className="fieldboxwhole">
-                                <label>Finding Type</label>
-                                <Controller
-                                  name={`etqFindingType${index}`}
-                                  control={control}
-                                  render={({ field }) => (
-                                    <ToggleButtonGroup
-                                      {...field}
-                                      exclusive
-                                      onChange={(event, newValue) => {
-                                        if (newValue !== null) {
-                                          field.onChange(newValue);
-                                        }
-                                      }}
-                                      aria-label="finding type"
-                                    >
-                                      <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                        Nonconformity
-                                      </ToggleButton>
-                                      <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                        Conformity
-                                      </ToggleButton>
-                                      <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                        OFI
-                                      </ToggleButton>
-                                      <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                        OBS
-                                      </ToggleButton>
-                                    </ToggleButtonGroup>
-                                  )}
-                                />
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxhalf">
-                                  <label>Auditor Comment</label>
-                                  <textarea
-                                    {...register(`etqAuditorComment${index}`)}
-                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                    id={`etqAuditorComment${index}`}
-                                    className='textfield'
-                                  />
-                                </div>
-                                <div className="fieldboxhalf">
-                                  <label>Auditee Response</label>
-                                  <textarea
-                                    {...register(`etqAuditeeResponse${index}`)}
-                                    style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                    id={`etqAuditeeResponse${index}`}
-                                    className='textfield'
-                                  />
-                                </div>
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Corporate</label>
-                                  <Controller
-                                    name={`etqPrOPCorporate${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        options={corporatePrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Corporate"
-                                        value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Sector</label>
-                                  <Controller
-                                    name={`etqPrOPSector${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        options={sectorPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Sector"
-                                        value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Division</label>
-                                  <Controller
-                                    name={`etqPrOPDivision${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        options={divisionPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Division"
-                                        value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                                <div className="fieldboxquarter">
-                                  <label>PrOP - Other</label>
-                                  <Controller
-                                    name={`etqPrOPOther${index}`}
-                                    control={control}
-                                    render={({ field }) => (
-                                      <Select
-                                        isClearable
-                                        isMulti
-                                        options={otherPrOPOptions}
-                                        styles={customStyles}
-                                        placeholder="Other"
-                                        value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                        onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                      />
-                                    )}
-                                  />
-                                </div>
-                              </div>
-                              <div className='sectionrow'>
-                                <div className="fieldboxwhole">
-                                  <label>Objective Evidence</label>
-                                  <Controller
-                                    name={`etqFiles${index}`}
-                                    control={control}
-                                    render={({ field }) => {
-                                      const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                      const selectedFileIds = normalizeFileIds(field.value);
-                                      return (
-                                        <Select
-                                          isClearable
-                                          isMulti
-                                          options={objectiveEvidenceOptions}
-                                          styles={customStyles}
-                                          placeholder="Select files"
-                                          value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                          onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                        />
-                                      );
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
+                          );
                         })}
                       </div>
                       <div className='section'>
@@ -2527,7 +2485,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             {Object.entries(sections).map(([sectionNumValue, questions]) => {
                               const sectionNum = Number(sectionNumValue);
                               const sectionKey = `section_${standardId}_${sectionNum}`;
-                              const isSectionCollapsed = collapsedSections[sectionKey];
+                              const isSectionCollapsed = collapsedSections[sectionKey] ?? false;
 
                               return (
                                 <div key={`${standardId}_${sectionNum}`} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -2550,7 +2508,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   </div>
                                   {!isSectionCollapsed && questions.map((question, qIndex) => {
                                     const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
-                                    const isSubsectionCollapsed = collapsedSubsections[subsectionKey];
+                                    const isSubsectionCollapsed = collapsedSubsections[subsectionKey] ?? true;
                                     const textKey = `text_${standardId}_${sectionNum}_${question.subsection}`;
                                     const isTextExpanded = expandedTexts[textKey];
                                     const maxLength = 200;
@@ -2621,13 +2579,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                             </div>
                                             {additionalCount > 0 && Array.from({ length: additionalCount }, (_, addIdx) => {
                                               if (deletedStandardQuestions[additionalKey]?.has(addIdx)) return null;
+                                              const questionKey = `std_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`;
+                                              const questionFieldName = `standardAdditionalQuestion_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`;
 
                                               return (
                                                 <div key={`${additionalKey}_add_${addIdx}`} style={{ width: '100%', marginBottom: '10px' }}>
-                                                  <div className='peq'>
+                                                  <div className="peq audit-question-card">
+                                                    <input
+                                                      type="hidden"
+                                                      {...register(getQuestionIdFieldName(questionKey))}
+                                                    />
                                                     <div className="fieldboxwhole">
                                                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
-                                                        <label style={{ margin: 0, alignSelf: 'center' }}>Standard Question {addIdx + 1}</label>
+                                                        <label style={{ margin: 0, alignSelf: 'center' }}>
+                                                          Standard Question {addIdx + 1}
+                                                        </label>
                                                         <button
                                                           type="button"
                                                           onClick={() => deleteStandardQuestion(standardId, sectionNum, question.subsection, addIdx)}
@@ -2643,164 +2609,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                                             whiteSpace: 'nowrap'
                                                           }}
                                                         >
-                                                          × Delete
+                                                          × Delete Question
                                                         </button>
                                                       </div>
                                                       <textarea
-                                                        {...register(`standardAdditionalQuestion_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`)}
+                                                        {...register(questionFieldName)}
                                                         style={{ width: '100%', height: '80px', resize: 'vertical' }}
-                                                        className='textfield'
+                                                        className="textfield"
                                                         placeholder="Enter your question here..."
                                                       />
+                                                      {errors[questionFieldName] && (
+                                                        <span className="fielderror">{errors[questionFieldName].message}</span>
+                                                      )}
                                                     </div>
-                                                    <div className="fieldboxwhole">
-                                                      <label>Finding Type</label>
-                                                      <Controller
-                                                        name={`standardAdditionalFindingType_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                        control={control}
-                                                        render={({ field }) => (
-                                                          <ToggleButtonGroup
-                                                            {...field}
-                                                            exclusive
-                                                            onChange={(event, newValue) => {
-                                                              if (newValue !== null) {
-                                                                field.onChange(newValue);
-                                                              }
-                                                            }}
-                                                            aria-label="finding type"
-                                                          >
-                                                            <ToggleButton value="Nonconformity" aria-label="nonconformity" sx={{ textTransform: 'none' }}>
-                                                              Nonconformity
-                                                            </ToggleButton>
-                                                            <ToggleButton value="Conformity" aria-label="conformity" sx={{ textTransform: 'none' }}>
-                                                              Conformity
-                                                            </ToggleButton>
-                                                            <ToggleButton value="OFI" aria-label="OFI" sx={{ textTransform: 'none' }}>
-                                                              OFI
-                                                            </ToggleButton>
-                                                            <ToggleButton value="OBS" aria-label="OBS" sx={{ textTransform: 'none' }}>
-                                                              OBS
-                                                            </ToggleButton>
-                                                          </ToggleButtonGroup>
-                                                        )}
-                                                      />
-                                                    </div>
-                                                    <div className='sectionrow'>
-                                                      <div className="fieldboxhalf">
-                                                        <label>Auditor Comment</label>
-                                                        <textarea
-                                                          {...register(`standardAdditionalAuditorComment_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`)}
-                                                          style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                                          className='textfield'
-                                                        />
-                                                      </div>
-                                                      <div className="fieldboxhalf">
-                                                        <label>Auditee Response</label>
-                                                        <textarea
-                                                          {...register(`standardAdditionalAuditeeResponse_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`)}
-                                                          style={{ width: '100%', height: '100px', resize: 'vertical' }}
-                                                          className='textfield'
-                                                        />
-                                                      </div>
-                                                    </div>
-                                                    <div className='sectionrow'>
-                                                      <div className="fieldboxquarter">
-                                                        <label>Corporate PrOP</label>
-                                                        <Controller
-                                                          name={`standardAdditionalPrOPCorporate_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                          control={control}
-                                                          render={({ field }) => (
-                                                            <Select
-                                                              isClearable
-                                                              isMulti
-                                                              options={corporatePrOPOptions}
-                                                              styles={customStyles}
-                                                              placeholder="Corporate"
-                                                              value={field.value ? corporatePrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                            />
-                                                          )}
-                                                        />
-                                                      </div>
-                                                      <div className="fieldboxquarter">
-                                                        <label>Sector PrOP</label>
-                                                        <Controller
-                                                          name={`standardAdditionalPrOPSector_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                          control={control}
-                                                          render={({ field }) => (
-                                                            <Select
-                                                              isClearable
-                                                              isMulti
-                                                              options={sectorPrOPOptions}
-                                                              styles={customStyles}
-                                                              placeholder="Sector"
-                                                              value={field.value ? sectorPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                            />
-                                                          )}
-                                                        />
-                                                      </div>
-                                                      <div className="fieldboxquarter">
-                                                        <label>Division PrOP</label>
-                                                        <Controller
-                                                          name={`standardAdditionalPrOPDivision_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                          control={control}
-                                                          render={({ field }) => (
-                                                            <Select
-                                                              isClearable
-                                                              isMulti
-                                                              options={divisionPrOPOptions}
-                                                              styles={customStyles}
-                                                              placeholder="Division"
-                                                              value={field.value ? divisionPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                            />
-                                                          )}
-                                                        />
-                                                      </div>
-                                                      <div className="fieldboxquarter">
-                                                        <label>Other PrOP</label>
-                                                        <Controller
-                                                          name={`standardAdditionalPrOPOther_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                          control={control}
-                                                          render={({ field }) => (
-                                                            <Select
-                                                              isClearable
-                                                              isMulti
-                                                              options={otherPrOPOptions}
-                                                              styles={customStyles}
-                                                              placeholder="Other"
-                                                              value={field.value ? otherPrOPOptions.filter(p => field.value.includes(p.value)) : []}
-                                                              onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                            />
-                                                          )}
-                                                        />
-                                                      </div>
-                                                    </div>
-                                                    <div className='sectionrow'>
-                                                      <div className="fieldboxwhole">
-                                                        <label>Objective Evidence</label>
-                                                        <Controller
-                                                          name={`standardAdditionalFiles_${standardId}_${sectionNum}_${question.subsection}_${addIdx}`}
-                                                          control={control}
-                                                          render={({ field }) => {
-                                                            const objectiveEvidenceOptions = getObjectiveEvidenceOptions(field.value);
-                                                            const selectedFileIds = normalizeFileIds(field.value);
-                                                            return (
-                                                              <Select
-                                                                isClearable
-                                                                isMulti
-                                                                options={objectiveEvidenceOptions}
-                                                                styles={customStyles}
-                                                                placeholder="Select files"
-                                                                value={selectedFileIds.length > 0 ? objectiveEvidenceOptions.filter((f) => selectedFileIds.includes(f.value)) : []}
-                                                                onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                                              />
-                                                            );
-                                                          }}
-                                                        />
-                                                      </div>
-                                                    </div>
+
+                                                    {renderFindingResponses(questionKey)}
                                                   </div>
                                                 </div>
                                               );
@@ -2922,7 +2745,6 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
             </div>
           )}
         </>
-      }
     </>
   )
 }

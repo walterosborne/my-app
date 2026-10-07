@@ -42,7 +42,7 @@ const AuditStatuses = () => {
         setProgramsList(programs);
         setSitesList(sites);
       } catch (error) {
-        console.error('Error loading audit statuses:', error);
+        console.error('Error loading audit to-do list:', error);
       } finally {
         setLoading(false);
       }
@@ -75,6 +75,7 @@ const AuditStatuses = () => {
   const getStageLabel = (audit) => {
     const stage = Number(audit?.stage);
     if (stage === -1) return 'Historical';
+    if (stage === -2) return 'Cancelled';
     if (audit?.approvedAt) return 'Approved';
     if (Number(audit?.locked) === 1) return 'Pending Approval';
     switch (stage) {
@@ -109,6 +110,7 @@ const AuditStatuses = () => {
     if (!currentUser?.auditorId) return [];
     const auditorId = Number(currentUser.auditorId);
     return sortedAudits.filter((audit) => {
+      if (Number(audit.stage) === -2) return false;
       if (!includeCompleted && isAuditCompleted(audit)) {
         return false;
       }
@@ -122,6 +124,7 @@ const AuditStatuses = () => {
     const myId = currentUser.myId || null;
     const auditorId = currentUser.auditorId ? Number(currentUser.auditorId) : null;
     return sortedAudits.filter((audit) => {
+      if (Number(audit.stage) === -2) return false;
       const completed = isAuditCompleted(audit);
       if (!includeCompleted && completed) {
         return false;
@@ -181,7 +184,7 @@ const AuditStatuses = () => {
     return (
       <div className="entry-page">
         <div className="entry-container">
-          <div className="entry-message">Loading audit statuses...</div>
+          <div className="entry-message">Loading your audit to-do list...</div>
         </div>
       </div>
     );
@@ -192,8 +195,7 @@ const AuditStatuses = () => {
       <div className="entry-container">
         <div className="audit-statuses-header tool-page-header">
           <div>
-            <p className="tool-page-subtitle">Tools · Audit Statuses</p>
-            <h2 className="audit-statuses-title">Audit Statuses</h2>
+            <p className="tool-page-subtitle">Tools · My Audit To-Do List</p>
             <p className="audit-statuses-subtitle">
               Track your audits and any approvals that are currently awaiting your review.
             </p>

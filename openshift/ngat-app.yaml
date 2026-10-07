@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ngat
+  labels: { app: ngat }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ngat }
+  template:
+    metadata:
+      labels: { app: ngat }
+    spec:
+      containers:
+        - name: ngat
+          image: docker-ng-staging.northgrum.com/wosborne/ngat:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef: { name: audit }
+            - secretRef: { name: roster }
+            - secretRef: { name: entra }
+            - secretRef: { name: smtp }
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: NGAT_ENV, value: production }
+            - { name: PORT, value: "8080" }
+            - { name: ALLOW_HARDCODED_IDENTITY_FALLBACK, value: "false" }
+          ports:
+            - { name: http, containerPort: 8080 }
+          # /healthz checks the Node HTTP process, not the databases.
+          # Database outages are reported to the browser without restart loops.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ngat-internal
+spec:
+  type: ClusterIP
+  selector: { app: ngat }
+  ports:
+    - { name: http, port: 8080, targetPort: http }

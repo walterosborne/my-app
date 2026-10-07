@@ -117,19 +117,105 @@
     margin-top: 1rem;
 }
 
-/* Action Buttons */
+/* Group actions so long audit lifecycles remain readable at every width. */
 .action-buttons {
-    display: flex;
-    justify-content: space-evenly;
-    padding: 1.5rem;
-    background-color: var(--color-grey-100);
-    border-radius: 8px;
-    margin-bottom: 2rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+    align-items: start;
+    gap: 0.85rem;
+    padding: 1rem;
+    background: var(--color-grey-100);
     border: 1px solid var(--color-border-grey);
+    border-radius: 10px;
+    margin-bottom: 2rem;
+}
+
+.audit-action-group {
+    min-width: 0;
+    padding: 0.95rem;
+    background: #ffffff;
+    border: 1px solid #dce2eb;
+    border-radius: 8px;
+}
+
+.audit-action-group--wide,
+.audit-action-group--management {
+    grid-column: 1 / -1;
+}
+
+.audit-action-group--management {
+    background: #fffafa;
+    border-color: #e9caca;
+}
+
+.audit-action-group-title {
+    margin: 0 0 0.8rem;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.055em;
+    text-transform: uppercase;
+}
+
+.audit-action-group--management .audit-action-group-title {
+    color: #92400e;
+}
+
+.audit-action-group-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+    gap: 0.65rem;
+}
+
+.audit-action-group .action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 46px;
+    padding: 0.7rem 0.75rem;
+    font-size: 0.94rem;
+    line-height: 1.3;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.audit-action-group--management .audit-action-group-controls {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 230px));
+}
+
+@media (max-width: 1100px) {
+    .action-buttons {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .audit-action-group--wide,
+    .audit-action-group--management {
+        grid-column: auto;
+    }
+
+    .audit-action-group--management .audit-action-group-controls {
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+    }
+}
+
+@media (max-width: 600px) {
+    .action-buttons {
+        padding: 0.7rem;
+        gap: 0.7rem;
+    }
+
+    .audit-action-group {
+        padding: 0.75rem;
+    }
 }
 
 .action-btn {
-    width: 18%;
+    flex: 1 1 155px;
+    min-width: 0;
     padding: 0.75rem 0.5rem;
     border: none;
     border-radius: 6px;
@@ -176,6 +262,14 @@
 .action-btn.undo-submission-btn:hover {
     background-color: #eab308;
 }
+
+.action-btn.lifecycle-cancel { background-color: #b45309; }
+.action-btn.lifecycle-cancel:hover { background-color: #92400e; }
+.action-btn.lifecycle-reactivate { background-color: #047857; }
+.action-btn.lifecycle-reactivate:hover { background-color: #065f46; }
+.action-btn.lifecycle-archive { background-color: #991b1b; }
+.action-btn.lifecycle-archive:hover { background-color: #7f1d1d; }
+.action-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
 /* Section Styles */
 .audit-section {
@@ -419,6 +513,100 @@
     line-height: 1.6;
 }
 
+/* Group multiple classified responses under a single audit question. */
+.question-findings-card {
+    margin-bottom: 1.5rem;
+    border: 1px solid #d7dde5;
+    border-radius: 10px;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.06);
+}
+
+.question-findings-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: #f4f7fb;
+    border-bottom: 1px solid #d7dde5;
+}
+
+.question-findings-heading {
+    min-width: 0;
+    flex: 1;
+}
+
+.question-findings-heading p {
+    margin: 0.35rem 0 0;
+    color: var(--color-section-heading);
+    font-size: 1.05rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.question-findings-label {
+    color: var(--color-audit-blue);
+}
+
+.question-findings-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+}
+
+.question-findings-meta span,
+.response-number {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.28rem 0.6rem;
+    border-radius: 999px;
+    background: #e8eef6;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.question-evidence-zip {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 6px;
+    padding: 0.65rem 0.8rem;
+    background: var(--color-audit-blue);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.question-evidence-zip:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.question-findings-responses {
+    padding: 1rem 1.25rem 0;
+}
+
+.response-finding-card {
+    margin-bottom: 1rem;
+}
+
+@media (max-width: 760px) {
+    .question-findings-header {
+        flex-direction: column;
+    }
+
+    .question-evidence-zip {
+        width: 100%;
+    }
+
+    .question-findings-responses {
+        padding: 0.75rem;
+    }
+}
+
 /* Finding Cards */
 .finding-card {
     background-color: var(--color-white);
@@ -427,6 +615,93 @@
     padding: 1.5rem;
     margin-bottom: 1.5rem;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Per-response evidence stays beside that finding's details on wide reports. */
+.finding-card.has-finding-evidence {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 30%);
+    column-gap: 1.5rem;
+}
+
+.finding-card.has-finding-evidence > .finding-header {
+    grid-column: 1 / -1;
+}
+
+.finding-card.has-finding-evidence > .finding-item {
+    grid-column: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.finding-evidence {
+    grid-column: 2;
+    grid-row: 2 / span 12;
+    align-self: start;
+    min-width: 0;
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #1f2937;
+}
+
+.finding-evidence-heading {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.92rem;
+}
+
+.finding-evidence-heading span {
+    color: #64748b;
+    font-size: 0.85rem;
+}
+
+.finding-evidence-list {
+    margin: 0 0 0.9rem;
+    padding-left: 1.1rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.finding-evidence-list li {
+    padding: 0.25rem 0;
+    overflow-wrap: anywhere;
+}
+
+.finding-evidence-list a {
+    color: #0052a3;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.finding-evidence-zip {
+    width: 100%;
+    padding: 0.65rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    background: #0066cc;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.finding-evidence-zip:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+@media (max-width: 850px) {
+    .finding-card.has-finding-evidence {
+        display: block;
+    }
+
+    .finding-evidence {
+        margin-top: 0.75rem;
+    }
 }
 
 .finding-card.nonconformance {

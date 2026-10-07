@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -49,7 +50,7 @@ const Approval = () => {
                 setApprovalInfo(updated);
             }
         } catch (err) {
-            toast.error(err.message || 'Approval failed');
+            errorToast(err.message || 'Approval failed');
         } finally {
             setSubmittingApproval(false);
         }

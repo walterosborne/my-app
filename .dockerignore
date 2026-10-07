@@ -1,0 +1,13 @@
+.git
+node_modules
+dist
+*.log
+.env
+.env.*
+*.local
+yams
+sql
+scripts
+web.config
+iis-auth.asp
+iis-auth.aspx

@@ -6,14 +6,50 @@ import crypto from 'crypto';
 import archiver from 'archiver';
 import nodemailer from 'nodemailer';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import smtpConfig from './smtpConfig.js';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { getEntraIdentity, getForwardedAccessToken } from './entraIdentity.js';
 import { getAppRootFromImportMetaUrl, loadRuntimeEnv } from './runtime-env.js';
 import { getDatabaseSchemaForHost, getEnvironmentModeForHost, normalizeEnvironmentHost, PRODUCTION_HOST, PRODUCTION_SCHEMA } from './environment-config.js';
+import { registerFoeAuditRoutes } from './foeAuditRoutes.js';
 
+// OpenShift owns its environment via Secret/Deployment env vars.
+// Locally, .env is authoritative even if Windows already defines the same keys.
+// This runs BEFORE database connections or the local Entra fallback are set up.
+const runningInKubernetes = Boolean(process.env.KUBERNETES_SERVICE_HOST);
+// Local server defaults to development even if Windows inherited NODE_ENV=production.
+// A deliberate NODE_ENV value in the repository-root .env then overrides this.
+if (!runningInKubernetes) process.env.NODE_ENV = 'development';
 const runtimeEnv = loadRuntimeEnv({
     appRoot: getAppRootFromImportMetaUrl(import.meta.url),
-    mode: 'production'
+    mode: runningInKubernetes ? 'production' : 'development',
+    loadFiles: !runningInKubernetes,
+    overrideProcessEnv: !runningInKubernetes,
+    envFileLast: !runningInKubernetes
 });
+// Static ESM imports run before the statements above. Import SMTP settings
+// only AFTER .env is loaded so even an older local smtpConfig.js that reads
+// process.env at module initialization sees the correct values.
+const { default: smtpConfig } = await import('./smtpConfig.js');
+// Fail at startup if OpenShift has not explicitly chosen its audit schema.
+const configuredEnvironmentMode = getEnvironmentModeForHost();
+const configuredAuditSchema = getDatabaseSchemaForHost();
+
+// The environment banner and database schema are driven by the same NGAT_ENV
+// value. Fail closed if those ever disagree: a development banner must mean
+// every environment-scoped audit/FOE write is going to [dev], never [dbo].
+const expectedAuditSchemaByMode = {
+    dev: 'dev',
+    stg: 'stag',
+    prod: 'dbo'
+};
+const expectedAuditSchema = expectedAuditSchemaByMode[configuredEnvironmentMode];
+if (!expectedAuditSchema || configuredAuditSchema !== expectedAuditSchema) {
+    throw new Error(
+        `Unsafe NGAT environment/schema configuration: mode=${configuredEnvironmentMode}, schema=${configuredAuditSchema}, expected=${expectedAuditSchema || '<unknown>'}`
+    );
+}
+console.log('[NGAT ENV] Audit/FOE mode/schema:', configuredEnvironmentMode, configuredAuditSchema);
 const auditDbServer = process.env.auditserver || '';
 const auditDbDatabase = process.env.auditdb || '';
 const auditDbUser = process.env.audituser || '';
@@ -23,7 +59,13 @@ const rosterDbDatabase = process.env.database || '';
 const rosterDbUser = process.env.user || '';
 const rosterDbPassword = process.env.password || '';
 
-console.log(`[NGAT ENV] mssqlserver.js loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
+console.log(`[NGAT ENV] source: ${runningInKubernetes ? 'Kubernetes Deployment / Secrets' : 'local env files (last .env wins over OS env)'}`);
+console.log(`[NGAT ENV] loaded env files: ${runtimeEnv.loadedFiles.length ? runtimeEnv.loadedFiles.join(', ') : '<none>'}`);
+console.log('[NGAT AUTH] local fallback:', process.env.NODE_ENV !== 'production'
+    && configuredEnvironmentMode === 'dev'
+    && Boolean(process.env.NGAT_DEV_EMPLOYEE_ID)
+    ? 'enabled on localhost'
+    : 'disabled');
 console.log('[NGAT ENV] mssqlserver.js env present =', {
     auditserver: Boolean(process.env.auditserver),
     auditdb: Boolean(process.env.auditdb),
@@ -38,8 +80,52 @@ console.log('[NGAT ENV] mssqlserver.js env present =', {
 });
 
 const app = express();
-app.use(cors());
+if (process.env.NODE_ENV !== 'production') app.use(cors());
 app.use(express.json());
+// A public Route must ONLY expose the OAuth2 Proxy, never this app Service.
+app.use('/api', async (req, res, next) => {
+    if (req.path === '/healthz' || req.path === '/health') return next();
+    try {
+        const identity = await getEntraIdentity(req);
+        req.ngatIdentitySource = identity?.source || null;
+        next();
+    } catch (error) {
+        res.status(error.status || 502).json({ error: error.message || 'Identity resolution failed.' });
+    }
+});
+app.get('/healthz', (_req, res) => res.json({ ok: true, service: 'ngat' }));
+// This endpoint checks end-to-end service availability for the browser banner.
+// It is separate from /healthz: database outages must NOT restart a healthy Node pod.
+const serviceHealth = { checkedAt: 0, ok: false, pending: null };
+app.get('/api/health', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!serviceHealth.pending && Date.now() - serviceHealth.checkedAt >= 10000) {
+        serviceHealth.pending = (async () => {
+            let timeoutId;
+            try {
+                await Promise.race([
+                    Promise.all([
+                        pool.query('SELECT 1 AS ok'),
+                        rosterPool.query('SELECT 1 AS ok')
+                    ]),
+                    new Promise((_, reject) => {
+                        timeoutId = setTimeout(() => reject(new Error('Health check timed out')), 4000);
+                    })
+                ]);
+                serviceHealth.ok = true;
+            } catch (error) {
+                serviceHealth.ok = false;
+                console.warn('[NGAT HEALTH] Service dependency check failed:', error?.message || error);
+            } finally {
+                clearTimeout(timeoutId);
+                serviceHealth.checkedAt = Date.now();
+                serviceHealth.pending = null;
+            }
+        })();
+    }
+    if (serviceHealth.pending) await serviceHealth.pending;
+    res.status(serviceHealth.ok ? 200 : 503).json({ ok: serviceHealth.ok, service: 'ngat' });
+});
 
 const sqlConfig = {
     server: auditDbServer,
@@ -153,6 +239,9 @@ process.on('unhandledRejection', (reason) => {
 
 process.on('uncaughtException', (error) => {
     console.error('[NGAT] Uncaught exception:', error);
+    // Continuing after an uncaught exception leaves the server in an unknown
+    // state. Exit so the OpenShift Deployment can restart the container.
+    process.exit(1);
 });
 
 process.on('beforeExit', (code) => {
@@ -215,14 +304,39 @@ const formatSchemaIdentifierForSql = (schemaName) => {
 };
 
 const applyAuditSchemaToSql = (queryText, schemaName) => {
-    const sqlSchemaName = formatSchemaIdentifierForSql(schemaName);
+    const normalizedSchemaName = normalizeSchemaIdentifier(schemaName);
+    const sqlSchemaName = formatSchemaIdentifierForSql(normalizedSchemaName);
     if (!sqlSchemaName) {
         return queryText;
     }
 
-    return queryText.replace(/(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm, (match, prefix, tableName) => {
-        return `${prefix}${sqlSchemaName}.${tableName}`;
-    });
+    // FOE is environment-scoped exactly like the normal *_r audit tables.
+    // Route any legacy/current explicit FOE environment qualifier through the
+    // runtime schema selected by NGAT_ENV. This keeps old SQL readable while
+    // guaranteeing dev -> [dev], staging -> [stag], and prod -> [dbo].
+    const foeScopedSql = queryText.replace(
+        /(?:\[(?:dbo|dev|stag)\]|(?:dbo|dev|stag))\s*\.\s*\[(Fode[A-Za-z0-9_]*)\]/gi,
+        (_match, tableName) => `${sqlSchemaName}.[${tableName}]`
+    );
+
+    const auditScopedSql = foeScopedSql.replace(
+        /(^|[^.\w])([A-Za-z][A-Za-z0-9_]*_r)\b/gm,
+        (match, prefix, tableName) => `${prefix}${sqlSchemaName}.${tableName}`
+    );
+
+    // Defense in depth: a non-production process must never execute an
+    // explicitly dbo-qualified FOE query even if a future query shape escapes
+    // the rewrite above.
+    if (
+        normalizedSchemaName.toLowerCase() !== PRODUCTION_SCHEMA.toLowerCase()
+        && /(?:\[dbo\]|dbo)\s*\.\s*\[Fode[A-Za-z0-9_]*\]/i.test(auditScopedSql)
+    ) {
+        throw new Error(
+            `Blocked FOE query against dbo while NGAT audit schema is [${normalizedSchemaName}].`
+        );
+    }
+
+    return auditScopedSql;
 };
 
 const prepareSql = (queryText, { applyAuditSchema = false, schemaName = null } = {}) => {
@@ -367,14 +481,30 @@ const {
     secure: SMTP_SECURE = false,
     tls: SMTP_TLS
 } = smtpConfig;
+console.log('[SMTP DEBUG]', {
+    envHostPresent: Boolean(process.env.host),
+    configHostPresent: Boolean(smtpConfig.host),
+    smtpHostPresent: Boolean(SMTP_HOST)
+});
+// Locally in NGAT dev only, accept the corporate SMTP relay's untrusted
+// certificate while keeping STARTTLS encryption. Kubernetes never uses this
+// exception, even if its NGAT_ENV selects the dev audit schema.
+const allowLocalSmtpUntrustedCert = !runningInKubernetes
+    && process.env.NODE_ENV !== 'production'
+    && configuredEnvironmentMode === 'dev';
+if (allowLocalSmtpUntrustedCert) {
+    console.warn('[NGAT SMTP] Local dev only: SMTP certificate verification is disabled.');
+}
 const smtpTransport = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
-    tls: SMTP_TLS
+    tls: allowLocalSmtpUntrustedCert
+        ? { ...(SMTP_TLS || {}), rejectUnauthorized: false }
+        : SMTP_TLS
 });
 
-const HARD_CODED_NETWORK_ID = 'N35589';
+// No hardcoded identity is accepted in the deployed application.
 
 const escapeHtmlForDebug = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -440,24 +570,24 @@ const getRequestEnvironmentHost = (req) => {
 const buildAuditorFileUploadDiagnostics = (req, { auditSchema = null, auditorId = null } = {}) => {
     const uploadedFiles = getAuditorUploadFilesFromRequest(req);
     return {
-    requestHost: getRequestEnvironmentHost(req),
-    environmentMode: getCurrentRequestContext()?.environmentMode || getEnvironmentModeForHost(getRequestEnvironmentHost(req)),
-    auditSchema,
-    auditorId,
-    method: req.method,
-    originalUrl: req.originalUrl,
-    protocol: req.protocol,
-    secure: req.secure,
-    hostname: req.hostname,
-    ip: req.ip,
-    contentType: req.get('content-type') || null,
-    contentLength: req.get('content-length') || null,
-    userAgent: req.get('user-agent') || null,
-    fileCount: uploadedFiles.length,
-    fileNames: uploadedFiles.map((file) => file.originalname || null),
-    fileSizes: uploadedFiles.map((file) => file.size || null),
-    mimeTypes: uploadedFiles.map((file) => file.mimetype || null)
-};
+        requestHost: getRequestEnvironmentHost(req),
+        environmentMode: getCurrentRequestContext()?.environmentMode || getEnvironmentModeForHost(getRequestEnvironmentHost(req)),
+        auditSchema,
+        auditorId,
+        method: req.method,
+        originalUrl: req.originalUrl,
+        protocol: req.protocol,
+        secure: req.secure,
+        hostname: req.hostname,
+        ip: req.ip,
+        contentType: req.get('content-type') || null,
+        contentLength: req.get('content-length') || null,
+        userAgent: req.get('user-agent') || null,
+        fileCount: uploadedFiles.length,
+        fileNames: uploadedFiles.map((file) => file.originalname || null),
+        fileSizes: uploadedFiles.map((file) => file.size || null),
+        mimeTypes: uploadedFiles.map((file) => file.mimetype || null)
+    };
 };
 
 const serializeUploadError = (error) => ({
@@ -639,40 +769,18 @@ const buildAuthTransportDebug = (req) => {
     return {
         backendSeesAuthorizationHeader: authorization.present,
         authorizationScheme: authorization.scheme,
-        authorizationPreview: authorization.preview,
+        authorizationPreview: authorization.present ? '<redacted>' : null,
         backendSeesProxyAuthorizationHeader: proxyAuthorization.present,
         proxyAuthorizationScheme: proxyAuthorization.scheme,
         populatedIdentityFields,
         backendSeesForwardedIdentity: populatedIdentityFields.length > 0,
         backendSeesAuthType: Boolean(authCandidates.x_auth_type || authCandidates.x_client_auth_type),
-        note: 'Authorization headers are often terminated by IIS, so missing Authorization does not prove Kerberos failed. Forwarded identity headers are the main signal for the proxied Node app. X-Client-Auth-User is a browser-fetched fallback from the IIS-hosted auth endpoint.'
+        forwardedAccessTokenPresent: Boolean(getForwardedAccessToken(req)),
+        note: 'Only a delegated Graph US Government access token can identify a user. IIS and browser identity headers are ignored.'
     };
 };
 
-const getDerivedNetworkIdFromRequest = (req) => {
-    const authCandidates = getAuthCandidateHeaders(req);
-    const sources = [
-        authCandidates.x_auth_header,
-        authCandidates.x_auth_user,
-        authCandidates.x_logon_user,
-        authCandidates.x_remote_user,
-        authCandidates.auth_user,
-        authCandidates.remote_user,
-        authCandidates.x_iis_windowsauthuserid,
-        authCandidates.x_iisnode_auth_user,
-        authCandidates.x_forwarded_user,
-        authCandidates.x_client_auth_user
-    ];
-
-    for (const source of sources) {
-        const normalized = normalizePotentialNetworkId(source);
-        if (normalized) {
-            return normalized;
-        }
-    }
-
-    return null;
-};
+const getDerivedNetworkIdFromRequest = (req) => req.ngatResolvedNetworkId || null;
 
 const buildEnvDebugPayload = () => Object.fromEntries(
     Object.entries(process.env)
@@ -702,7 +810,7 @@ const summarizeRowsForAuthLog = (rows, keys) => (
 
 const buildAuthRequestSummary = (req) => {
     const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
-    const effectiveNetworkId = derivedNetworkId || HARD_CODED_NETWORK_ID || null;
+    const effectiveNetworkId = derivedNetworkId || null;
     const requestHost = getRequestEnvironmentHost(req);
     const requestContext = getCurrentRequestContext();
     const authTransport = buildAuthTransportDebug(req);
@@ -715,7 +823,8 @@ const buildAuthRequestSummary = (req) => {
         auditSchema: requestContext?.auditSchema || getDatabaseSchemaForHost(requestHost),
         derivedNetworkId,
         effectiveNetworkId,
-        usedHardcodedFallback: !derivedNetworkId && Boolean(HARD_CODED_NETWORK_ID),
+        usedHardcodedFallback: req.ngatIdentitySource === 'local-dev-employee-id',
+        identitySource: req.ngatIdentitySource || null,
         authFields: authTransport.populatedIdentityFields
     };
 };
@@ -770,8 +879,8 @@ const buildHeaderDebugPayload = (req) => {
             remoteAddress: req.socket?.remoteAddress ?? null,
             remotePort: req.socket?.remotePort ?? null
         },
-        headers: req.headers,
-        rawHeaders: req.rawHeaders,
+        headers: Object.fromEntries(Object.entries(req.headers).map(([name, value]) => [name, /authorization|cookie|token|secret|password|api-key/i.test(name) ? '<redacted>' : value])),
+        rawHeaders: '<redacted>',
         authTransport: buildAuthTransportDebug(req),
         environment: {
             requestHost,
@@ -784,26 +893,32 @@ const buildHeaderDebugPayload = (req) => {
             normalizedCandidates: Object.fromEntries(
                 Object.entries(authCandidates).map(([name, value]) => [name, normalizePotentialNetworkId(value)])
             ),
-            selectedByCurrentCode: getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID,
-            hardcodedFallback: HARD_CODED_NETWORK_ID
+            selectedByCurrentCode: getDerivedNetworkIdFromRequest(req),
+            hardcodedFallback: null
         }
     };
 };
 
 const getNetworkIdFromRequest = (req) => {
-    return getDerivedNetworkIdFromRequest(req) || HARD_CODED_NETWORK_ID;
+    return getDerivedNetworkIdFromRequest(req);
 };
 
 app.use((req, _res, next) => {
-    const requestHost = getRequestEnvironmentHost(req);
-    const environmentMode = getEnvironmentModeForHost(requestHost);
-    const auditSchema = getDatabaseSchemaForHost(requestHost);
-
     requestContextStorage.run({
-        requestHost,
-        environmentMode,
-        auditSchema
+        requestHost: getRequestEnvironmentHost(req), // for diagnostics, NOT mode selection
+        environmentMode: configuredEnvironmentMode,
+        auditSchema: configuredAuditSchema,
+        identitySource: req.ngatIdentitySource || null
     }, next);
+});
+
+// The React banner reads the single runtime NGAT_ENV; no Vite or hostname guess.
+app.get('/api/environment', (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+        mode: configuredEnvironmentMode,
+        auditSchema: configuredAuditSchema
+    });
 });
 
 app.get(['/testheaders', '/api/testheaders'], (req, res) => {
@@ -909,35 +1024,29 @@ const getRosterRowsByMyIds = async (myIds = []) => {
 };
 
 const getCurrentUserInfo = async (req, { auditSchema } = {}) => {
-    const derivedNetworkId = getDerivedNetworkIdFromRequest(req);
-    const networkId = derivedNetworkId || HARD_CODED_NETWORK_ID;
+    const identity = await getEntraIdentity(req);
     const resolvedAuditSchema = auditSchema || getAuditSchemaForRequest(req);
-    if (!networkId) {
-        logAuthFailure('missing-network-id', req, {
-            auditSchema: resolvedAuditSchema
-        });
-        return null;
-    }
-
-    const rosterResult = await rosterPool.query(
-        `SELECT TOP 1 rostername, myid, networkid, email
-         FROM roster_r
-         WHERE networkid = $1`,
-        [networkId]
-    );
-    const rosterRow = rosterResult.rows[0];
-    if (!rosterRow) {
-        const diagnosticRosterResult = await rosterPool.query(
-            `SELECT TOP 3 rostername, myid, networkid
-             FROM roster_r
-             WHERE LOWER(LTRIM(RTRIM(networkid))) = LOWER(LTRIM(RTRIM($1)))
-                OR LOWER(LTRIM(RTRIM(myid))) = LOWER(LTRIM(RTRIM($1)))`,
-            [networkId]
+    let rosterRow = null;
+    // Only these three SQL columns can be selected, never an untrusted header.
+    for (const candidate of identity.candidates) {
+        if (!['networkid', 'myid', 'email'].includes(candidate.column)) continue;
+        const result = await rosterPool.query(
+            `SELECT TOP 1 rostername, myid, networkid, email
+             FROM roster_r WHERE LOWER(LTRIM(RTRIM([${candidate.column}]))) = LOWER(LTRIM(RTRIM($1)))`,
+            [candidate.value]
         );
+        if (result.rows[0]) {
+            rosterRow = result.rows[0];
+            req.ngatResolvedNetworkId = rosterRow.networkid;
+            req.ngatRosterMatchedBy = candidate.column;
+            break;
+        }
+    }
+    if (!rosterRow) {
         logAuthFailure('roster-miss', req, {
             auditSchema: resolvedAuditSchema,
-            requestedNetworkId: networkId,
-            diagnosticRosterMatches: summarizeRowsForAuthLog(diagnosticRosterResult.rows, ['rostername', 'myid', 'networkid'])
+            entraObjectId: identity.entraObjectId || null,
+            candidateCount: identity.candidates.length
         });
         return null;
     }
@@ -1068,23 +1177,67 @@ const sanitizeFilename = (name) => {
     return String(name || 'file').replace(/[/\\]/g, '_').replace(/"/g, '');
 };
 
+const decorateEmailForEnvironment = ({ subject, body }) => {
+    if (configuredEnvironmentMode === 'prod') {
+        return { subject, body };
+    }
+
+    const isDev = configuredEnvironmentMode === 'dev';
+    const label = isDev ? 'NGAT DEV' : 'NGAT STAGING';
+    const backgroundColor = isDev ? '#dc2626' : '#d97706';
+    const environmentName = isDev ? 'DEVELOPMENT' : 'STAGING';
+    const decoratedSubject = `[${label}] ${subject}`;
+    const banner = `
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width: 100%; border-collapse: collapse; margin: 0 0 20px 0;">
+  <tr>
+    <td bgcolor="${backgroundColor}" style="background-color: ${backgroundColor}; color: #ffffff; padding: 18px 20px; font-family: Arial, sans-serif; font-size: 18px; font-weight: 800; line-height: 1.35; text-align: center;">
+      ${environmentName} ENVIRONMENT — NOT PRODUCTION
+      <div style="font-size: 14px; font-weight: 600; margin-top: 6px;">
+        The action described in this email was taken in NGAT ${environmentName.toLowerCase()} mode.
+      </div>
+    </td>
+  </tr>
+</table>`.trim();
+
+    return {
+        subject: decoratedSubject,
+        body: `${banner}\n${body || ''}`
+    };
+};
+
 const sendSmtpEmail = async ({ toAddress, ccAddress = null, subject, body }) => {
+    const identitySource = getCurrentRequestContext()?.identitySource || null;
+    if (identitySource === 'local-dev-employee-id') {
+        console.warn('[NGAT SMTP] Email suppressed because the request is using the local hardcoded development identity.', {
+            toAddress,
+            subject
+        });
+        return { suppressed: true, reason: 'local-dev-employee-id' };
+    }
+
     if (!SMTP_HOST || SMTP_HOST === 'replace me') {
         throw new Error('SMTP host not configured.');
     }
+
+    const decorated = decorateEmailForEnvironment({ subject, body });
     await smtpTransport.sendMail({
         from: SMTP_FROM,
         to: toAddress,
         cc: ccAddress || undefined,
-        subject,
-        html: body
+        subject: decorated.subject,
+        html: decorated.body
     });
+    return { suppressed: false };
 };
 
 const queueEmail = async (_client, { toAddress, ccAddress = null, subject, body }) => {
     try {
-        await sendSmtpEmail({ toAddress, ccAddress, subject, body });
-        return { success: true };
+        const sendResult = await sendSmtpEmail({ toAddress, ccAddress, subject, body });
+        return {
+            success: true,
+            suppressed: Boolean(sendResult?.suppressed),
+            suppressReason: sendResult?.reason || null
+        };
     } catch (error) {
         console.error(`SMTP send failed for ${toAddress}:`, error);
         return {
@@ -1212,6 +1365,23 @@ const buildEditAuditNotificationEmail = ({ scheduleId, reviewLink, planLink, aud
         ],
         sectionTitle: 'Next Steps',
         sectionBody: 'Review the updated audit details and continue through the remaining audit steps as needed.',
+        footer: 'You are receiving this email because you are listed as an auditor for this audit.'
+    });
+    return { subject, body };
+};
+
+const buildCancelledAuditNotificationEmail = ({ scheduleId, reviewLink, auditTitle }) => {
+    const subject = auditTitle
+        ? `Audit ${scheduleId} - ${auditTitle} has been cancelled`
+        : `Audit ${scheduleId} has been cancelled`;
+    const body = buildEmailShell({
+        title: `Audit ${scheduleId} has been cancelled`,
+        lead: auditTitle || `Audit ${scheduleId}`,
+        buttons: [
+            { href: reviewLink, label: 'Review the Audit', backgroundColor: '#e5e7eb', textColor: '#1f2937' }
+        ],
+        sectionTitle: 'Next Steps',
+        sectionBody: 'Review the cancelled audit details for your records.',
         footer: 'You are receiving this email because you are listed as an auditor for this audit.'
     });
     return { subject, body };
@@ -1391,8 +1561,8 @@ const AUDIT_SELECT_BASE_COLUMNS = [
     'intextid',
     'functionid',
     'standardids',
-    'statusid',
     'stage',
+    'stagebeforeinactive',
     'expectedstartdate',
     'expectedcompletiondate',
     'startdate',
@@ -1493,8 +1663,8 @@ const parseAuditRow = (row) => {
         intExtId: row.intextid,
         functionId: normalizeNumberArray(row.functionid),
         standardIds: normalizeNumberArray(row.standardids),
-        statusId: row.statusid,
         stage: row.stage,
+        stageBeforeInactive: row.stagebeforeinactive,
         expectedStartDate: row.expectedstartdate,
         expectedCompletionDate: row.expectedcompletiondate,
         startDate: row.startdate,
@@ -1622,7 +1792,7 @@ const canAdminEditAudit = ({ audit, userInfo }) => {
     return auditDivisionIds.includes(Number(userInfo.divisionid));
 };
 
-const canEditAudit = ({ audit, userInfo }) => {
+const canManageAudit = ({ audit, userInfo }) => {
     if (canAdminEditAudit({ audit, userInfo })) {
         return true;
     }
@@ -1633,6 +1803,12 @@ const canEditAudit = ({ audit, userInfo }) => {
         : [];
     return Number(audit.leadAuditorId) === auditorId || additionalAuditorIds.includes(auditorId);
 };
+
+const canEditAudit = ({ audit, userInfo }) => (
+    Number(audit?.stage) !== -2
+    && Number(audit?.stage) !== -3
+    && canManageAudit({ audit, userInfo })
+);
 
 const canViewAuditByProgram = ({ audit, userInfo }) => {
     if (!userInfo?.auditorid) return false;
@@ -1648,10 +1824,10 @@ const hasCuiAccess = ({ audit, userInfo }) => {
 };
 
 const canAccessAudit = ({ audit, userInfo, report = false, approverScheduleIds = new Set() }) => {
-    if (!userInfo) return false;
+    if (!userInfo || Number(audit?.stage) === -3) return false;
 
     const myId = userInfo.myid;
-    const isAuditor = canEditAudit({ audit, userInfo });
+    const isAuditor = canManageAudit({ audit, userInfo });
     const isProgramAuditor = canViewAuditByProgram({ audit, userInfo });
 
     const isAdmin = canAdminEditAudit({ audit, userInfo });
@@ -1677,7 +1853,7 @@ const getAuditForAccessCheck = async (client, scheduleId) => {
         `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, CAST(locked AS INT) AS locked FROM audits_r WHERE scheduleid = $1`,
         [Number(scheduleId)]
     );
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0 || Number(result.rows[0].stage) === -3) return null;
     return parseAuditRow(result.rows[0]);
 };
 
@@ -1749,64 +1925,251 @@ app.get(['/api/healthz'], async (_req, res) => {
     res.status(result.ok ? 200 : 500).json(result);
 });
 
-// Get nonconformances for a specific schedule
-app.get('/api/nonconformances/:scheduleId', async (req, res) => {
-    try {
-        const { scheduleId } = req.params;
-        const auditId = parseInt(scheduleId, 10);
-        const userInfo = await getCurrentUserInfo(req);
-        const audit = await getAuditForAccessCheck(pool, auditId);
-        let approverScheduleIds = new Set();
+// Normalized audit question/finding model. The legacy /nonconformances API
+// remains as a flattened finding view so reports and metrics can consume findings
+// without needing to know how Conduct Audit groups them.
+const mapAuditFindingRow = (row) => ({
+    ncId: row.findingid,
+    findingId: row.findingid,
+    questionId: row.questionid,
+    scheduleId: row.scheduleid,
+    type: row.type,
+    sourceId: row.sourceid,
+    section: row.section,
+    subsection: row.subsection,
+    question: row.question,
+    questionSortOrder: row.questionsortorder,
+    findingSortOrder: row.findingsortorder,
+    responseNumber: Number(row.responsenumber ?? 1),
+    findingType: row.findingtype,
+    severity: row.severity,
+    response: row.response,
+    auditorComment: row.auditorcomment,
+    details: row.details,
+    AIN: row.ain,
+    division: parseMaybeJsonArray(row.division),
+    sector: parseMaybeJsonArray(row.sector),
+    qma: parseMaybeJsonArray(row.qma),
+    other: parseMaybeJsonArray(row.other),
+    files: parseMaybeJsonArray(row.files),
+    createdAt: row.findingcreatedat,
+    updatedAt: row.findingupdatedat
+});
 
-        if (userInfo?.myid) {
-            const approvalsResult = await pool.query(
-                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
-                [auditId, userInfo.myid]
-            );
-            if (approvalsResult.rows.length > 0) {
-                approverScheduleIds.add(auditId);
-            }
+const loadAuditQuestions = async (queryable, scheduleId) => {
+    const result = await queryable.query(
+        `SELECT
+            q.questionid,
+            q.scheduleid,
+            q.[type],
+            q.sourceid,
+            q.section,
+            q.subsection,
+            q.question,
+            q.sortorder AS questionsortorder,
+            q.createdat AS questioncreatedat,
+            q.updatedat AS questionupdatedat,
+            f.findingid,
+            f.findingtype,
+            f.response,
+            f.auditorcomment,
+            f.details,
+            f.ain,
+            f.division,
+            f.sector,
+            f.qma,
+            f.other,
+            f.files,
+            f.severity,
+            f.sortorder AS findingsortorder,
+            f.createdat AS findingcreatedat,
+            f.updatedat AS findingupdatedat
+         FROM audit_questions_r AS q
+         LEFT JOIN audit_findings_r AS f ON f.questionid = q.questionid
+         WHERE q.scheduleid = $1
+         ORDER BY q.sortorder, q.questionid, f.sortorder, f.findingid`,
+        [scheduleId]
+    );
+
+    const questionsById = new Map();
+    for (const row of result.rows) {
+        const questionId = Number(row.questionid);
+        if (!questionsById.has(questionId)) {
+            questionsById.set(questionId, {
+                questionId,
+                scheduleId: Number(row.scheduleid),
+                type: row.type,
+                sourceId: row.sourceid === null || row.sourceid === undefined ? null : Number(row.sourceid),
+                section: row.section,
+                subsection: row.subsection,
+                question: row.question || '',
+                sortOrder: Number(row.questionsortorder ?? 0),
+                createdAt: row.questioncreatedat,
+                updatedAt: row.questionupdatedat,
+                findings: []
+            });
         }
 
-        if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        if (row.findingid !== null && row.findingid !== undefined) {
+            questionsById.get(questionId).findings.push({
+                findingId: Number(row.findingid),
+                ncId: Number(row.findingid),
+                findingType: row.findingtype,
+                severity: row.severity,
+                response: row.response || '',
+                auditorComment: row.auditorcomment || '',
+                details: row.details || '',
+                AIN: row.ain || '',
+                division: parseMaybeJsonArray(row.division),
+                sector: parseMaybeJsonArray(row.sector),
+                qma: parseMaybeJsonArray(row.qma),
+                other: parseMaybeJsonArray(row.other),
+                files: parseMaybeJsonArray(row.files),
+                sortOrder: Number(row.findingsortorder ?? 0),
+                createdAt: row.findingcreatedat,
+                updatedAt: row.findingupdatedat
+            });
+        }
+    }
+
+    return [...questionsById.values()];
+};
+
+const flattenAuditQuestions = (questions) => (questions || []).flatMap((question) =>
+    (question.findings || []).map((finding, index) => ({
+        ncId: finding.findingId,
+        findingId: finding.findingId,
+        questionId: question.questionId,
+        scheduleId: question.scheduleId,
+        type: question.type,
+        sourceId: question.sourceId,
+        section: question.section,
+        subsection: question.subsection,
+        question: question.question,
+        questionSortOrder: question.sortOrder,
+        findingSortOrder: finding.sortOrder,
+        responseNumber: index + 1,
+        findingType: finding.findingType,
+        severity: finding.severity,
+        response: finding.response,
+        auditorComment: finding.auditorComment,
+        details: finding.details,
+        AIN: finding.AIN,
+        division: finding.division,
+        sector: finding.sector,
+        qma: finding.qma,
+        other: finding.other,
+        files: finding.files,
+        createdAt: finding.createdAt,
+        updatedAt: finding.updatedAt
+    }))
+);
+
+const attachEvidenceFileMetadata = async (queryable, findings) => {
+    const fileIds = [...new Set((findings || []).flatMap((finding) => finding.files || [])
+        .map(Number)
+        .filter((fileId) => Number.isSafeInteger(fileId) && fileId > 0))];
+    if (fileIds.length === 0) {
+        for (const finding of findings || []) finding.evidenceFiles = [];
+        return;
+    }
+
+    const placeholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
+    const result = await queryable.query(
+        `SELECT fileId, fileName, fileSize
+         FROM auditor_files_r
+         WHERE fileId IN (${placeholders})`,
+        fileIds
+    );
+    const evidenceById = new Map(result.rows.map((file) => [
+        Number(file.fileid),
+        {
+            fileId: Number(file.fileid),
+            fileName: file.filename,
+            fileSize: file.filesize
+        }
+    ]));
+
+    for (const finding of findings || []) {
+        finding.evidenceFiles = [...new Set((finding.files || []).map(Number))]
+            .map((fileId) => evidenceById.get(fileId))
+            .filter(Boolean);
+    }
+};
+
+const getAuditQuestionsReadAccess = async (req, res, auditId) => {
+    const userInfo = await getCurrentUserInfo(req);
+    const audit = await getAuditForAccessCheck(pool, auditId);
+    let approverScheduleIds = new Set();
+
+    if (userInfo?.myid) {
+        const approvalsResult = await pool.query(
+            'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+            [auditId, userInfo.myid]
+        );
+        if (approvalsResult.rows.length > 0) approverScheduleIds.add(auditId);
+    }
+
+    if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    if (!hasCuiAccess({ audit, userInfo })) {
+        sendCuiAccessDenied(res, { req, userInfo });
+        return null;
+    }
+    return { audit, userInfo };
+};
+
+// Conduct Audit consumes the nested representation so one question can own
+// multiple independent responses/findings.
+app.get('/api/audit-questions/:scheduleId', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        if (!Number.isSafeInteger(auditId) || auditId <= 0) {
             return res.status(404).json({ success: false, error: 'Audit not found' });
         }
-        if (!hasCuiAccess({ audit, userInfo })) {
-            return sendCuiAccessDenied(res, { req, userInfo });
+        if (!await getAuditQuestionsReadAccess(req, res, auditId)) return;
+        const questions = await loadAuditQuestions(pool, auditId);
+
+        if (req.query.includeEvidenceFiles === 'true') {
+            const flattened = flattenAuditQuestions(questions);
+            await attachEvidenceFileMetadata(pool, flattened);
+            const evidenceByFindingId = new Map(
+                flattened.map((finding) => [Number(finding.findingId), finding.evidenceFiles || []])
+            );
+            questions.forEach((question) => {
+                (question.findings || []).forEach((finding) => {
+                    finding.evidenceFiles = evidenceByFindingId.get(Number(finding.findingId)) || [];
+                });
+            });
         }
 
-        const result = await pool.query(
-            'SELECT * FROM nonconformances_r WHERE scheduleId = $1 ORDER BY ncId',
-            [auditId]
-        );
+        res.json(questions);
+    } catch (error) {
+        console.error('Error fetching audit questions:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
+    }
+});
 
-        // Parse array fields back to arrays and convert column names to camelCase
-        const nonconformances = result.rows.map(nc => ({
-            ncId: nc.ncid,
-            scheduleId: nc.scheduleid,
-            type: nc.type,
-            findingType: nc.findingtype,
-            severity: nc.severity,
-            section: nc.section,
-            subsection: nc.subsection,
-            question: nc.question,
-            response: nc.response,
-            auditorComment: nc.auditorcomment,
-            details: nc.details,
-            AIN: nc.ain,
-            division: parseMaybeJsonArray(nc.division),
-            sector: parseMaybeJsonArray(nc.sector),
-            qma: parseMaybeJsonArray(nc.qma),
-            other: parseMaybeJsonArray(nc.other),
-            files: parseMaybeJsonArray(nc.files),
-            createdAt: nc.createdat,
-            updatedAt: nc.updatedat
-        }));
+// Flatten findings for reports, metrics, Nonconformities, and compatibility.
+app.get('/api/nonconformances/:scheduleId', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        if (!Number.isSafeInteger(auditId) || auditId <= 0) {
+            return res.status(404).json({ success: false, error: 'Audit not found' });
+        }
+        if (!await getAuditQuestionsReadAccess(req, res, auditId)) return;
 
-        res.json(nonconformances);
+        const questions = await loadAuditQuestions(pool, auditId);
+        const findings = flattenAuditQuestions(questions);
+        if (req.query.includeEvidenceFiles === 'true') {
+            await attachEvidenceFileMetadata(pool, findings);
+        }
+        res.json(findings);
     } catch (error) {
         console.error('Error fetching nonconformances:', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -2098,59 +2461,123 @@ app.post('/api/auditor-files/:fileId/active', async (req, res) => {
 });
 
 // Download all objective evidence files for an audit (zip)
+// Both the audit-wide ZIP and question-specific downloads use the same report
+// access rules; file ownership alone must not grant access to another audit.
+const getObjectiveEvidenceAudit = async (req, res, auditId) => {
+    if (!Number.isSafeInteger(auditId) || auditId <= 0) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    const userInfo = await getCurrentUserInfo(req);
+    const audit = await getAuditForAccessCheck(pool, auditId);
+    let approverScheduleIds = new Set();
+    if (userInfo?.myid) {
+        const approvalsResult = await pool.query(
+            'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
+            [auditId, userInfo.myid]
+        );
+        if (approvalsResult.rows.length > 0) {
+            approverScheduleIds.add(auditId);
+        }
+    }
+    if (!audit || !userInfo || !canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
+        res.status(404).json({ success: false, error: 'Audit not found' });
+        return null;
+    }
+    if (!hasCuiAccess({ audit, userInfo })) {
+        sendCuiAccessDenied(res, { req, userInfo });
+        return null;
+    }
+    return audit;
+};
+
+// A file may be downloaded only if its ID is linked to this saved finding/response.
+app.get('/api/audits/:scheduleId/objective-evidence/:ncId/:fileId/download', async (req, res) => {
+    try {
+        const auditId = Number(req.params.scheduleId);
+        const ncId = Number(req.params.ncId);
+        const fileId = Number(req.params.fileId);
+        if (![auditId, ncId, fileId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+        if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
+
+        const findingResult = await pool.query(
+            `SELECT f.files
+             FROM audit_findings_r AS f
+             INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+             WHERE q.scheduleid = $1 AND f.findingid = $2`,
+            [auditId, ncId]
+        );
+        const linkedIds = findingResult.rows.length > 0
+            ? parseMaybeJsonArray(findingResult.rows[0].files).map(Number)
+            : [];
+        if (!linkedIds.includes(fileId)) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+
+        const fileResult = await pool.query(
+            'SELECT fileName, mimeType, fileData FROM auditor_files_r WHERE fileId = $1',
+            [fileId]
+        );
+        if (fileResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'File not found.' });
+        }
+        const file = fileResult.rows[0];
+        res.setHeader('Content-Type', file.mimetype || 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${sanitizeFilename(file.filename)}"`);
+        res.send(file.filedata);
+    } catch (error) {
+        console.error('Error downloading response objective evidence:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: 'Failed to download objective evidence.' });
+    }
+});
+
+// Omit filters to download all audit evidence. questionId aggregates every
+// response under one question; ncId/findingId limits the ZIP to one response.
 app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
     try {
-        const { scheduleId } = req.params;
-        const auditId = parseInt(scheduleId, 10);
-        const auditSchema = getAuditSchemaForRequest(req);
-        const userInfo = await getCurrentUserInfo(req, { auditSchema });
+        const auditId = Number(req.params.scheduleId);
+        const questionId = req.query.questionId === undefined ? null : Number(req.query.questionId);
+        const findingIdValue = req.query.findingId ?? req.query.ncId;
+        const findingId = findingIdValue === undefined ? null : Number(findingIdValue);
 
-        if (!userInfo || Number.isNaN(auditId)) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
+        if (questionId !== null && (!Number.isSafeInteger(questionId) || questionId <= 0)) {
+            return res.status(400).json({ success: false, error: 'Valid question ID required.' });
+        }
+        if (findingId !== null && (!Number.isSafeInteger(findingId) || findingId <= 0)) {
+            return res.status(400).json({ success: false, error: 'Valid finding ID required.' });
+        }
+        if (questionId !== null && findingId !== null) {
+            return res.status(400).json({ success: false, error: 'Choose either questionId or findingId, not both.' });
+        }
+        if (!await getObjectiveEvidenceAudit(req, res, auditId)) return;
+
+        let evidenceQuery = `
+            SELECT f.findingid, f.files
+            FROM audit_findings_r AS f
+            INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+            WHERE q.scheduleid = $1`;
+        const params = [auditId];
+
+        if (questionId !== null) {
+            evidenceQuery += ' AND q.questionid = $2';
+            params.push(questionId);
+        } else if (findingId !== null) {
+            evidenceQuery += ' AND f.findingid = $2';
+            params.push(findingId);
         }
 
-        const auditResult = await pool.queryWithSchema(
-            auditSchema,
-            `SELECT *, locked::int as locked FROM audits_r WHERE scheduleid = $1`,
-            [auditId]
-        );
-        if (auditResult.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
+        const evidenceResult = await pool.query(evidenceQuery, params);
+        if ((questionId !== null || findingId !== null) && evidenceResult.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Question or finding not found.' });
         }
 
-        const audit = parseAuditRow(auditResult.rows[0]);
-        let approverScheduleIds = new Set();
-        if (userInfo.myid) {
-            const approvalsResult = await pool.queryWithSchema(
-                auditSchema,
-                'SELECT scheduleid FROM approvals_r WHERE scheduleid = $1 AND approvermyid = $2',
-                [auditId, userInfo.myid]
-            );
-            if (approvalsResult.rows.length > 0) {
-                approverScheduleIds.add(auditId);
-            }
-        }
-
-        if (!canAccessAudit({ audit, userInfo, report: true, approverScheduleIds })) {
-            return res.status(404).json({ success: false, error: 'Audit not found' });
-        }
-        if (!hasCuiAccess({ audit, userInfo })) {
-            return sendCuiAccessDenied(res, { req, userInfo, auditSchema });
-        }
-
-        const ncResult = await pool.queryWithSchema(
-            auditSchema,
-            'SELECT files FROM nonconformances_r WHERE scheduleId = $1',
-            [auditId]
-        );
         const fileIdSet = new Set();
-        ncResult.rows.forEach((row) => {
-            const ids = parseMaybeJsonArray(row.files);
-            ids.forEach((id) => {
+        evidenceResult.rows.forEach((row) => {
+            parseMaybeJsonArray(row.files).forEach((id) => {
                 const parsed = Number(id);
-                if (Number.isFinite(parsed)) {
-                    fileIdSet.add(parsed);
-                }
+                if (Number.isSafeInteger(parsed) && parsed > 0) fileIdSet.add(parsed);
             });
         });
 
@@ -2160,8 +2587,7 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         }
 
         const fileIdPlaceholders = fileIds.map((_, idx) => `$${idx + 1}`).join(', ');
-        const filesResult = await pool.queryWithSchema(
-            auditSchema,
+        const filesResult = await pool.query(
             `SELECT fileId, fileName, mimeType, fileData
              FROM auditor_files_r
              WHERE fileId IN (${fileIdPlaceholders})`,
@@ -2172,7 +2598,11 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
             return res.status(404).json({ success: false, error: 'No objective evidence files found.' });
         }
 
-        const zipName = `audit-${auditId}-objective-evidence.zip`;
+        const zipName = questionId !== null
+            ? `audit-${auditId}-question-${questionId}-objective-evidence.zip`
+            : findingId !== null
+                ? `audit-${auditId}-finding-${findingId}-objective-evidence.zip`
+                : `audit-${auditId}-objective-evidence.zip`;
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
 
@@ -2187,15 +2617,28 @@ app.get('/api/audits/:scheduleId/objective-evidence.zip', async (req, res) => {
         });
         archive.pipe(res);
 
+        const usedNames = new Set();
         filesResult.rows.forEach((file) => {
             const safeName = sanitizeFilename(file.filename || `file-${file.fileid}`);
-            archive.append(file.filedata, { name: safeName });
+            let archiveName = safeName;
+            if (usedNames.has(archiveName.toLowerCase())) {
+                const dot = safeName.lastIndexOf('.');
+                const stem = dot > 0 ? safeName.slice(0, dot) : safeName;
+                const extension = dot > 0 ? safeName.slice(dot) : '';
+                archiveName = `${stem}-${file.fileid}${extension}`;
+                let suffix = 2;
+                while (usedNames.has(archiveName.toLowerCase())) {
+                    archiveName = `${stem}-${file.fileid}-${suffix++}${extension}`;
+                }
+            }
+            usedNames.add(archiveName.toLowerCase());
+            archive.append(file.filedata, { name: archiveName });
         });
 
         await archive.finalize();
     } catch (error) {
         console.error('Error building objective evidence zip:', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -2368,119 +2811,417 @@ app.post('/api/submit-improvement', async (req, res) => {
     }
 });
 
-// Get all nonconformances
+// Get all findings across non-archived audits. This intentionally keeps the
+// legacy endpoint name because metrics/report consumers already use it.
 app.get('/api/nonconformances', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM nonconformances_r ORDER BY ncId');
-
-        // Parse array fields back to arrays and convert column names to camelCase
-        const nonconformances = result.rows.map(nc => ({
-            ncId: nc.ncid,
-            scheduleId: nc.scheduleid,
-            type: nc.type,
-            findingType: nc.findingtype,
-            severity: nc.severity,
-            section: nc.section,
-            subsection: nc.subsection,
-            question: nc.question,
-            response: nc.response,
-            auditorComment: nc.auditorcomment,
-            details: nc.details,
-            AIN: nc.ain,
-            division: parseMaybeJsonArray(nc.division),
-            sector: parseMaybeJsonArray(nc.sector),
-            qma: parseMaybeJsonArray(nc.qma),
-            other: parseMaybeJsonArray(nc.other),
-            files: parseMaybeJsonArray(nc.files),
-            createdAt: nc.createdat,
-            updatedAt: nc.updatedat
-        }));
-
-        res.json(nonconformances);
+        const result = await pool.query(
+            `SELECT
+                q.questionid,
+                q.scheduleid,
+                q.[type],
+                q.sourceid,
+                q.section,
+                q.subsection,
+                q.question,
+                q.sortorder AS questionsortorder,
+                f.findingid,
+                f.findingtype,
+                f.response,
+                f.auditorcomment,
+                f.details,
+                f.ain,
+                f.division,
+                f.sector,
+                f.qma,
+                f.other,
+                f.files,
+                f.severity,
+                f.sortorder AS findingsortorder,
+                ROW_NUMBER() OVER (
+                    PARTITION BY q.questionid
+                    ORDER BY f.sortorder, f.findingid
+                ) AS responsenumber,
+                f.createdat AS findingcreatedat,
+                f.updatedat AS findingupdatedat
+             FROM audit_questions_r AS q
+             INNER JOIN audit_findings_r AS f ON f.questionid = q.questionid
+             INNER JOIN audits_r AS a ON a.scheduleid = q.scheduleid
+             WHERE a.stage <> -3
+             ORDER BY q.scheduleid, q.sortorder, q.questionid, f.sortorder, f.findingid`
+        );
+        res.json(result.rows.map(mapAuditFindingRow));
     } catch (error) {
         console.error('Error fetching all nonconformances:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// Save nonconformances for a specific schedule
-app.post('/api/save-nonconformances', async (req, res) => {
-    const client = await pool.connect();
+const asPositiveIntegerOrNull = (value) => {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+};
 
+const saveAuditQuestionsForSchedule = async (
+    client,
+    scheduleId,
+    questions,
+    {
+        deletedQuestionIds = [],
+        replaceOmittedQuestions = false,
+        replaceOmittedFindings = true
+    } = {}
+) => {
+    const normalizedScheduleId = asPositiveIntegerOrNull(scheduleId);
+    if (!normalizedScheduleId) throw new Error('Valid scheduleId is required.');
+    if (!Array.isArray(questions)) throw new Error('questions must be an array.');
+
+    const existingQuestionResult = await client.query(
+        'SELECT questionid FROM audit_questions_r WHERE scheduleid = $1',
+        [normalizedScheduleId]
+    );
+    const existingQuestionIds = new Set(existingQuestionResult.rows.map((row) => Number(row.questionid)));
+    const keptQuestionIds = new Set();
+
+    for (let questionIndex = 0; questionIndex < questions.length; questionIndex += 1) {
+        const question = questions[questionIndex] || {};
+        const type = String(question.type ?? '').trim();
+        if (!type) throw new Error('Every audit question requires a type.');
+
+        let questionId = asPositiveIntegerOrNull(question.questionId);
+        const sourceId = asPositiveIntegerOrNull(question.sourceId);
+        const section = question.section === null || question.section === undefined || question.section === ''
+            ? null : Number(question.section);
+        const subsection = question.subsection === null || question.subsection === undefined || question.subsection === ''
+            ? null : Number(question.subsection);
+        const sortOrder = Number.isFinite(Number(question.sortOrder))
+            ? Number(question.sortOrder) : questionIndex + 1;
+        const questionText = String(question.question ?? '');
+
+        if (questionId) {
+            if (!existingQuestionIds.has(questionId) || keptQuestionIds.has(questionId)) {
+                throw new Error('Question ID does not belong to this audit or was submitted more than once.');
+            }
+            const updateResult = await client.query(
+                `UPDATE audit_questions_r
+                 SET [type] = $1, sourceid = $2, section = $3, subsection = $4,
+                     question = $5, sortorder = $6, updatedat = CURRENT_TIMESTAMP
+                 WHERE questionid = $7 AND scheduleid = $8`,
+                [type, sourceId, section, subsection, questionText, sortOrder, questionId, normalizedScheduleId]
+            );
+            if (updateResult.rowCount !== 1) {
+                throw new Error('Failed to update an existing audit question.');
+            }
+        } else {
+            const insertResult = await client.query(
+                `INSERT INTO audit_questions_r
+                    (scheduleid, [type], sourceid, section, subsection, question, sortorder)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING questionid`,
+                [normalizedScheduleId, type, sourceId, section, subsection, questionText, sortOrder]
+            );
+            questionId = Number(insertResult.rows[0]?.questionid);
+            if (!Number.isSafeInteger(questionId)) {
+                throw new Error('Failed to create audit question.');
+            }
+        }
+        keptQuestionIds.add(questionId);
+
+        const existingFindingResult = await client.query(
+            'SELECT findingid FROM audit_findings_r WHERE questionid = $1',
+            [questionId]
+        );
+        const existingFindingIds = new Set(existingFindingResult.rows.map((row) => Number(row.findingid)));
+        const keptFindingIds = new Set();
+        const findings = Array.isArray(question.findings) ? question.findings : [];
+
+        for (let findingIndex = 0; findingIndex < findings.length; findingIndex += 1) {
+            const finding = findings[findingIndex] || {};
+            let findingId = asPositiveIntegerOrNull(finding.findingId ?? finding.ncId);
+            const findingType = finding.findingType === null || finding.findingType === undefined || finding.findingType === ''
+                ? null : Number(finding.findingType);
+            const findingSortOrder = Number.isFinite(Number(finding.sortOrder))
+                ? Number(finding.sortOrder) : findingIndex + 1;
+            const values = [
+                findingType,
+                String(finding.response ?? ''),
+                String(finding.auditorComment ?? ''),
+                JSON.stringify(Array.isArray(finding.division) ? finding.division : []),
+                JSON.stringify(Array.isArray(finding.sector) ? finding.sector : []),
+                JSON.stringify(Array.isArray(finding.qma) ? finding.qma : []),
+                JSON.stringify(Array.isArray(finding.other) ? finding.other : []),
+                JSON.stringify(Array.isArray(finding.files) ? finding.files : []),
+                findingSortOrder
+            ];
+
+            if (findingId) {
+                if (!existingFindingIds.has(findingId) || keptFindingIds.has(findingId)) {
+                    throw new Error('Finding ID does not belong to its question or was submitted more than once.');
+                }
+                const updateResult = await client.query(
+                    `UPDATE audit_findings_r
+                     SET findingtype = $1, response = $2, auditorcomment = $3,
+                         division = $4, sector = $5, qma = $6, other = $7,
+                         files = $8, sortorder = $9,
+                         details = CASE WHEN $1 = 1 THEN details ELSE N'' END,
+                         severity = CASE WHEN $1 = 1 THEN severity ELSE NULL END,
+                         ain = CASE WHEN $1 = 1 THEN ain ELSE N'' END,
+                         updatedat = CURRENT_TIMESTAMP
+                     WHERE findingid = $10 AND questionid = $11`,
+                    [...values, findingId, questionId]
+                );
+                if (updateResult.rowCount !== 1) {
+                    throw new Error('Failed to update an existing audit finding.');
+                }
+            } else {
+                const insertResult = await client.query(
+                    `INSERT INTO audit_findings_r
+                        (questionid, findingtype, response, auditorcomment, details, ain,
+                         division, sector, qma, other, files, severity, sortorder)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                     RETURNING findingid`,
+                    [
+                        questionId,
+                        findingType,
+                        String(finding.response ?? ''),
+                        String(finding.auditorComment ?? ''),
+                        String(finding.details ?? ''),
+                        String(finding.AIN ?? finding.ain ?? ''),
+                        JSON.stringify(Array.isArray(finding.division) ? finding.division : []),
+                        JSON.stringify(Array.isArray(finding.sector) ? finding.sector : []),
+                        JSON.stringify(Array.isArray(finding.qma) ? finding.qma : []),
+                        JSON.stringify(Array.isArray(finding.other) ? finding.other : []),
+                        JSON.stringify(Array.isArray(finding.files) ? finding.files : []),
+                        finding.severity === null || finding.severity === undefined || finding.severity === ''
+                            ? null : Number(finding.severity),
+                        findingSortOrder
+                    ]
+                );
+                findingId = Number(insertResult.rows[0]?.findingid);
+                if (!Number.isSafeInteger(findingId)) throw new Error('Failed to create audit finding.');
+            }
+            keptFindingIds.add(findingId);
+        }
+
+        if (replaceOmittedFindings) {
+            for (const existingFindingId of existingFindingIds) {
+                if (!keptFindingIds.has(existingFindingId)) {
+                    await client.query(
+                        'DELETE FROM audit_findings_r WHERE findingid = $1 AND questionid = $2',
+                        [existingFindingId, questionId]
+                    );
+                }
+            }
+        }
+    }
+
+    const questionIdsToDelete = new Set(
+        (Array.isArray(deletedQuestionIds) ? deletedQuestionIds : [])
+            .map(asPositiveIntegerOrNull)
+            .filter(Boolean)
+    );
+
+    if (replaceOmittedQuestions) {
+        for (const existingQuestionId of existingQuestionIds) {
+            if (!keptQuestionIds.has(existingQuestionId)) {
+                questionIdsToDelete.add(existingQuestionId);
+            }
+        }
+    }
+
+    for (const questionIdToDelete of questionIdsToDelete) {
+        if (!existingQuestionIds.has(questionIdToDelete)) {
+            throw new Error('Deleted question ID does not belong to this audit.');
+        }
+        if (keptQuestionIds.has(questionIdToDelete)) {
+            throw new Error('A question cannot be both saved and deleted.');
+        }
+        // Explicit child delete keeps this safe even if a copied schema lost the FK/cascade.
+        await client.query('DELETE FROM audit_findings_r WHERE questionid = $1', [questionIdToDelete]);
+        await client.query(
+            'DELETE FROM audit_questions_r WHERE questionid = $1 AND scheduleid = $2',
+            [questionIdToDelete, normalizedScheduleId]
+        );
+    }
+
+    return loadAuditQuestions(client, normalizedScheduleId);
+};
+
+app.post('/api/save-audit-questions', async (req, res) => {
+    const client = await pool.connect();
     try {
-        const { scheduleId, nonconformances } = req.body;
+        const { scheduleId, questions, deletedQuestionIds } = req.body || {};
         const userInfo = await getCurrentUserInfo(req);
         const audit = await getAuditForAccessCheck(client, scheduleId);
         if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
         }
-
-        await client.query('BEGIN');
-
-        // Delete existing nonconformances for this schedule
-        await client.query('DELETE FROM nonconformances_r WHERE scheduleId = $1', [scheduleId]);
-
-        // Insert new/updated nonconformances
-        for (const nc of nonconformances) {
-            await client.query(
-                `INSERT INTO nonconformances_r 
-        (scheduleId, type, findingType, section, subsection, question, response, auditorComment, details, AIN, division, sector, qma, other, files)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-                [
-                    nc.scheduleId,
-                    nc.type,
-                    nc.findingType !== undefined ? nc.findingType : null,
-                    nc.section,
-                    nc.subsection,
-                    nc.question || '',
-                    nc.response || '',
-                    nc.auditorComment || '',
-                    nc.details || '',
-                    nc.AIN || '',
-                    JSON.stringify(nc.division || []),
-                    JSON.stringify(nc.sector || []),
-                    JSON.stringify(nc.qma || []),
-                    JSON.stringify(nc.other || []),
-                    JSON.stringify(nc.files || [])
-                ]
-            );
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
+        await client.query('BEGIN');
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            questions,
+            { deletedQuestionIds }
+        );
         await client.query('COMMIT');
 
-        res.json({ success: true, message: 'Nonconformances saved successfully' });
+        res.json({
+            success: true,
+            message: 'Audit questions and findings saved successfully',
+            questions: savedQuestions
+        });
     } catch (error) {
-        await rollbackTransaction(client);
-        console.error('Error saving nonconformances:', error);
-        res.status(500).json({ success: false, error: error.message });
+        await rollbackTransaction(client, 'save audit questions');
+        console.error('Error saving audit questions:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
     }
 });
 
-// Update nonconformance details (for Nonconformities page)
-app.post('/api/update-nonconformance-details', async (req, res) => {
+// Compatibility for older clients during rollout. Each flattened row is grouped
+// by questionId when present; otherwise it becomes its own question.
+app.post('/api/save-nonconformances', async (req, res) => {
     const client = await pool.connect();
-
     try {
-        const { ncId, details, severity, actionItemNumber } = req.body;
-        const ncLookup = await client.query(
-            'SELECT TOP 1 scheduleid FROM nonconformances_r WHERE ncid = $1',
-            [ncId]
-        );
-        const scheduleId = ncLookup.rows[0]?.scheduleid;
+        const { scheduleId, nonconformances } = req.body || {};
         const userInfo = await getCurrentUserInfo(req);
-        const audit = scheduleId ? await getAuditForAccessCheck(client, scheduleId) : null;
+        const audit = await getAuditForAccessCheck(client, scheduleId);
         if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
         }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
 
-        await client.query(
-            `UPDATE nonconformances_r 
-            SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
-            WHERE ncid = $4`,
+        const incomingFindings = Array.isArray(nonconformances) ? nonconformances : [];
+        const incomingFindingIds = [...new Set(
+            incomingFindings
+                .map((nc) => asPositiveIntegerOrNull(nc?.findingId ?? nc?.ncId))
+                .filter(Boolean)
+        )];
+        const findingQuestionMap = new Map();
+
+        if (incomingFindingIds.length > 0) {
+            const placeholders = incomingFindingIds.map((_, index) => `$${index + 2}`).join(', ');
+            const mappingResult = await client.query(
+                `SELECT f.findingid, q.questionid
+                 FROM audit_findings_r AS f
+                 INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+                 WHERE q.scheduleid = $1
+                   AND f.findingid IN (${placeholders})`,
+                [scheduleId, ...incomingFindingIds]
+            );
+            mappingResult.rows.forEach((row) => {
+                findingQuestionMap.set(Number(row.findingid), Number(row.questionid));
+            });
+        }
+
+        const grouped = new Map();
+        incomingFindings.forEach((nc, index) => {
+            const incomingFindingId = asPositiveIntegerOrNull(nc?.findingId ?? nc?.ncId);
+            const existingQuestionId = asPositiveIntegerOrNull(nc?.questionId)
+                || findingQuestionMap.get(incomingFindingId)
+                || null;
+            const key = existingQuestionId ? `question:${existingQuestionId}` : `row:${index}`;
+            if (!grouped.has(key)) {
+                grouped.set(key, {
+                    questionId: existingQuestionId,
+                    type: nc?.type,
+                    sourceId: nc?.sourceId ?? null,
+                    section: nc?.section ?? null,
+                    subsection: nc?.subsection ?? null,
+                    question: nc?.question || '',
+                    sortOrder: nc?.questionSortOrder ?? index + 1,
+                    findings: []
+                });
+            }
+            grouped.get(key).findings.push({
+                findingId: nc?.findingId ?? nc?.ncId ?? null,
+                findingType: nc?.findingType ?? null,
+                severity: nc?.severity ?? null,
+                response: nc?.response || '',
+                auditorComment: nc?.auditorComment || '',
+                details: nc?.details || '',
+                AIN: nc?.AIN || '',
+                division: nc?.division || [],
+                sector: nc?.sector || [],
+                qma: nc?.qma || [],
+                other: nc?.other || [],
+                files: nc?.files || [],
+                sortOrder: nc?.findingSortOrder ?? grouped.get(key).findings.length + 1
+            });
+        });
+
+        await client.query('BEGIN');
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            [...grouped.values()],
+            {
+                // A stale pre-multi-response browser cannot reliably represent
+                // every response under a question. Update what it submitted,
+                // but never delete omitted questions/findings.
+                replaceOmittedQuestions: false,
+                replaceOmittedFindings: false
+            }
+        );
+        await client.query('COMMIT');
+
+        res.json({
+            success: true,
+            message: 'Audit findings saved successfully',
+            questions: savedQuestions,
+            nonconformances: flattenAuditQuestions(savedQuestions)
+        });
+    } catch (error) {
+        await rollbackTransaction(client, 'save legacy nonconformances');
+        console.error('Error saving nonconformances:', error);
+        if (!res.headersSent) res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
+// Update one normalized finding's Nonconformities-stage fields.
+app.post('/api/update-nonconformance-details', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { ncId, details, severity, actionItemNumber } = req.body;
+        const ncLookup = await client.query(
+            `SELECT q.scheduleid
+             FROM audit_findings_r AS f
+             INNER JOIN audit_questions_r AS q ON q.questionid = f.questionid
+             WHERE f.findingid = $1 AND f.findingtype = 1`,
+            [ncId]
+        );
+        const scheduleId = ncLookup.rows[0]?.scheduleid;
+        if (!scheduleId) {
+            return res.status(404).json({ success: false, error: 'Nonconformity finding not found.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canEditAudit({ audit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+
+        const result = await client.query(
+            `UPDATE audit_findings_r
+             SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
+             WHERE findingid = $4`,
             [details || '', severity || null, actionItemNumber || '', ncId]
         );
+        if (result.rowCount !== 1) {
+            return res.status(404).json({ success: false, error: 'Finding not found.' });
+        }
 
         res.json({ success: true, message: 'Nonconformance details updated successfully' });
     } catch (error) {
@@ -2491,8 +3232,17 @@ app.post('/api/update-nonconformance-details', async (req, res) => {
     }
 });
 
-const PORT = 3001;
-const PREFERRED_HOST = '0.0.0.0';
+// PORT is reserved for the container's HTTP listener in OpenShift.
+// On a local workstation, an inherited PORT=25 (SMTP) must never redirect
+// the Express listener away from Vite's expected localhost:3001.
+const PORT = Number(runningInKubernetes
+    ? (process.env.PORT || process.env.API_PORT || 3001)
+    : (process.env.API_PORT || 3001));
+// A local employee-ID bypass must never be reachable from another machine.
+const PREFERRED_HOST = process.env.NODE_ENV !== 'production'
+    && String(process.env.NGAT_DEV_EMPLOYEE_ID || '').trim()
+    ? '127.0.0.1'
+    : '0.0.0.0';
 const FALLBACK_HOST = '127.0.0.1';
 console.log('[NGAT MSSQL DEBUG 2026-04-13] Starting mssqlserver.js');
 console.log('[NGAT MSSQL DEBUG 2026-04-13] process.cwd() =', process.cwd());
@@ -2520,6 +3270,15 @@ function startServer(host, canFallback = true) {
         process.exit(1);
     });
 }
+
+registerFoeAuditRoutes({
+    app,
+    pool,
+    getCurrentUserInfo,
+    getRosterRowsByMyIds,
+    queueEmail,
+    buildAppRouteUrl
+});
 
 startServer(PREFERRED_HOST);
 
@@ -3337,21 +4096,6 @@ app.put('/api/functions/:functionId', async (req, res) => {
     }
 });
 
-// Get all statuses
-app.get('/api/statuses', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM statuses_r ORDER BY statusId');
-        const data = result.rows.map(row => ({
-            statusId: row.statusid,
-            statusName: row.statusname
-        }));
-        res.json(data);
-    } catch (error) {
-        console.error('Error fetching statuses:', error);
-        res.status(500).json({ success: false, error: error.message });
-    }
-});
-
 // Get all standards
 app.get('/api/standards', async (req, res) => {
     try {
@@ -3406,6 +4150,8 @@ app.get('/api/programs', async (req, res) => {
             programId: row.programid,
             programName: row.programname,
             divisionId: row.divisionid,
+            businessUnitId: row.businessunitid,
+            operatingUnitId: row.operatingunitid,
             auditorIds: normalizeNumberArray(row.auditorids),
             active: row.active
         }));
@@ -3417,25 +4163,25 @@ app.get('/api/programs', async (req, res) => {
 });
 
 app.post('/api/programs', async (req, res) => {
-    const { programName, divisionId, auditorIds = [], active = 1 } = req.body;
-    if (!programName || !divisionId) {
-        return res.status(400).json({ success: false, error: 'programName and divisionId are required.' });
+    const { programName, divisionId, businessUnitId, operatingUnitId, auditorIds = [], active = 1 } = req.body;
+    if (!programName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Program name is required.' });
     }
     const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         const existing = await client.query(
-            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2',
-            [programName, divisionId]
+            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND (divisionId = $2 OR (divisionId IS NULL AND $2 IS NULL))',
+            [programName, divisionId || null]
         );
         if (existing.rowCount > 0) {
             await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
         const insert = await client.query(
-            'INSERT INTO programs_r (programName, divisionId, active) VALUES ($1, $2, $3) RETURNING programId, programName, divisionId, active',
-            [programName, divisionId, active]
+            'INSERT INTO programs_r (programName, divisionId, businessUnitId, operatingUnitId, active) VALUES ($1, $2, $3, $4, $5) RETURNING programId, programName, divisionId, businessUnitId, operatingUnitId, active',
+            [programName, divisionId || null, businessUnitId || null, operatingUnitId || null, active]
         );
         const saved = insert.rows[0];
         for (const auditorId of normalizedAuditorIds) {
@@ -3449,6 +4195,8 @@ app.post('/api/programs', async (req, res) => {
             programId: saved.programid,
             programName: saved.programname,
             divisionId: saved.divisionid,
+            businessUnitId: saved.businessunitid,
+            operatingUnitId: saved.operatingunitid,
             auditorIds: normalizedAuditorIds,
             active: saved.active
         });
@@ -3463,25 +4211,25 @@ app.post('/api/programs', async (req, res) => {
 
 app.put('/api/programs/:programId', async (req, res) => {
     const { programId } = req.params;
-    const { programName, divisionId, auditorIds = [], active = 1 } = req.body;
-    if (!programName || !divisionId) {
-        return res.status(400).json({ success: false, error: 'programName and divisionId are required.' });
+    const { programName, divisionId, businessUnitId, operatingUnitId, auditorIds = [], active = 1 } = req.body;
+    if (!programName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Program name is required.' });
     }
     const normalizedAuditorIds = [...new Set(normalizeNumberArray(auditorIds))];
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
         const conflict = await client.query(
-            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND divisionId = $2 AND programId <> $3',
-            [programName, divisionId, programId]
+            'SELECT programId FROM programs_r WHERE LOWER(TRIM(programName)) = LOWER(TRIM($1)) AND (divisionId = $2 OR (divisionId IS NULL AND $2 IS NULL)) AND programId <> $3',
+            [programName, divisionId || null, programId]
         );
         if (conflict.rowCount > 0) {
             await rollbackTransaction(client);
             return res.status(409).json({ success: false, error: 'A program with that name already exists for this division.' });
         }
         const update = await client.query(
-            'UPDATE programs_r SET programName = $1, divisionId = $2, active = $3 WHERE programId = $4 RETURNING programId, programName, divisionId, active',
-            [programName, divisionId, active, programId]
+            'UPDATE programs_r SET programName = $1, divisionId = $2, businessUnitId = $3, operatingUnitId = $4, active = $5 WHERE programId = $6 RETURNING programId, programName, divisionId, businessUnitId, operatingUnitId, active',
+            [programName, divisionId || null, businessUnitId || null, operatingUnitId || null, active, programId]
         );
         if (update.rowCount === 0) {
             await rollbackTransaction(client);
@@ -3500,6 +4248,8 @@ app.put('/api/programs/:programId', async (req, res) => {
             programId: saved.programid,
             programName: saved.programname,
             divisionId: saved.divisionid,
+            businessUnitId: saved.businessunitid,
+            operatingUnitId: saved.operatingunitid,
             auditorIds: normalizedAuditorIds,
             active: saved.active
         });
@@ -3509,6 +4259,30 @@ app.put('/api/programs/:programId', async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     } finally {
         client.release();
+    }
+});
+
+// Archive/reactivate a legacy program without resubmitting its incomplete hierarchy.
+app.patch('/api/programs/:programId/active', async (req, res) => {
+    const { active } = req.body || {};
+    const programId = Number(req.params.programId);
+    if (![0, 1].includes(active) || !Number.isSafeInteger(programId) || programId <= 0) {
+        return res.status(400).json({ success: false, error: 'Valid program ID and active flag required.' });
+    }
+    try {
+        const updated = await pool.query(
+            'UPDATE programs_r SET active = $1 WHERE programid = $2 RETURNING programid, programname, divisionid, businessunitid, operatingunitid, active',
+            [active, programId]
+        );
+        if (!updated.rows.length) return res.status(404).json({ success: false, error: 'Program not found.' });
+        const row = updated.rows[0];
+        res.json({
+            programId: row.programid, programName: row.programname, divisionId: row.divisionid,
+            businessUnitId: row.businessunitid, operatingUnitId: row.operatingunitid, active: row.active
+        });
+    } catch (error) {
+        console.error('Error updating program active flag:', error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
@@ -3756,6 +4530,7 @@ app.get('/api/operating-units', async (req, res) => {
             operatingUnitId: row.operatingunitid,
             operatingUnitName: row.operatingunitname,
             divisionId: row.divisionid,
+            businessUnitId: row.businessunitid,
             active: row.active
         }));
         res.json(data);
@@ -3766,9 +4541,9 @@ app.get('/api/operating-units', async (req, res) => {
 });
 
 app.post('/api/operating-units', async (req, res) => {
-    const { operatingUnitName, divisionId, active = 1 } = req.body;
-    if (!operatingUnitName || !divisionId) {
-        return res.status(400).json({ success: false, error: 'operatingUnitName and divisionId are required.' });
+    const { operatingUnitName, divisionId, businessUnitId, active = 1 } = req.body;
+    if (!operatingUnitName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Operating Unit name is required.' });
     }
     try {
         const existing = await pool.query(
@@ -3779,8 +4554,8 @@ app.post('/api/operating-units', async (req, res) => {
             return res.status(409).json({ success: false, error: 'An operating unit with that name already exists.' });
         }
         const insert = await pool.query(
-            'INSERT INTO operating_units_r (operatingUnitName, divisionId, active) VALUES ($1, $2, $3) RETURNING operatingUnitId, operatingUnitName, divisionId, active',
-            [operatingUnitName, divisionId, active]
+            'INSERT INTO operating_units_r (operatingUnitName, divisionId, businessUnitId, active) VALUES ($1, $2, $3, $4) RETURNING operatingUnitId, operatingUnitName, divisionId, businessUnitId, active',
+            [operatingUnitName, divisionId || null, businessUnitId || null, active]
         );
         res.status(201).json(insert.rows[0]);
     } catch (error) {
@@ -3791,9 +4566,9 @@ app.post('/api/operating-units', async (req, res) => {
 
 app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
     const { operatingUnitId } = req.params;
-    const { operatingUnitName, divisionId, active = 1 } = req.body;
-    if (!operatingUnitName || !divisionId) {
-        return res.status(400).json({ success: false, error: 'operatingUnitName and divisionId are required.' });
+    const { operatingUnitName, divisionId, businessUnitId, active = 1 } = req.body;
+    if (!operatingUnitName?.trim()) {
+        return res.status(400).json({ success: false, error: 'Operating Unit name is required.' });
     }
     try {
         const conflict = await pool.query(
@@ -3804,8 +4579,8 @@ app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
             return res.status(409).json({ success: false, error: 'An operating unit with that name already exists.' });
         }
         const update = await pool.query(
-            'UPDATE operating_units_r SET operatingUnitName = $1, divisionId = $2, active = $3 WHERE operatingUnitId = $4 RETURNING operatingUnitId, operatingUnitName, divisionId, active',
-            [operatingUnitName, divisionId, active, operatingUnitId]
+            'UPDATE operating_units_r SET operatingUnitName = $1, divisionId = $2, businessUnitId = $3, active = $4 WHERE operatingUnitId = $5 RETURNING operatingUnitId, operatingUnitName, divisionId, businessUnitId, active',
+            [operatingUnitName, divisionId || null, businessUnitId || null, active, operatingUnitId]
         );
         if (update.rowCount === 0) {
             return res.status(404).json({ success: false, error: 'Operating unit not found.' });
@@ -3813,6 +4588,26 @@ app.put('/api/operating-units/:operatingUnitId', async (req, res) => {
         res.json(update.rows[0]);
     } catch (error) {
         console.error('Error updating operating unit:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Archive/reactivate a legacy OU without resubmitting missing BU/Division assignments.
+app.patch('/api/operating-units/:operatingUnitId/active', async (req, res) => {
+    const { active } = req.body || {};
+    const operatingUnitId = Number(req.params.operatingUnitId);
+    if (![0, 1].includes(active) || !Number.isSafeInteger(operatingUnitId) || operatingUnitId <= 0) {
+        return res.status(400).json({ success: false, error: 'Valid Operating Unit ID and active flag required.' });
+    }
+    try {
+        const updated = await pool.query(
+            'UPDATE operating_units_r SET active = $1 WHERE operatingunitid = $2 RETURNING operatingunitid, operatingunitname, divisionid, businessunitid, active',
+            [active, operatingUnitId]
+        );
+        if (!updated.rows.length) return res.status(404).json({ success: false, error: 'Operating Unit not found.' });
+        res.json(updated.rows[0]);
+    } catch (error) {
+        console.error('Error updating Operating Unit active flag:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -4490,7 +5285,8 @@ app.get('/api/audits', async (req, res) => {
         let query = `SELECT ${getAuditSelectColumns(additionalApproversColumn)}, CAST(locked AS INT) AS locked FROM audits_r`;
         let params = [];
 
-        const conditions = [];
+        // Never expose archived audits, even with all=true.
+        const conditions = ['stage <> -3'];
         if (hash) {
             params.push(hash);
             conditions.push(`hash = $${params.length}`);
@@ -4531,7 +5327,8 @@ app.get('/api/audits', async (req, res) => {
             );
             audits = audits.map((audit) => ({
                 ...audit,
-                canEdit: canEditAudit({ audit, userInfo })
+                canEdit: canEditAudit({ audit, userInfo }),
+                canManage: canManageAudit({ audit, userInfo })
             }));
         }
 
@@ -4545,7 +5342,7 @@ app.get('/api/audits', async (req, res) => {
 const stageColumnGroups = {
     1: [
         'title', 'auditTypeId', 'intExtId', 'functionId', 'standardIds',
-        'statusId', 'expectedStartDate', 'expectedCompletionDate',
+        'expectedStartDate', 'expectedCompletionDate',
         'startDate', 'divisionId', 'programIds', 'sectorId', 'siteIds',
         'businessUnitIds', 'operatingUnitIds', 'leadAuditorId', 'additionalAuditorIds',
         'comment', 'hash'
@@ -4556,7 +5353,7 @@ const stageColumnGroups = {
     ],
     3: [
         'overview', 'standardIds', 'programIds', 'intervieweeIds', 'startDate',
-        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause', 'cui'
+        'evaluator', 'programManager', 'maLeadManager', 'relatedItems', 'delayCause', 'cui', 'auditorsTime'
     ]
 };
 
@@ -4587,6 +5384,69 @@ const buildStageUpdateQuery = ({ scheduleId, stageValue, targetStage, audit }) =
     return { query, values };
 };
 
+// Conduct Audit saves the stage-3 audit fields and normalized question/finding
+// graph in one transaction so the audit cannot advance without its results.
+app.post('/api/save-audit-results', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { audit: auditPayload, questions, deletedQuestionIds } = req.body || {};
+        const scheduleId = asPositiveIntegerOrNull(auditPayload?.scheduleId);
+        if (!scheduleId || !Array.isArray(questions)) {
+            return res.status(400).json({ success: false, error: 'Valid audit and questions are required.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const existingAudit = await getAuditForAccessCheck(client, scheduleId);
+        if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
+            return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit: existingAudit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+
+        const targetStage = 3;
+        const requestedStage = Number(auditPayload.stage);
+        const stageValue = Number.isFinite(requestedStage)
+            ? Math.max(requestedStage, targetStage)
+            : targetStage;
+
+        await client.query('BEGIN');
+
+        const { query, values } = buildStageUpdateQuery({
+            scheduleId,
+            stageValue,
+            targetStage,
+            audit: auditPayload
+        });
+        const auditUpdate = await client.query(query, values);
+        if (auditUpdate.rowCount !== 1) {
+            throw new Error('Audit changed or could not be updated.');
+        }
+
+        const savedQuestions = await saveAuditQuestionsForSchedule(
+            client,
+            scheduleId,
+            questions,
+            { deletedQuestionIds }
+        );
+
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            scheduleId,
+            questions: savedQuestions
+        });
+    } catch (error) {
+        await rollbackTransaction(client, 'saving audit results');
+        console.error('Error saving audit results:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    } finally {
+        client.release();
+    }
+});
+
 // Update specific audit fields (for Planning, Results, etc.)
 app.put('/api/audits/:scheduleId', async (req, res) => {
     const client = await pool.connect();
@@ -4603,6 +5463,7 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
         const stageValue = Number.isFinite(updates.stage) ? Number(updates.stage) : null;
         delete updates.targetStage;
         delete updates.stage;
+        delete updates.stageBeforeInactive;
 
         await client.query('BEGIN');
 
@@ -4681,22 +5542,24 @@ app.post('/api/audits', async (req, res) => {
             // Insert new audit
             const result = await client.query(
                 `INSERT INTO audits_r (
-                    title, auditTypeId, intExtId, functionId, standardIds, statusId, stage,
+                    title, auditTypeId, intExtId, functionId, standardIds, stage,
                     expectedStartDate, expectedCompletionDate, startDate,
                     divisionId, programIds, sectorId, siteIds, businessUnitIds, operatingUnitIds,
                     leadAuditorId, additionalAuditorIds, comment, scope, safety,
                     clearance, safetyEquipmentIds, trainingRequirementIds,
                     famaIds, intervieweeIds, specialConsiderations, overview, evaluator, relatedItems,
-                    programManager, maLeadManager, cui, delayCause, hash
+                    programManager, maLeadManager, cui, delayCause, hash,
+                    createdAt, updatedAt
                 ) VALUES (
-                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                    $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26,
-                    $27, $28, $29, $30, $31, $32, $33, $34, $35
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+                    $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
+                    $26, $27, $28, $29, $30, $31, $32, $33, $34,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 );
                 SELECT CAST(SCOPE_IDENTITY() AS INT) AS scheduleId;`,
                 [
                     audit.title, audit.auditTypeId, audit.intExtId, normalizeAuditArrayForStorage(audit.functionId),
-                    JSON.stringify(audit.standardIds), audit.statusId, audit.stage,
+                    JSON.stringify(audit.standardIds), audit.stage,
                     audit.expectedStartDate, audit.expectedCompletionDate, audit.startDate,
                     normalizeAuditArrayForStorage(audit.divisionId), JSON.stringify(audit.programIds), audit.sectorId, JSON.stringify(audit.siteIds),
                     JSON.stringify(audit.businessUnitIds), JSON.stringify(audit.operatingUnitIds), audit.leadAuditorId,
@@ -4793,6 +5656,120 @@ app.post('/api/audits', async (req, res) => {
         client.release();
     }
 });
+// Negative stages: -2 = Cancelled; -3 = archived and hidden throughout NGAT.
+app.post('/api/audits/:scheduleId/lifecycle', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const scheduleId = Number(req.params.scheduleId);
+        const action = req.body?.action;
+        if (!Number.isSafeInteger(scheduleId) || scheduleId <= 0 ||
+            !['cancel', 'reactivate', 'archive'].includes(action)) {
+            return res.status(400).json({ success: false, error: 'Valid audit and lifecycle action required.' });
+        }
+
+        const userInfo = await getCurrentUserInfo(req);
+        const audit = await getAuditForAccessCheck(client, scheduleId);
+        if (!audit || !userInfo || !canManageAudit({ audit, userInfo })) {
+            return res.status(404).json({ success: false, error: 'Audit not found.' });
+        }
+        if (!hasCuiAccess({ audit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
+        }
+        if (audit.locked || audit.approvedAt) {
+            return res.status(409).json({ success: false, error: 'Audits awaiting approval or already approved cannot be changed.' });
+        }
+
+        let sql;
+        if (action === 'cancel') {
+            if (![1, 2, 3, 4].includes(Number(audit.stage))) {
+                return res.status(409).json({ success: false, error: 'Only active audits can be cancelled.' });
+            }
+            sql = `UPDATE audits_r
+                   SET stagebeforeinactive = stage, stage = -2, updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage BETWEEN 1 AND 4
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
+        } else if (action === 'reactivate') {
+            if (Number(audit.stage) !== -2 ||
+                ![1, 2, 3, 4].includes(Number(audit.stageBeforeInactive))) {
+                return res.status(409).json({ success: false, error: 'This audit cannot be reactivated.' });
+            }
+            sql = `UPDATE audits_r
+                   SET stage = stagebeforeinactive, stagebeforeinactive = NULL,
+                       updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage = -2
+                     AND stagebeforeinactive BETWEEN 1 AND 4
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
+        } else {
+            sql = `UPDATE audits_r
+                   SET stagebeforeinactive = CASE WHEN stage = -2 THEN stagebeforeinactive ELSE stage END,
+                       stage = -3, updatedat = CURRENT_TIMESTAMP
+                   WHERE scheduleid = $1 AND stage <> -3
+                     AND COALESCE(locked, 0) = 0 AND approvedat IS NULL`;
+        }
+
+        const changed = await client.query(sql, [scheduleId]);
+        if (changed.rowCount !== 1) {
+            return res.status(409).json({ success: false, error: 'Audit changed. Refresh and try again.' });
+        }
+
+        let emailWarning = null;
+        if (action === 'cancel') {
+            try {
+                const auditorIds = [...new Set([
+                    audit.leadAuditorId,
+                    ...(audit.additionalAuditorIds || [])
+                ].filter(Boolean))];
+
+                if (auditorIds.length > 0) {
+                    const auditorPlaceholders = auditorIds.map((_, index) => `$${index + 1}`).join(', ');
+                    const auditorResult = await client.query(
+                        `SELECT DISTINCT myid
+                         FROM auditors_r
+                         WHERE auditorid IN (${auditorPlaceholders}) AND myid IS NOT NULL`,
+                        auditorIds
+                    );
+                    const rosterRows = await getRosterRowsByMyIds(
+                        auditorResult.rows.map((row) => row.myid).filter(Boolean)
+                    );
+                    const { subject, body } = buildCancelledAuditNotificationEmail({
+                        scheduleId,
+                        auditTitle: audit.title,
+                        reviewLink: buildAppRouteUrl(req, `/audit/${scheduleId}`)
+                    });
+
+                    const sentTo = new Set();
+                    let failedCount = 0;
+                    for (const row of rosterRows) {
+                        const recipientEmail = String(row.email || '').trim();
+                        if (!recipientEmail || sentTo.has(recipientEmail.toLowerCase())) continue;
+                        sentTo.add(recipientEmail.toLowerCase());
+                        const result = await queueEmail(client, {
+                            toAddress: recipientEmail,
+                            subject,
+                            body
+                        });
+                        if (result?.success === false) failedCount += 1;
+                    }
+
+                    if (failedCount > 0) {
+                        emailWarning = `Audit cancelled, but ${failedCount} notification email${failedCount === 1 ? '' : 's'} failed. Contact the auditors directly.`;
+                    }
+                }
+            } catch (emailError) {
+                console.error('Audit cancelled, but cancellation notification failed:', emailError);
+                emailWarning = 'Audit cancelled, but notification emails could not be sent. Contact the auditors directly.';
+            }
+        }
+
+        res.json({ success: true, action, scheduleId, emailWarning });
+    } catch (error) {
+        console.error('Error changing audit lifecycle:', error);
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+});
+
 // Get single audit by scheduleId
 app.get('/api/audits/:scheduleId', async (req, res) => {
     try {
@@ -4838,7 +5815,8 @@ app.get('/api/audits/:scheduleId', async (req, res) => {
 
         res.json({
             ...audit,
-            canEdit: canEditAudit({ audit, userInfo })
+            canEdit: canEditAudit({ audit, userInfo }),
+            canManage: canManageAudit({ audit, userInfo })
         });
     } catch (error) {
         console.error('Error fetching audit:', error);
@@ -4860,7 +5838,7 @@ app.get('/api/approvals/:scheduleId', async (req, res) => {
         const auditResult = await pool.query(
             `SELECT scheduleid, title, approvedat, CAST(locked AS INT) AS locked, approver, leadauditorid, ${additionalApproversColumn} AS additionalapprovers, additionalauditorids
              FROM audits_r
-             WHERE scheduleid = $1`,
+             WHERE scheduleid = $1 AND stage <> -3`,
             [parseInt(scheduleId)]
         );
 
@@ -5274,11 +6252,14 @@ app.post('/api/unlock-audit', async (req, res) => {
 app.post('/api/save-nonconformities-data', async (req, res) => {
     const client = await pool.connect();
     try {
-        const { audit, cars } = req.body;
+        const { audit, cars, ncUpdates } = req.body;
         const userInfo = await getCurrentUserInfo(req);
         const existingAudit = await getAuditForAccessCheck(client, audit?.scheduleId);
         if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
             return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
+        }
+        if (!hasCuiAccess({ audit: existingAudit, userInfo })) {
+            return sendCuiAccessDenied(res, { req, userInfo });
         }
 
         console.log('Received audit data:', audit);
@@ -5303,17 +6284,15 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         // Update audit with nonconformities data
         const updateResult = await client.query(
             `UPDATE audits_r SET 
-                auditorstime = $1,
-                approver = $2,
-                leadauditorid = $3,
-                ${additionalApproversColumn} = $4,
-                stage = $5,
-                locked = $6,
-                submittedat = CASE WHEN $6 = 1 THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
+                approver = $1,
+                leadauditorid = $2,
+                ${additionalApproversColumn} = $3,
+                stage = $4,
+                locked = $5,
+                submittedat = CASE WHEN $5 = 1 THEN COALESCE(submittedat, CURRENT_TIMESTAMP) ELSE submittedat END,
                 updatedat = CURRENT_TIMESTAMP
-            WHERE scheduleid = $7`,
+            WHERE scheduleid = $6`,
             [
-                audit.auditorsTime,
                 resolvedApproverMyId,
                 audit.leadAuditor,
                 JSON.stringify(resolvedAdditionalApproverIds),
@@ -5428,6 +6407,39 @@ app.post('/api/save-nonconformities-data', async (req, res) => {
         }
 
         await replaceCarsForSchedule(client, audit.scheduleId, Array.isArray(cars) ? cars : []);
+
+        // Save only actual Nonconformity responses. Each response has its own
+        // stable finding ID even when several findings share one question.
+        for (const update of (Array.isArray(ncUpdates) ? ncUpdates : [])) {
+            const findingId = asPositiveIntegerOrNull(update?.ncId ?? update?.findingId);
+            if (!findingId) {
+                throw new Error('Valid nonconformity finding ID required.');
+            }
+
+            const severity = update?.severity === null || update?.severity === undefined || update?.severity === ''
+                ? null
+                : Number(update.severity);
+            const result = await client.query(
+                `UPDATE audit_findings_r
+                 SET details = $1, severity = $2, ain = $3, updatedat = CURRENT_TIMESTAMP
+                 WHERE findingid = $4
+                   AND findingtype = 1
+                   AND questionid IN (
+                       SELECT questionid FROM audit_questions_r WHERE scheduleid = $5
+                   )`,
+                [
+                    String(update?.details ?? ''),
+                    Number.isFinite(severity) ? severity : null,
+                    String(update?.actionItemNumber ?? update?.AIN ?? ''),
+                    findingId,
+                    audit.scheduleId
+                ]
+            );
+
+            if (result.rowCount !== 1) {
+                throw new Error(`Nonconformity finding ${findingId} changed or no longer belongs to this audit.`);
+            }
+        }
 
         await client.query('COMMIT');
         console.log('Transaction committed successfully');
@@ -5547,7 +6559,7 @@ app.get('/api/risk-ratings', async (req, res) => {
                     whereClause = `WHERE year = $1`;
                 }
                 const result = await pool.query(
-                    `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                    `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
                      FROM RiskRatings_r
                      ${whereClause}
                      ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
@@ -5563,7 +6575,7 @@ app.get('/api/risk-ratings', async (req, res) => {
                 whereClause += ` AND year = $2`;
             }
             const result = await pool.query(
-                `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+                `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
                  FROM RiskRatings_r
                  ${whereClause}
                  ORDER BY year DESC, risktypeid, processarea, subcategoryid`,
@@ -5583,7 +6595,7 @@ app.get('/api/risk-ratings', async (req, res) => {
             whereClause += ` AND year = $${params.length}`;
         }
         const result = await pool.query(
-            `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating
+            `SELECT riskratingid, processarea, year, risktypeid, sectorid, divisionid, siteid, buid, ouid, programid, subcategoryid, rating, comments
              FROM RiskRatings_r
              WHERE ${whereClause}
              ORDER BY year DESC, subcategoryid`,
@@ -5635,8 +6647,9 @@ app.post('/api/risk-ratings', async (req, res) => {
                         ouid,
                         programid,
                         subcategoryid,
-                        rating
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                        rating,
+                        comments
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
                     [
                         normalizedProcessArea,
                         normalizedYear,
@@ -5648,7 +6661,8 @@ app.post('/api/risk-ratings', async (req, res) => {
                         scope.column === 'ouid' ? scope.targetId : null,
                         scope.column === 'programid' ? scope.targetId : null,
                         rating.subcategoryId,
-                        rating.rating
+                        rating.rating,
+                        String(rating.comments ?? '')
                     ]
                 );
             }
@@ -5696,3 +6710,14 @@ app.delete('/api/risk-ratings', async (req, res) => {
         client.release();
     }
 });
+
+
+// Retain all original API routes, while serving the unmodified Vite UI in production.
+if (process.env.NODE_ENV === 'production') {
+    const distPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'dist');
+    app.use(express.static(distPath, { index: 'index.html' }));
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api/')) return next();
+        res.sendFile(path.join(distPath, 'index.html'));
+    });
+}

@@ -1,0 +1,19 @@
+# Apply ONLY after ngat.northgrum.com DNS/TLS resolves to this OpenShift router.
+# Its EXACT /oauth2/callback URL must be registered in Entra.
+# Existing ngat-ngat-dev.apps.ocpshareddev.gc1.myngc.com is a DIFFERENT hostname;
+# it must not be sent to this callback without a separate redirect URI registration.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: ngat-auth
+  namespace: ngat-dev
+spec:
+  host: ngat.northgrum.com
+  to:
+    kind: Service
+    name: ngat-auth
+  port:
+    targetPort: auth
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import Select from "react-select"
@@ -20,7 +21,6 @@ import {
   getOperatingUnits,
   getAuditors,
   getAuditTypes,
-  getStatuses,
   getFunctions,
   getIntExt,
   getStandards,
@@ -41,7 +41,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [operatingUnitsList, setOperatingUnitsList] = useState([]);
   const [auditorsList, setAuditorsList] = useState([]);
   const [auditTypesList, setAuditTypesList] = useState([]);
-  const [statusesList, setStatusesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
@@ -59,7 +58,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, statuses, functions, intExt, standards] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -68,7 +67,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
           getOperatingUnits(),
           getAuditors(),
           getAuditTypes(),
-          getStatuses(),
           getFunctions(),
           getIntExt(),
           getStandards()
@@ -82,7 +80,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setOperatingUnitsList(operatingUnits);
         setAuditorsList(auditors);
         setAuditTypesList(auditTypes);
-        setStatusesList(statuses);
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
@@ -183,12 +180,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     return auditType ? auditType.auditTypeName : auditTypeId;
   };
 
-  // Helper function to get status name from statusId
-  const getStatusName = (statusId) => {
-    const status = statusesList.find(s => s.statusId === statusId);
-    return status ? status.statusName : statusId;
-  };
-
   // Helper function to get function name(s) from functionId(s)
   const getFunctionName = (functionId) => {
     const ids = normalizeIdArray(functionId);
@@ -223,7 +214,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     ids: new Set()
   });
   const entryAudits = useMemo(() => {
-    return allAudits.filter((audit) => Number(audit?.stage) !== -1);
+    return allAudits.filter((audit) => ![-1, -2].includes(Number(audit?.stage)));
   }, [allAudits]);
   const isSameSelectionModel = (nextModel, currentModel) => {
     if (!nextModel || !currentModel) return false;
@@ -444,9 +435,20 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   const activeProgramsList = programsList.filter(p => (p.active ?? 1) === 1);
 
-  const filteredProgramsList = parsedDivisionIds.length > 0
-    ? activeProgramsList.filter(p => p.divisionId == null || parsedDivisionIds.includes(Number(p.divisionId)))
-    : activeProgramsList;
+  // A missing parent assignment leaves that particular hierarchy level unrestricted,
+  // matching the existing Division-based schedule filters.
+  const matchesSelectedParent = (parentId, selectedIds) => (
+    selectedIds.length === 0 || parentId == null || selectedIds.includes(Number(parentId))
+  );
+
+  const selectedBusinessUnitIds = normalizeIdArray(selectedBusinessUnits).map(Number).filter(Number.isFinite);
+  const selectedOperatingUnitIds = normalizeIdArray(selectedOperatingUnits).map(Number).filter(Number.isFinite);
+
+  const filteredProgramsList = activeProgramsList.filter(p =>
+    matchesSelectedParent(p.divisionId, parsedDivisionIds) &&
+    matchesSelectedParent(p.businessUnitId, selectedBusinessUnitIds) &&
+    matchesSelectedParent(p.operatingUnitId, selectedOperatingUnitIds)
+  );
 
   const activeSitesList = sitesList.filter(s => (s.active ?? 1) === 1);
 
@@ -458,9 +460,52 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     ? businessUnitsList.filter(bu => bu.divisionId == null || parsedDivisionIds.includes(Number(bu.divisionId)))
     : businessUnitsList;
 
-  const filteredOperatingUnitsList = parsedDivisionIds.length > 0
-    ? operatingUnitsList.filter(ou => ou.divisionId == null || parsedDivisionIds.includes(Number(ou.divisionId)))
-    : operatingUnitsList;
+  const filteredOperatingUnitsList = operatingUnitsList.filter(ou =>
+    matchesSelectedParent(ou.divisionId, parsedDivisionIds) &&
+    matchesSelectedParent(ou.businessUnitId, selectedBusinessUnitIds)
+  );
+
+  // Prune child selections when Division/Business Unit/Operating Unit changes.
+  // Use the *eligible* Operating Units when pruning Programs so a stale OU
+  // cannot keep an incompatible Program selected during the same update.
+  useEffect(() => {
+    if (loading || parsedDivisionIds.length === 0) return;
+
+    const eligibleOperatingUnitIds = new Set(
+      filteredOperatingUnitsList
+        .filter(ou => (ou.active ?? 1) === 1)
+        .map(ou => Number(ou.operatingUnitId))
+    );
+    const nextOperatingUnits = selectedOperatingUnits
+      .map(Number)
+      .filter(id => eligibleOperatingUnitIds.has(id));
+    if (!areArraysEqual(selectedOperatingUnits, nextOperatingUnits)) {
+      setValue('operatingUnit', nextOperatingUnits);
+    }
+
+    const eligibleProgramIds = new Set(
+      activeProgramsList.filter(program =>
+        matchesSelectedParent(program.divisionId, parsedDivisionIds) &&
+        matchesSelectedParent(program.businessUnitId, selectedBusinessUnitIds) &&
+        matchesSelectedParent(program.operatingUnitId, nextOperatingUnits)
+      ).map(program => Number(program.programId))
+    );
+    const nextPrograms = selectedPrograms
+      .map(Number)
+      .filter(id => eligibleProgramIds.has(id));
+    if (!areArraysEqual(selectedPrograms, nextPrograms)) {
+      setValue('program', nextPrograms);
+    }
+  }, [
+    loading,
+    parsedDivisionIds,
+    selectedBusinessUnits,
+    selectedOperatingUnits,
+    selectedPrograms,
+    operatingUnitsList,
+    programsList,
+    setValue
+  ]);
 
   // Convert programsList to react-select format
   const programOptions = filteredProgramsList.map(p => ({
@@ -538,11 +583,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     { value: "Standard 2", label: "Standard 2" },
     { value: "Standard 3", label: "Standard 3" },
   ];
-
-  const statuses = statusesList.map(s => ({
-    value: s.statusId,
-    label: s.statusName
-  })).sort((a, b) => a.label.localeCompare(b.label));
 
   const activeFunctions = functionsList.filter(f => (f.active ?? 1) === 1);
 
@@ -640,10 +680,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         const functionIds = normalizeIdArray(selectedAudit.functionId).map((id) => Number(id)).filter((id) => Number.isFinite(id));
         setValue("function", functionIds);
       }
-      // Set status if available
-      if (selectedAudit && selectedAudit.statusId) {
-        setValue("status", selectedAudit.statusId);
-      }
       // Set int/ext if available
       if (selectedAudit && selectedAudit.intExtId) {
         setValue("IntExt", selectedAudit.intExtId);
@@ -678,7 +714,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
   async function onSubmit(data) {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -701,7 +737,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         intExtId: data.IntExt,
         functionId: data.function || [],
         standardIds: data.standards || [],
-        statusId: data.status,
         stage: computeStage(1),
         expectedStartDate: data.StartDate || null,
         expectedCompletionDate: data.ExpCompDate || null,
@@ -746,7 +781,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
         toast.success('Submitted!');
         if (result.emailWarning) {
-          toast.error(result.emailWarning);
+          errorToast(result.emailWarning);
         }
         setSubmitted(true);
         setSubmittedScheduleId(finalScheduleId);
@@ -763,7 +798,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       }
     }
     catch (error) {
-      toast.error(`Error: ${error.message}`);
+      errorToast(`Error: ${error.message}`);
       setError("root",
         { message: error.message }
       )
@@ -771,7 +806,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   }
   async function unlockAudit() {
     if (isViewOnly) {
-      toast.error(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
+      errorToast(`Audit ${selectedAudit?.scheduleId} is view-only because you are not assigned as an auditor.`);
       return;
     }
     try {
@@ -802,7 +837,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         throw new Error(result.error || 'Failed to unlock audit');
       }
     } catch (error) {
-      toast.error('Failed to unlock audit: ' + error.message);
+      errorToast('Failed to unlock audit: ' + error.message);
     }
   }
   function handleReset() {
@@ -845,7 +880,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       ? 'Please complete all required fields'
       : errorArray.join(', ') || 'Please fill in all required fields';
 
-    toast.error(errorMessage, {
+    errorToast(errorMessage, {
       progressStyle: { backgroundColor: '#f44336' },
       style: { borderLeft: '4px solid #f44336' }
     });
@@ -888,7 +923,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Status', 'Function', 'Comment'
+      'Function', 'Comment'
     ];
 
     const values = [
@@ -907,7 +942,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       formData.ExpCompDate || '',
       formatSingle(formData.IntExt, intExtList, 'intExtId', 'intExtName'),
       formatArray(formData.standards, standardsList, 'standardId', 'standardName'),
-      formatSingle(formData.status, statusesList, 'statusId', 'statusName'),
       formatArray(formData.function, functionsList, 'functionId', 'functionName'),
       formData.comment || ''
     ];
@@ -973,7 +1007,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         )}
       </div>
       {/* If the page has encountered an error not tied to a field display it instead of the form */}
-      {errors.root ? <p className='error'>{errors.root.message}</p> :
+      {errors.root && <p className='error'>{errors.root.message}</p>}
         <>
           {/* Form that has certain built in properties like submit and reset */}
           <form onSubmit={handleSubmit(onSubmit, onValidationError)} style={{ width: '100%' }}>
@@ -1111,6 +1145,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={divisions}
                                     styles={customStyles}
                                     placeholder="Division(s)"
@@ -1123,26 +1158,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxquarter">
-                              <label>Program(s)</label>
-                              <Controller
-                                name="program"
-                                control={control}
-                                render={({ field }) => (
-                                  <Select
-                                    isClearable
-                                    isMulti
-                                    options={programs}
-                                    styles={customStyles}
-                                    placeholder="Program"
-                                    value={field.value ? programs.filter(p => field.value.includes(p.value)) : []}
-                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
-                                  />
-                                )}
-                              />
-                              {errors.program && <p className='fielderror'>{errors.program.message}</p>}
-                            </div>
-
-                            <div className="fieldboxquarter">
                               <label>Site(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="site"
@@ -1152,6 +1167,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={sites}
                                     styles={customStyles}
                                     placeholder="Site"
@@ -1161,6 +1177,25 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 )}
                               />
                               {errors.site && <p className='fielderror'>{errors.site.message}</p>}
+                            </div>
+                            <div className="fieldboxquarter">
+                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
+                              <Controller
+                                name="auditType"
+                                control={control}
+                                rules={{ required: "Audit Type is required" }}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={auditTypes}
+                                    styles={customStyles}
+                                    placeholder="Audit Type"
+                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
+                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                  />
+                                )}
+                              />
+                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
                             </div>
                           </div>
                           <div className='sectionrow'>
@@ -1172,6 +1207,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 render={({ field }) => (
                                   <Select
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     isClearable
                                     options={businessUnits}
                                     styles={customStyles}
@@ -1192,6 +1228,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 render={({ field }) => (
                                   <Select
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     isClearable
                                     options={operatingUnits}
                                     styles={customStyles}
@@ -1205,24 +1242,26 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
 
                             <div className="fieldboxthird">
-                              <label>Audit Type<label style={{ color: 'red' }}>*</label></label>
+                              <label>Program(s)</label>
                               <Controller
-                                name="auditType"
+                                name="program"
                                 control={control}
-                                rules={{ required: "Audit Type is required" }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
-                                    options={auditTypes}
+                                    isMulti
+                                    closeMenuOnSelect={false}
+                                    options={programs}
                                     styles={customStyles}
-                                    placeholder="Audit Type"
-                                    value={field.value ? auditTypes.find(a => a.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                    placeholder="Program"
+                                    value={field.value ? programs.filter(p => field.value.includes(p.value)) : []}
+                                    onChange={(selectedOptions) => field.onChange(selectedOptions ? selectedOptions.map(opt => opt.value) : [])}
                                   />
                                 )}
                               />
-                              {errors.auditType && <p className='fielderror'>{errors.auditType.message}</p>}
+                              {errors.program && <p className='fielderror'>{errors.program.message}</p>}
                             </div>
+
                           </div>
                         </div>
                         <div className='section'>
@@ -1257,6 +1296,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={additionalAuditors}
                                     styles={customStyles}
                                     placeholder="Additional Auditors"
@@ -1318,7 +1358,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Standard(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="standards"
@@ -1328,6 +1368,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={standardsOptions}
                                     styles={customStyles}
                                     placeholder="Standard(s)"
@@ -1339,27 +1380,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
                             </div>
 
-                            <div className="fieldboxthird">
-                              <label>Status<label style={{ color: 'red' }}>*</label></label>
-                              <Controller
-                                name="status"
-                                control={control}
-                                rules={{ required: "Status is required" }}
-                                render={({ field }) => (
-                                  <Select
-                                    isClearable
-                                    options={statuses}
-                                    styles={customStyles}
-                                    placeholder="Status"
-                                    value={field.value ? statuses.find(s => s.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
-                                  />
-                                )}
-                              />
-                              {errors.status && <p className='fielderror'>{errors.status.message}</p>}
-                            </div>
-
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Function(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="function"
@@ -1372,6 +1393,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                   <Select
                                     isClearable
                                     isMulti
+                                    closeMenuOnSelect={false}
                                     options={functions}
                                     styles={customStyles}
                                     placeholder="Function(s)"
@@ -1492,7 +1514,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
           </ form>
         </>
-      }
     </>
   )
 }

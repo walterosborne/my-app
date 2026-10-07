@@ -1,3 +1,4 @@
+import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -418,7 +419,7 @@ const FoeAdminMenu = () => {
                 setManagerInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save audit area.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setSubmissionError(errorMessage);
                 setSubmissionMessage('');
             } finally {
@@ -480,7 +481,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update audit area.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setSubmissionError(errorMessage);
         } finally {
             setSubmitting(false);
@@ -588,7 +589,7 @@ const FoeAdminMenu = () => {
                 setApprovedSiteIds([]);
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE auditor.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setAuditorSubmissionError(errorMessage);
                 setAuditorSubmissionMessage('');
                 if (/already exists/i.test(errorMessage)) {
@@ -653,7 +654,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update FOE auditor.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setAuditorSubmissionError(errorMessage);
             if (/already exists/i.test(errorMessage)) {
                 setAuditorFieldErrors((prev) => ({
@@ -707,7 +708,7 @@ const FoeAdminMenu = () => {
                 setCustomerInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE customer.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setCustomerSubmissionError(errorMessage);
                 setCustomerSubmissionMessage('');
             } finally {
@@ -754,7 +755,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update FOE customer.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setCustomerSubmissionError(errorMessage);
         } finally {
             setCustomerSubmitting(false);
@@ -802,7 +803,7 @@ const FoeAdminMenu = () => {
                 setDivisionInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE division.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setDivisionSubmissionError(errorMessage);
                 setDivisionSubmissionMessage('');
             } finally {
@@ -849,7 +850,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update FOE division.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setDivisionSubmissionError(errorMessage);
         } finally {
             setDivisionSubmitting(false);
@@ -897,7 +898,7 @@ const FoeAdminMenu = () => {
                 setShiftInput('');
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE shift.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setShiftSubmissionError(errorMessage);
                 setShiftSubmissionMessage('');
             } finally {
@@ -944,7 +945,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update FOE shift.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setShiftSubmissionError(errorMessage);
         } finally {
             setShiftSubmitting(false);
@@ -1003,7 +1004,7 @@ const FoeAdminMenu = () => {
                 setSiteAuditorIds([]);
             } catch (error) {
                 const errorMessage = error.message || 'Failed to save FOE site.';
-                toast.error(errorMessage, TOAST_OPTIONS);
+                errorToast(errorMessage, TOAST_OPTIONS);
                 setSiteSubmissionError(errorMessage);
                 setSiteSubmissionMessage('');
             } finally {
@@ -1069,7 +1070,7 @@ const FoeAdminMenu = () => {
             }
         } catch (error) {
             const errorMessage = error.message || 'Failed to update FOE site.';
-            toast.error(errorMessage, TOAST_OPTIONS);
+            errorToast(errorMessage, TOAST_OPTIONS);
             setSiteSubmissionError(errorMessage);
         } finally {
             setSiteSubmitting(false);

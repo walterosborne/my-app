@@ -77,7 +77,6 @@ function RiskAnalysis() {
       <div className="entry-container">
         <div className="audit-reports-header tool-page-header">
           <p className="tool-page-subtitle">Tools · Risk Analysis</p>
-          <h2 className="audit-reports-title">Risk Analysis</h2>
           <p className="audit-reports-subtitle">
             Choose whether you want to review saved risk selections or update them.
           </p>

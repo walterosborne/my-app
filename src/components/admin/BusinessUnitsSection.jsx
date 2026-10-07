@@ -80,7 +80,8 @@ const BusinessUnitsSection = ({
                             flex: 1.1,
                             minWidth: 180,
                             sortable: false,
-                            renderCell: ({ row }) => getDivisionName(row.divisionId)
+                            valueGetter: (_value, row) => getDivisionName(row.divisionId) || '',
+                            renderCell: ({ value }) => value || 'Not assigned'
                         },
                         {
                             field: 'status',
@@ -88,7 +89,8 @@ const BusinessUnitsSection = ({
                             flex: 0.9,
                             minWidth: 140,
                             sortable: false,
-                            renderCell: ({ row }) => (row.active === 1 ? 'Active' : 'Archived')
+                            valueGetter: (_value, row) => (row.active === 1 ? 'Active' : 'Archived'),
+                            renderCell: ({ value }) => value
                         }
                     ]}
                     getRowId={(row) => row.businessUnitId}
