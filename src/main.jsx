@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, useLocation, useParams } from 'react-router-
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
+import './Entry.css'
 import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
 import BackendAvailability from './BackendAvailability.jsx'
