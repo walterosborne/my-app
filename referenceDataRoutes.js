@@ -146,95 +146,148 @@ const mapCause = (row) => ({
     active: row.active
 });
 
+const REFERENCE_SPECS = {
+    programs: {
+        query: `
+            SELECT
+                p.*,
+                ISNULL((
+                    SELECT CONCAT('[', STRING_AGG(CAST(apa.auditorid AS NVARCHAR(MAX)), ','), ']')
+                    FROM auditor_program_assignments_r apa
+                    WHERE apa.programid = p.programid
+                ), '[]') AS auditorids
+            FROM programs_r p
+            ORDER BY p.programid
+        `,
+        map: (rows) => rows.map(mapProgram)
+    },
+    divisions: {
+        query: 'SELECT * FROM divisions_r ORDER BY divisionId',
+        map: (rows) => rows.map(mapDivision)
+    },
+    sectors: {
+        query: 'SELECT * FROM sectors_r ORDER BY sectorId',
+        map: (rows) => rows.map(mapSector)
+    },
+    sites: {
+        query: 'SELECT * FROM sites_r ORDER BY siteId',
+        map: (rows) => rows.map(mapSite)
+    },
+    businessUnits: {
+        query: 'SELECT * FROM business_units_r ORDER BY businessUnitId',
+        map: (rows) => rows.map(mapBusinessUnit)
+    },
+    operatingUnits: {
+        query: 'SELECT * FROM operating_units_r ORDER BY operatingUnitId',
+        map: (rows) => rows.map(mapOperatingUnit)
+    },
+    auditors: {
+        query: `
+            SELECT
+                a.*,
+                ISNULL((
+                    SELECT CONCAT('[', STRING_AGG(CAST(apa.programid AS NVARCHAR(MAX)), ','), ']')
+                    FROM auditor_program_assignments_r apa
+                    WHERE apa.auditorid = a.auditorid
+                ), '[]') AS programids
+            FROM auditors_r a
+            ORDER BY a.auditorid
+        `,
+        map: (rows) => rows.map(mapAuditor)
+    },
+    auditTypes: {
+        query: 'SELECT * FROM audit_types_r ORDER BY auditTypeId',
+        map: (rows) => rows.map(mapAuditType)
+    },
+    functions: {
+        query: 'SELECT * FROM functions_r ORDER BY functionId',
+        map: (rows) => rows.map(mapFunction)
+    },
+    intExt: {
+        query: 'SELECT * FROM int_ext_r ORDER BY intExtId',
+        map: (rows) => rows.map(mapIntExt)
+    },
+    standards: {
+        query: 'SELECT * FROM standards_r ORDER BY standardId',
+        map: (rows) => rows.map(mapStandard)
+    },
+    severities: {
+        query: 'SELECT * FROM severities_r ORDER BY severityId',
+        map: (rows) => rows.map(mapSeverity)
+    },
+    safetyEquipment: {
+        query: 'SELECT * FROM safety_equipment_r ORDER BY safetyEquipmentId',
+        map: (rows) => rows.map(mapSafetyEquipment)
+    },
+    trainingRequirements: {
+        query: 'SELECT * FROM training_requirements_r ORDER BY trainingRequirementId',
+        map: (rows) => rows.map(mapTrainingRequirement)
+    },
+    props: {
+        query: 'SELECT * FROM props_r ORDER BY propId',
+        map: (rows) => rows.map(mapProp)
+    },
+    causes: {
+        query: 'SELECT * FROM causes_r ORDER BY causeId',
+        map: (rows) => rows.map(mapCause)
+    },
+    riskFactors: {
+        query: 'SELECT * FROM RiskFactors_r ORDER BY RiskFactorID',
+        map: (rows) => rows
+    },
+    subcategories: {
+        query: 'SELECT * FROM Subcategories_r ORDER BY RiskFactorID, SubcategoryID',
+        map: (rows) => rows
+    }
+};
+
+const ALL_REFERENCE_KEYS = Object.keys(REFERENCE_SPECS);
+const REFERENCE_KEYS_BY_PROFILE = {
+    audit: ALL_REFERENCE_KEYS,
+    metrics: [
+        'auditors', 'businessUnits', 'causes', 'divisions', 'operatingUnits',
+        'sectors', 'sites', 'programs', 'functions', 'standards', 'intExt', 'severities'
+    ],
+    schedule: [
+        'programs', 'divisions', 'sectors', 'sites', 'businessUnits',
+        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'standards'
+    ],
+    planning: ['programs', 'divisions', 'auditors', 'safetyEquipment', 'trainingRequirements'],
+    results: ['programs', 'divisions', 'auditors', 'standards', 'props', 'causes'],
+    nonconformities: [
+        'programs', 'divisions', 'sectors', 'sites', 'businessUnits',
+        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'standards', 'severities'
+    ]
+};
+
+const normalizeProfile = (value) => {
+    const profile = String(value || '').trim().toLowerCase();
+    return Object.prototype.hasOwnProperty.call(REFERENCE_KEYS_BY_PROFILE, profile)
+        ? profile
+        : 'audit';
+};
+
 export const registerReferenceDataRoutes = ({ app, pool }) => {
     // High-traffic pages previously issued a dozen-plus independent lookup
-    // requests at once. That repeated HTTP/auth overhead even though the data is
-    // small and changes infrequently. Fetch the same lookup tables in parallel
-    // behind one authenticated request and let the browser cache the bundle.
-    app.get('/api/reference-data', async (_req, res) => {
+    // requests at once. Each profile bundles exactly the lookup tables that page
+    // normally requests, preserving the same data while removing repeated
+    // HTTP/auth overhead and avoiding unnecessary over-fetching.
+    app.get('/api/reference-data', async (req, res) => {
         const startedAt = Date.now();
         try {
-            const [
-                programs,
-                divisions,
-                sectors,
-                sites,
-                businessUnits,
-                operatingUnits,
-                auditors,
-                auditTypes,
-                functions,
-                intExt,
-                standards,
-                severities,
-                safetyEquipment,
-                trainingRequirements,
-                props,
-                causes,
-                riskFactors,
-                subcategories
-            ] = await Promise.all([
-                pool.query(`
-                    SELECT
-                        p.*,
-                        ISNULL((
-                            SELECT CONCAT('[', STRING_AGG(CAST(apa.auditorid AS NVARCHAR(MAX)), ','), ']')
-                            FROM auditor_program_assignments_r apa
-                            WHERE apa.programid = p.programid
-                        ), '[]') AS auditorids
-                    FROM programs_r p
-                    ORDER BY p.programid
-                `),
-                pool.query('SELECT * FROM divisions_r ORDER BY divisionId'),
-                pool.query('SELECT * FROM sectors_r ORDER BY sectorId'),
-                pool.query('SELECT * FROM sites_r ORDER BY siteId'),
-                pool.query('SELECT * FROM business_units_r ORDER BY businessUnitId'),
-                pool.query('SELECT * FROM operating_units_r ORDER BY operatingUnitId'),
-                pool.query(`
-                    SELECT
-                        a.*,
-                        ISNULL((
-                            SELECT CONCAT('[', STRING_AGG(CAST(apa.programid AS NVARCHAR(MAX)), ','), ']')
-                            FROM auditor_program_assignments_r apa
-                            WHERE apa.auditorid = a.auditorid
-                        ), '[]') AS programids
-                    FROM auditors_r a
-                    ORDER BY a.auditorid
-                `),
-                pool.query('SELECT * FROM audit_types_r ORDER BY auditTypeId'),
-                pool.query('SELECT * FROM functions_r ORDER BY functionId'),
-                pool.query('SELECT * FROM int_ext_r ORDER BY intExtId'),
-                pool.query('SELECT * FROM standards_r ORDER BY standardId'),
-                pool.query('SELECT * FROM severities_r ORDER BY severityId'),
-                pool.query('SELECT * FROM safety_equipment_r ORDER BY safetyEquipmentId'),
-                pool.query('SELECT * FROM training_requirements_r ORDER BY trainingRequirementId'),
-                pool.query('SELECT * FROM props_r ORDER BY propId'),
-                pool.query('SELECT * FROM causes_r ORDER BY causeId'),
-                pool.query('SELECT * FROM RiskFactors_r ORDER BY RiskFactorID'),
-                pool.query('SELECT * FROM Subcategories_r ORDER BY RiskFactorID, SubcategoryID')
-            ]);
+            const profile = normalizeProfile(req.query.profile);
+            const keys = REFERENCE_KEYS_BY_PROFILE[profile];
+            const results = await Promise.all(
+                keys.map((key) => pool.query(REFERENCE_SPECS[key].query))
+            );
+
+            const payload = {};
+            keys.forEach((key, index) => {
+                payload[key] = REFERENCE_SPECS[key].map(results[index].rows);
+            });
 
             res.set('Server-Timing', `reference-data;dur=${Date.now() - startedAt}`);
-            res.json({
-                programs: programs.rows.map(mapProgram),
-                divisions: divisions.rows.map(mapDivision),
-                sectors: sectors.rows.map(mapSector),
-                sites: sites.rows.map(mapSite),
-                businessUnits: businessUnits.rows.map(mapBusinessUnit),
-                operatingUnits: operatingUnits.rows.map(mapOperatingUnit),
-                auditors: auditors.rows.map(mapAuditor),
-                auditTypes: auditTypes.rows.map(mapAuditType),
-                functions: functions.rows.map(mapFunction),
-                intExt: intExt.rows.map(mapIntExt),
-                standards: standards.rows.map(mapStandard),
-                severities: severities.rows.map(mapSeverity),
-                safetyEquipment: safetyEquipment.rows.map(mapSafetyEquipment),
-                trainingRequirements: trainingRequirements.rows.map(mapTrainingRequirement),
-                props: props.rows.map(mapProp),
-                causes: causes.rows.map(mapCause),
-                riskFactors: riskFactors.rows,
-                subcategories: subcategories.rows
-            });
+            res.json(payload);
         } catch (error) {
             console.error('Error fetching reference data bundle:', error);
             res.status(500).json({ success: false, error: error.message });
