@@ -15,6 +15,10 @@ const Home = () => {
     const rightBubbleRef = React.useRef(null);
 
     React.useEffect(() => {
+        console.log('NGAT DEV TEST - NEW FRONTEND BUILD 2026-10-07');
+    }, []);
+
+    React.useEffect(() => {
         async function logAuthDiagnostics() {
             console.log('NGAT auth diagnostics effect started on Home.');
             try {
