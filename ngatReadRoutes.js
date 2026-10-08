@@ -122,7 +122,9 @@ const mapReportAuditRow = (row) => ({
     intervieweeIds: parseStringArray(row.intervieweeids),
     cui: row.cui,
     locked: Number(row.locked) === 1 ? 1 : 0,
-    approvedAt: row.approvedat
+    approvedAt: row.approvedat,
+    expectedStartDate: row.expectedstartdate,
+    expectedCompletionDate: row.expectedcompletiondate
 });
 
 const canAdminEditAudit = ({ audit, userInfo }) => {
@@ -305,7 +307,9 @@ export const registerNgatReadRoutes = ({ app, pool, getCurrentUserInfo }) => {
                     intervieweeids,
                     cui,
                     CAST(locked AS INT) AS locked,
-                    approvedat
+                    approvedat,
+                    expectedstartdate,
+                    expectedcompletiondate
                 FROM audits_r
                 WHERE stage <> -3
                 ORDER BY scheduleid
