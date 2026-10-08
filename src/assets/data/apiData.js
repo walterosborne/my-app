@@ -29,17 +29,32 @@ const getHashRouteContext = () => {
 
 const isMetricsRoute = () => getHashRouteContext().pathname === '/metrics';
 
-const shouldUseReferenceDataBundle = () => {
-    const { pathname } = getHashRouteContext();
-    return pathname === '/entry'
-        || pathname === '/metrics'
-        || pathname === '/audit'
-        || pathname.startsWith('/audit/')
-        || pathname === '/schedule'
-        || pathname === '/planning'
-        || pathname === '/results'
-        || pathname === '/nonconformaties'
-        || pathname === '/nonconformities';
+const normalizeEntryReferenceProfile = (value) => {
+    const type = String(value || '').trim().toLowerCase();
+    if (type === 'nonconformaties') return 'nonconformities';
+    if (['schedule', 'planning', 'results', 'nonconformities'].includes(type)) return type;
+    return null;
+};
+
+const getReferenceDataEndpoint = () => {
+    const { pathname, searchParams } = getHashRouteContext();
+    if (pathname === '/audit' || pathname.startsWith('/audit/')) {
+        return 'reference-data?profile=audit';
+    }
+    if (pathname === '/metrics') {
+        return 'reference-data?profile=metrics';
+    }
+    if (pathname === '/entry') {
+        const profile = normalizeEntryReferenceProfile(searchParams.get('type'));
+        return profile ? `reference-data?profile=${profile}` : null;
+    }
+    if (pathname === '/schedule') return 'reference-data?profile=schedule';
+    if (pathname === '/planning') return 'reference-data?profile=planning';
+    if (pathname === '/results') return 'reference-data?profile=results';
+    if (pathname === '/nonconformaties' || pathname === '/nonconformities') {
+        return 'reference-data?profile=nonconformities';
+    }
+    return null;
 };
 
 const getAuditReportRouteId = () => {
@@ -97,8 +112,9 @@ async function fetchData(endpoint, skipCache = false) {
 }
 
 const getReferenceList = async (key, endpoint) => {
-    if (shouldUseReferenceDataBundle()) {
-        const bundle = await fetchData('reference-data');
+    const bundleEndpoint = getReferenceDataEndpoint();
+    if (bundleEndpoint) {
+        const bundle = await fetchData(bundleEndpoint);
         if (bundle && !Array.isArray(bundle) && Array.isArray(bundle[key])) {
             return bundle[key];
         }
