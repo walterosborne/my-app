@@ -1,40 +1,52 @@
-import { StrictMode, useEffect, useState } from 'react'
+import { StrictMode, Suspense, lazy, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { HashRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
 import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
 import BackendAvailability from './BackendAvailability.jsx'
-import Home from './Home.jsx'
-import Audit from './Audit.jsx'
-import AllReports from './AllReports.jsx'
-import ThirtySixtyNinety from './ThirtySixtyNinety.jsx'
-import Entry from './Entry.jsx'
-import Approval from './Approval.jsx'
-import EmailOutbox from './EmailOutbox.jsx'
-import Schedule from './Schedule.jsx'
-import Planning from './Planning.jsx'
-import Results from './Results.jsx'
-import Nonconformities from './Nonconformaties.jsx'
-import Calendar from './Calendar.jsx'
-import AdminMenu from './AdminMenu.jsx'
-import FOE from './FOE.jsx'
-import FoeAdminMenu from './FoeAdminMenu.jsx'
-import InfoSupport from './InfoSupport.jsx'
-import VersionHistory from './VersionHistory.jsx'
-import AuditStatuses from './AuditStatuses.jsx'
-import AuditReports from './AuditReports.jsx'
-import RequestAuditorAccess from './RequestAuditorAccess.jsx'
-import ImprovementRequest from './ImprovementRequest.jsx'
-import TableTest from './TableTest.jsx'
-import Metrics from './Metrics.jsx'
-import RiskAnalysis from './RiskAnalysis.jsx'
-import RiskAnalysisEdit from './RiskAnalysisEdit.jsx'
-import RiskAnalysisView from './RiskAnalysisView.jsx'
 import { getCurrentUser, getHeaderDiagnostics } from './assets/data/apiData'
 import { getProductionAppUrlForPath } from '../environment-config.js'
+
+// Keep the shell tiny. Each page is downloaded only when the user opens it,
+// which avoids making Home wait for XLSX, charts, DataGrid, markdown and the
+// rest of the feature-specific bundles used elsewhere in NGAT.
+const Home = lazy(() => import('./Home.jsx'))
+const Audit = lazy(() => import('./Audit.jsx'))
+const AllReports = lazy(() => import('./AllReports.jsx'))
+const ThirtySixtyNinety = lazy(() => import('./ThirtySixtyNinety.jsx'))
+const Entry = lazy(() => import('./Entry.jsx'))
+const Approval = lazy(() => import('./Approval.jsx'))
+const EmailOutbox = lazy(() => import('./EmailOutbox.jsx'))
+const Schedule = lazy(() => import('./Schedule.jsx'))
+const Planning = lazy(() => import('./Planning.jsx'))
+const Results = lazy(() => import('./Results.jsx'))
+const Nonconformities = lazy(() => import('./Nonconformaties.jsx'))
+const Calendar = lazy(() => import('./Calendar.jsx'))
+const AdminMenu = lazy(() => import('./AdminMenu.jsx'))
+const FOE = lazy(() => import('./FOE.jsx'))
+const FoeAdminMenu = lazy(() => import('./FoeAdminMenu.jsx'))
+const InfoSupport = lazy(() => import('./InfoSupport.jsx'))
+const VersionHistory = lazy(() => import('./VersionHistory.jsx'))
+const AuditStatuses = lazy(() => import('./AuditStatuses.jsx'))
+const AuditReports = lazy(() => import('./AuditReports.jsx'))
+const RequestAuditorAccess = lazy(() => import('./RequestAuditorAccess.jsx'))
+const ImprovementRequest = lazy(() => import('./ImprovementRequest.jsx'))
+const TableTest = lazy(() => import('./TableTest.jsx'))
+const Metrics = lazy(() => import('./Metrics.jsx'))
+const RiskAnalysis = lazy(() => import('./RiskAnalysis.jsx'))
+const RiskAnalysisEdit = lazy(() => import('./RiskAnalysisEdit.jsx'))
+const RiskAnalysisView = lazy(() => import('./RiskAnalysisView.jsx'))
+
+const LoadingPage = ({ message = 'Loading page...' }) => (
+  <div className="entry-page">
+    <div className="entry-container">
+      <div className="entry-message">{message}</div>
+    </div>
+  </div>
+)
 
 const AppBootstrapGate = ({ children }) => {
   const [isReady, setIsReady] = useState(false)
@@ -42,13 +54,14 @@ const AppBootstrapGate = ({ children }) => {
   useEffect(() => {
     let cancelled = false
 
-    ;(async () => {
-      try {
-        await getHeaderDiagnostics()
-      } catch (error) {
-        console.warn('NGAT failed to warm auth diagnostics at app bootstrap:', error)
-      }
+    // Diagnostics are useful for troubleshooting, but they are not required to
+    // render NGAT. Warm them in the background instead of putting them in the
+    // critical path before every first page load.
+    getHeaderDiagnostics().catch((error) => {
+      console.warn('NGAT failed to warm auth diagnostics at app bootstrap:', error)
+    })
 
+    ;(async () => {
       try {
         await getCurrentUser()
       } catch (error) {
@@ -66,13 +79,7 @@ const AppBootstrapGate = ({ children }) => {
   }, [])
 
   if (!isReady) {
-    return (
-      <div className="entry-page">
-        <div className="entry-container">
-          <div className="entry-message">Loading NGAT...</div>
-        </div>
-      </div>
-    )
+    return <LoadingPage message="Loading NGAT..." />
   }
 
   return children
@@ -227,6 +234,14 @@ const AppEnvironmentBanner = () => {
   )
 }
 
+// React Router normally keeps the same component instance alive when only the
+// :id changes. Remount Audit for a new ID so its selected-audit detail request
+// runs again, while the compact report list and lookup caches remain reusable.
+const AuditRoute = () => {
+  const { id } = useParams()
+  return <Audit key={id || 'latest'} />
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <HashRouter>
@@ -246,36 +261,38 @@ createRoot(document.getElementById('root')).render(
           pauseOnHover={false}
         />
         <Navbar />
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/audit" element={<Audit />} />
-          <Route path="/audit/:id" element={<Audit />} />
-          <Route path="/myaudits" element={<AllReports />} />
-          <Route path="/audit-reports" element={<AuditReports />} />
-          <Route path="/reports" element={<ThirtySixtyNinety />} />
-          <Route path="/entry" element={<Entry />} />
-          <Route path="/approve/:scheduleId" element={<Approval />} />
-          <Route path="/email-outbox" element={<EmailOutbox />} />
-          <Route path="/schedule" element={<Schedule />} />
-          <Route path="/planning" element={<Planning />} />
-          <Route path="/results" element={<Results />} />
-          <Route path="/nonconformaties" element={<Nonconformities />} />
-          <Route path="/nonconformities" element={<Nonconformities />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/metrics" element={<Metrics />} />
-          <Route path="/risk-analysis" element={<RiskAnalysis />} />
-          <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
-          <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
-          <Route path="/foe" element={<FOE />} />
-          <Route path="/foe/admin" element={<FoeAdminMenu />} />
-          <Route path="/info-support" element={<InfoSupport />} />
-          <Route path="/version-history" element={<VersionHistory />} />
-          <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
-          <Route path="/submit-improvement" element={<ImprovementRequest />} />
-          <Route path="/audit-statuses" element={<AuditStatuses />} />
-          <Route path="/admin" element={<AdminMenu />} />
-          <Route path="/tabletest" element={<TableTest />} />
-        </Routes>
+        <Suspense fallback={<LoadingPage />}>
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/audit" element={<AuditRoute />} />
+            <Route path="/audit/:id" element={<AuditRoute />} />
+            <Route path="/myaudits" element={<AllReports />} />
+            <Route path="/audit-reports" element={<AuditReports />} />
+            <Route path="/reports" element={<ThirtySixtyNinety />} />
+            <Route path="/entry" element={<Entry />} />
+            <Route path="/approve/:scheduleId" element={<Approval />} />
+            <Route path="/email-outbox" element={<EmailOutbox />} />
+            <Route path="/schedule" element={<Schedule />} />
+            <Route path="/planning" element={<Planning />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/nonconformaties" element={<Nonconformities />} />
+            <Route path="/nonconformities" element={<Nonconformities />} />
+            <Route path="/calendar" element={<Calendar />} />
+            <Route path="/metrics" element={<Metrics />} />
+            <Route path="/risk-analysis" element={<RiskAnalysis />} />
+            <Route path="/risk-analysis/edit" element={<RiskAnalysisEdit />} />
+            <Route path="/risk-analysis/view" element={<RiskAnalysisView />} />
+            <Route path="/foe" element={<FOE />} />
+            <Route path="/foe/admin" element={<FoeAdminMenu />} />
+            <Route path="/info-support" element={<InfoSupport />} />
+            <Route path="/version-history" element={<VersionHistory />} />
+            <Route path="/request-auditor-access" element={<RequestAuditorAccess />} />
+            <Route path="/submit-improvement" element={<ImprovementRequest />} />
+            <Route path="/audit-statuses" element={<AuditStatuses />} />
+            <Route path="/admin" element={<AdminMenu />} />
+            <Route path="/tabletest" element={<TableTest />} />
+          </Routes>
+        </Suspense>
       </AppBootstrapGate>
       </BackendAvailability>
     </HashRouter>
