@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, useLocation, useParams } from 'react-router-
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import './index.css'
+import './App.css'
 import './Entry.css'
 import ngFavicon from './assets/NG.png'
 import Navbar from './Navbar.jsx'
@@ -13,7 +14,9 @@ import { getProductionAppUrlForPath } from '../environment-config.js'
 
 // Keep the shell tiny. Each page is downloaded only when the user opens it,
 // which avoids making Home wait for XLSX, charts, DataGrid, markdown and the
-// rest of the feature-specific bundles used elsewhere in NGAT.
+// rest of the feature-specific bundles used elsewhere in NGAT. App.css and
+// Entry.css stay in the shell because they define the shared page geometry;
+// loading them lazily caused visible width/alignment shifts between routes.
 const Home = lazy(() => import('./Home.jsx'))
 const Audit = lazy(() => import('./Audit.jsx'))
 const AllReports = lazy(() => import('./AllReports.jsx'))
