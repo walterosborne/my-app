@@ -5,25 +5,51 @@ export const API_BASE = '/api';
 
 export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
 
-// Cache for data to avoid repeated fetches
+// Cache for data to avoid repeated fetches. Keep in-flight reads too so two
+// components asking for the same endpoint at once share one request.
 const cache = {};
+const inFlight = {};
+let headerDiagnosticsCache = null;
+let headerDiagnosticsPromise = null;
+
+const isMetricsRoute = () => (
+    typeof window !== 'undefined'
+    && String(window.location.hash || '').startsWith('#/metrics')
+);
 
 async function fetchData(endpoint, skipCache = false) {
     if (cache[endpoint] && !skipCache) {
         return cache[endpoint];
     }
+    if (inFlight[endpoint] && !skipCache) {
+        return await inFlight[endpoint];
+    }
+
+    const request = (async () => {
+        try {
+            const response = await fetch(buildApiUrl(endpoint));
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            cache[endpoint] = data;
+            return data;
+        } catch (error) {
+            console.error(`Error fetching ${endpoint}:`, error);
+            return [];
+        }
+    })();
+
+    if (!skipCache) {
+        inFlight[endpoint] = request;
+    }
 
     try {
-        const response = await fetch(buildApiUrl(endpoint));
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        return await request;
+    } finally {
+        if (!skipCache) {
+            delete inFlight[endpoint];
         }
-        const data = await response.json();
-        cache[endpoint] = data;
-        return data;
-    } catch (error) {
-        console.error(`Error fetching ${endpoint}:`, error);
-        return [];
     }
 }
 
@@ -33,25 +59,55 @@ export async function getAudits(skipCache = false) {
 }
 
 export async function getAuditsAll(skipCache = false) {
-    return await fetchData('audits?all=true', skipCache);
+    // Metrics only needs a narrow subset of the audit record. The dedicated
+    // endpoint avoids downloading the much wider general audit payload.
+    const endpoint = isMetricsRoute() ? 'metrics/audits' : 'audits?all=true';
+    return await fetchData(endpoint, skipCache);
 }
 
 export async function getAuditsReport(skipCache = false) {
     return await fetchData('audits?report=true', skipCache);
 }
 
-export async function getCurrentUser() {
-    return await fetchData('current-user', true);
+export async function getCurrentUser(skipCache = false) {
+    // AppBootstrapGate already resolves the user before routed pages render.
+    // Reuse that result unless a caller explicitly requests a refresh.
+    return await fetchData('current-user', skipCache);
 }
 
-export async function getHeaderDiagnostics() {
-    const response = await fetch(buildApiUrl('testheaders?format=json'), {
-        cache: 'no-store'
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+export async function getHeaderDiagnostics(skipCache = false) {
+    // Header diagnostics are also warmed at app bootstrap. Metrics used to wait
+    // for the exact same request a second time before starting its data loads.
+    if (headerDiagnosticsCache && !skipCache) {
+        return headerDiagnosticsCache;
     }
-    return await response.json();
+    if (headerDiagnosticsPromise && !skipCache) {
+        return await headerDiagnosticsPromise;
+    }
+
+    const request = (async () => {
+        const response = await fetch(buildApiUrl('testheaders?format=json'), {
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        headerDiagnosticsCache = data;
+        return data;
+    })();
+
+    if (!skipCache) {
+        headerDiagnosticsPromise = request;
+    }
+
+    try {
+        return await request;
+    } finally {
+        if (!skipCache) {
+            headerDiagnosticsPromise = null;
+        }
+    }
 }
 
 export async function getPrograms() {
@@ -324,9 +380,12 @@ export async function getNonconformances(scheduleId) {
         }
         return Array.isArray(data) ? data : [];
     }
+    // Metrics only needs schedule/type/clause/finding type/severity, not the
+    // full response text and evidence metadata returned by the legacy endpoint.
+    const endpoint = isMetricsRoute() ? 'metrics/findings' : 'nonconformances';
     // Findings change throughout Conduct Audit/Nonconformities, so a global
     // results read must not reuse stale session cache data.
-    const data = await fetchData('nonconformances', true);
+    const data = await fetchData(endpoint, true);
     return Array.isArray(data) ? data : [];
 }
 
@@ -403,4 +462,7 @@ export async function getEveryTimeQuestions(divisionId) {
 // Clear cache (useful for refreshing data)
 export function clearCache() {
     Object.keys(cache).forEach(key => delete cache[key]);
+    Object.keys(inFlight).forEach(key => delete inFlight[key]);
+    headerDiagnosticsCache = null;
+    headerDiagnosticsPromise = null;
 }
