@@ -1,6 +1,6 @@
 // API data loader:
 // - during local Vite dev, /api is proxied to the backend on port 3001
-// - behind IIS/reverse proxy, /api is handled by the web.config rewrite
+// - behind the OpenShift reverse proxy, /api is handled by the backend service
 export const API_BASE = '/api';
 
 export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
@@ -12,10 +12,30 @@ const inFlight = {};
 let headerDiagnosticsCache = null;
 let headerDiagnosticsPromise = null;
 
-const isMetricsRoute = () => (
-    typeof window !== 'undefined'
-    && String(window.location.hash || '').startsWith('#/metrics')
-);
+const getHashRouteContext = () => {
+    if (typeof window === 'undefined') {
+        return { pathname: '', searchParams: new URLSearchParams() };
+    }
+
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    const queryIndex = hash.indexOf('?');
+    const pathname = queryIndex >= 0 ? hash.slice(0, queryIndex) : hash;
+    const queryString = queryIndex >= 0 ? hash.slice(queryIndex + 1) : '';
+    return {
+        pathname,
+        searchParams: new URLSearchParams(queryString)
+    };
+};
+
+const isMetricsRoute = () => getHashRouteContext().pathname === '/metrics';
+
+const getAuditReportRouteId = () => {
+    const { pathname } = getHashRouteContext();
+    const match = pathname.match(/^\/audit\/(\d+)\/?$/);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+};
 
 async function fetchData(endpoint, skipCache = false) {
     if (cache[endpoint] && !skipCache) {
@@ -55,6 +75,11 @@ async function fetchData(endpoint, skipCache = false) {
 
 // Export async functions for each data type
 export async function getAudits(skipCache = false) {
+    const { pathname, searchParams } = getHashRouteContext();
+    if (pathname === '/entry') {
+        const entryType = searchParams.get('type') || 'summary';
+        return await fetchData(`entry-audits?type=${encodeURIComponent(entryType)}`, skipCache);
+    }
     return await fetchData('audits', skipCache);
 }
 
@@ -66,7 +91,42 @@ export async function getAuditsAll(skipCache = false) {
 }
 
 export async function getAuditsReport(skipCache = false) {
-    return await fetchData('audits?report=true', skipCache);
+    const { pathname } = getHashRouteContext();
+    const isIndividualReport = pathname === '/audit' || pathname.startsWith('/audit/');
+    if (!isIndividualReport) {
+        return await fetchData('audits?report=true', skipCache);
+    }
+
+    // Keep the report dropdown/list compact, then fetch the complete record for
+    // only the audit that is actually being viewed. The compact list is stable
+    // during navigation and can stay cached; the selected audit can be refreshed.
+    const summaries = await fetchData('report-audits');
+    if (!Array.isArray(summaries) || summaries.length === 0) {
+        return [];
+    }
+
+    let selectedId = getAuditReportRouteId();
+    if (!selectedId) {
+        selectedId = summaries.reduce((highest, audit) => {
+            const scheduleId = Number(audit?.scheduleId);
+            return Number.isFinite(scheduleId) && scheduleId > highest ? scheduleId : highest;
+        }, 0) || null;
+    }
+
+    if (!selectedId) return summaries;
+
+    const detail = await fetchData(`audits/${selectedId}?report=true`, skipCache);
+    if (!detail || Array.isArray(detail) || typeof detail !== 'object') {
+        // Keep the compact row available so normal access/CUI handling further
+        // down the page can still provide the appropriate user-facing message.
+        return summaries;
+    }
+
+    return summaries.map((audit) => (
+        Number(audit?.scheduleId) === Number(selectedId)
+            ? { ...audit, ...detail }
+            : audit
+    ));
 }
 
 export async function getCurrentUser(skipCache = false) {
@@ -76,8 +136,8 @@ export async function getCurrentUser(skipCache = false) {
 }
 
 export async function getHeaderDiagnostics(skipCache = false) {
-    // Header diagnostics are also warmed at app bootstrap. Metrics used to wait
-    // for the exact same request a second time before starting its data loads.
+    // Header diagnostics are warmed at app bootstrap. Reuse both the completed
+    // value and an in-flight request instead of every page repeating the call.
     if (headerDiagnosticsCache && !skipCache) {
         return headerDiagnosticsCache;
     }
@@ -149,7 +209,6 @@ export async function getFoeDivisions(skipCache = false) {
 export async function getFoeShifts(skipCache = false) {
     return await fetchData('foe-shifts', skipCache);
 }
-
 
 async function parseFoeResponse(response, fallbackMessage) {
     let data = null;
