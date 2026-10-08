@@ -2,16 +2,42 @@ import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import 'react-toastify/dist/ReactToastify.css';
-import { getAudits, getCurrentUser } from './assets/data/apiData';
+import { getAudits, getCurrentUser, getPrograms } from './assets/data/apiData';
 import './Entry.css';
 
 // Entry is one of the heaviest areas in NGAT. Load only the workflow the user
 // actually opened instead of downloading Schedule, Planning, Conduct Audit and
-// Nonconformities code together on every Entry visit.
-const Schedule = React.lazy(() => import('./Schedule'));
-const Planning = React.lazy(() => import('./Planning'));
-const Results = React.lazy(() => import('./Results'));
-const Nonconformities = React.lazy(() => import('./Nonconformaties'));
+// Nonconformities code together on every Entry visit. Keep the loader functions
+// so we can start downloading the selected tool while its audit data is loading.
+const loadSchedule = () => import('./Schedule');
+const loadPlanning = () => import('./Planning');
+const loadResults = () => import('./Results');
+const loadNonconformities = () => import('./Nonconformaties');
+
+const Schedule = React.lazy(loadSchedule);
+const Planning = React.lazy(loadPlanning);
+const Results = React.lazy(loadResults);
+const Nonconformities = React.lazy(loadNonconformities);
+
+const preloadEntryTool = (type) => {
+    switch (type) {
+        case 'schedule':
+            return loadSchedule();
+        case 'planning':
+            return loadPlanning();
+        case 'results':
+            return loadResults();
+        case 'nonconformaties':
+        case 'nonconformities':
+            return loadNonconformities();
+        default:
+            return Promise.resolve();
+    }
+};
+
+const hasEntryReferenceProfile = (type) => (
+    ['schedule', 'planning', 'results', 'nonconformaties', 'nonconformities'].includes(type)
+);
 
 const Entry = () => {
     const [searchParams] = useSearchParams();
@@ -32,32 +58,38 @@ const Entry = () => {
     const [accessErrorShown, setAccessErrorShown] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState(null);
 
-    // The API loader now asks for a narrow, workflow-specific audit payload.
-    // Changing Entry tabs changes the payload, so reload when `type` changes;
-    // current-user and unchanged lookup reads are still served from cache.
+    // Load the lightweight audit list, selected page code, and that page's
+    // bundled reference data together. This keeps the loading card at a stable
+    // size and avoids the visible "audits -> entry tool -> lookup data" cascade.
     React.useEffect(() => {
         let cancelled = false;
 
-        async function loadAudits() {
+        async function loadEntry() {
             setLoading(true);
             try {
+                const referenceWarmup = hasEntryReferenceProfile(type)
+                    ? getPrograms()
+                    : Promise.resolve();
+
                 const [auditsData, userData] = await Promise.all([
                     getAudits(),
-                    getCurrentUser()
+                    getCurrentUser(),
+                    preloadEntryTool(type),
+                    referenceWarmup
                 ]);
                 if (cancelled) return;
                 setAudits(Array.isArray(auditsData) ? auditsData : []);
                 setCurrentUser(userData);
             } catch (error) {
                 if (cancelled) return;
-                console.error('Error loading audits:', error);
+                console.error('Error loading entry:', error);
                 setAudits([]);
             } finally {
                 if (!cancelled) setLoading(false);
             }
         }
 
-        loadAudits();
+        loadEntry();
         return () => {
             cancelled = true;
         };
@@ -95,7 +127,7 @@ const Entry = () => {
         return (
             <div className="entry-page">
                 <div className="entry-container">
-                    <div className="entry-message">Loading audits...</div>
+                    <div className="entry-message">Loading entry...</div>
                 </div>
             </div>
         );
