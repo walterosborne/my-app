@@ -1,14 +1,17 @@
 import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
-import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import Schedule from './Schedule';
-import Planning from './Planning';
-import Results from './Results';
-import Nonconformities from './Nonconformaties';
 import { getAudits, getCurrentUser } from './assets/data/apiData';
 import './Entry.css';
+
+// Entry is one of the heaviest areas in NGAT. Load only the workflow the user
+// actually opened instead of downloading Schedule, Planning, Conduct Audit and
+// Nonconformities code together on every Entry visit.
+const Schedule = React.lazy(() => import('./Schedule'));
+const Planning = React.lazy(() => import('./Planning'));
+const Results = React.lazy(() => import('./Results'));
+const Nonconformities = React.lazy(() => import('./Nonconformaties'));
 
 const Entry = () => {
     const [searchParams] = useSearchParams();
@@ -29,24 +32,36 @@ const Entry = () => {
     const [accessErrorShown, setAccessErrorShown] = React.useState(false);
     const [currentUser, setCurrentUser] = React.useState(null);
 
-    // Load audits from API on mount
+    // The API loader now asks for a narrow, workflow-specific audit payload.
+    // Changing Entry tabs changes the payload, so reload when `type` changes;
+    // current-user and unchanged lookup reads are still served from cache.
     React.useEffect(() => {
+        let cancelled = false;
+
         async function loadAudits() {
+            setLoading(true);
             try {
                 const [auditsData, userData] = await Promise.all([
-                    getAudits(true),
+                    getAudits(),
                     getCurrentUser()
                 ]);
-                setAudits(auditsData);
+                if (cancelled) return;
+                setAudits(Array.isArray(auditsData) ? auditsData : []);
                 setCurrentUser(userData);
-                setLoading(false);
             } catch (error) {
+                if (cancelled) return;
                 console.error('Error loading audits:', error);
-                setLoading(false);
+                setAudits([]);
+            } finally {
+                if (!cancelled) setLoading(false);
             }
         }
+
         loadAudits();
-    }, []);
+        return () => {
+            cancelled = true;
+        };
+    }, [type]);
 
     React.useEffect(() => {
         setAccessErrorShown(false);
@@ -65,11 +80,12 @@ const Entry = () => {
         }
     }, [auditId, hasAccessToRequestedAudit, loading, accessErrorShown]);
 
-    // Function to reload audits data
+    // Explicit refreshes after a save bypass the cache so the workflow sees its
+    // new values, while ordinary navigation reuses the already-loaded payload.
     const reloadAudits = async () => {
         try {
-            const auditsData = await getAudits(true); // Skip cache to get fresh data
-            setAudits(auditsData);
+            const auditsData = await getAudits(true);
+            setAudits(Array.isArray(auditsData) ? auditsData : []);
         } catch (error) {
             console.error('Error reloading audits:', error);
         }
@@ -171,7 +187,7 @@ const Entry = () => {
                                 className="button"
                                 style={{ backgroundColor: '#0066cc', width: '200px' }}
                             >
-                                Results Entry
+                                Conduct Audit
                             </button>
                             <button
                                 onClick={() => handleNavigate('nonconformities')}
@@ -189,7 +205,9 @@ const Entry = () => {
     return (
         <div className="entry-page">
             <div className="entry-container">
-                {renderComponent()}
+                <React.Suspense fallback={<div className="entry-message">Loading entry tool...</div>}>
+                    {renderComponent()}
+                </React.Suspense>
             </div>
         </div>
     );
