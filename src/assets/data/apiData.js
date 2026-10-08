@@ -29,6 +29,19 @@ const getHashRouteContext = () => {
 
 const isMetricsRoute = () => getHashRouteContext().pathname === '/metrics';
 
+const shouldUseReferenceDataBundle = () => {
+    const { pathname } = getHashRouteContext();
+    return pathname === '/entry'
+        || pathname === '/metrics'
+        || pathname === '/audit'
+        || pathname.startsWith('/audit/')
+        || pathname === '/schedule'
+        || pathname === '/planning'
+        || pathname === '/results'
+        || pathname === '/nonconformaties'
+        || pathname === '/nonconformities';
+};
+
 const getAuditReportRouteId = () => {
     const { pathname } = getHashRouteContext();
     const match = pathname.match(/^\/audit\/(\d+)\/?$/);
@@ -82,6 +95,16 @@ async function fetchData(endpoint, skipCache = false) {
         }
     }
 }
+
+const getReferenceList = async (key, endpoint) => {
+    if (shouldUseReferenceDataBundle()) {
+        const bundle = await fetchData('reference-data');
+        if (bundle && !Array.isArray(bundle) && Array.isArray(bundle[key])) {
+            return bundle[key];
+        }
+    }
+    return await fetchData(endpoint);
+};
 
 // Export async functions for each data type
 export async function getAudits(skipCache = false) {
@@ -189,19 +212,19 @@ export async function getHeaderDiagnostics(skipCache = false) {
 }
 
 export async function getPrograms() {
-    return await fetchData('programs');
+    return await getReferenceList('programs', 'programs');
 }
 
 export async function getDivisions() {
-    return await fetchData('divisions');
+    return await getReferenceList('divisions', 'divisions');
 }
 
 export async function getSectors() {
-    return await fetchData('sectors');
+    return await getReferenceList('sectors', 'sectors');
 }
 
 export async function getSites() {
-    return await fetchData('sites');
+    return await getReferenceList('sites', 'sites');
 }
 
 export async function getFoeSites(skipCache = false) {
@@ -270,34 +293,36 @@ export async function getFoeReportData() {
 }
 
 export async function getBusinessUnits() {
-    return await fetchData('business-units');
+    return await getReferenceList('businessUnits', 'business-units');
 }
 
 export async function getOperatingUnits() {
-    return await fetchData('operating-units');
+    return await getReferenceList('operatingUnits', 'operating-units');
 }
 
 export async function getAuditors() {
-    return await fetchData('auditors');
+    return await getReferenceList('auditors', 'auditors');
 }
 
 export async function getAuditTypes() {
-    return await fetchData('audit-types');
+    return await getReferenceList('auditTypes', 'audit-types');
 }
 
 export async function getFunctions() {
-    return await fetchData('functions');
+    return await getReferenceList('functions', 'functions');
 }
 
 export async function getIntExt() {
-    return await fetchData('int-ext');
+    return await getReferenceList('intExt', 'int-ext');
 }
 
 export async function getStandards() {
-    return await fetchData('standards');
+    return await getReferenceList('standards', 'standards');
 }
 
 export async function getStandardTexts() {
+    // Standard text is comparatively large and Conduct Audit is the main
+    // consumer, so keep it outside the general reference-data bundle.
     return await fetchData('standard-texts');
 }
 
@@ -392,15 +417,15 @@ export const getAuditorFileDownloadUrl = (fileId) => {
 };
 
 export async function getSafetyEquipment() {
-    return await fetchData('safety-equipment');
+    return await getReferenceList('safetyEquipment', 'safety-equipment');
 }
 
 export async function getTrainingRequirements() {
-    return await fetchData('training-requirements');
+    return await getReferenceList('trainingRequirements', 'training-requirements');
 }
 
 export async function getSeverities() {
-    return await fetchData('severities');
+    return await getReferenceList('severities', 'severities');
 }
 
 export async function getRoster() {
@@ -443,7 +468,7 @@ export async function getRosterByIds(ids = []) {
 }
 
 export async function getProps() {
-    return await fetchData('props');
+    return await getReferenceList('props', 'props');
 }
 
 export async function getNonconformances(scheduleId) {
@@ -467,11 +492,11 @@ export async function getNonconformances(scheduleId) {
 }
 
 export async function getRiskFactors() {
-    return await fetchData('risk-factors');
+    return await getReferenceList('riskFactors', 'risk-factors');
 }
 
 export async function getSubcategories() {
-    return await fetchData('subcategories');
+    return await getReferenceList('subcategories', 'subcategories');
 }
 
 export async function getRiskRatings(riskTypeId, targetId = null, processArea = null, year = null) {
@@ -488,8 +513,8 @@ export async function getRiskRatings(riskTypeId, targetId = null, processArea = 
 
     let effectiveYear = year;
     // Individual Audit Report only displays ratings for the audit's year. Use
-    // the already-small report summary to avoid downloading every year's risk
-    // rows when the caller did not explicitly request another scope/year.
+    // the report summary to avoid downloading every year's risk rows when the
+    // caller did not explicitly request another scope/year.
     if (
         effectiveYear === null
         && (riskTypeId === null || riskTypeId === undefined || riskTypeId === '')
@@ -551,7 +576,7 @@ export async function deleteRiskRatings(payload) {
 }
 
 export async function getCauses() {
-    return await fetchData('causes');
+    return await getReferenceList('causes', 'causes');
 }
 
 export async function getEveryTimeQuestions(divisionId) {
