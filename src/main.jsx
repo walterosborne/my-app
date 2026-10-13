@@ -246,11 +246,14 @@ const AuditRoute = () => {
   return <Audit key={id || 'latest'} />
 }
 
-// NGAT uses HashRouter. Older/direct approval links such as /approve/2468
-// otherwise load the app with an empty hash, which HashRouter interprets as
-// the Home route. Normalize that browser path before the router initializes.
-if (!window.location.hash && /^\/approve\/[^/]+\/?$/.test(window.location.pathname)) {
-  const approvalPath = window.location.pathname.replace(/\/$/, '')
+// NGAT uses HashRouter. Direct approval links can arrive as /approve/2468,
+// /approve/2468#, or /approve/2468#/ after the proxy/browser normalizes the
+// URL. In all three cases HashRouter would otherwise see the root route and
+// render Home. Move the approval path into the hash before the router starts.
+const directApprovalMatch = window.location.pathname.match(/^\/approve\/([^/]+)\/?$/)
+const rootHash = window.location.hash === '' || window.location.hash === '#' || window.location.hash === '#/'
+if (directApprovalMatch && rootHash) {
+  const approvalPath = `/approve/${directApprovalMatch[1]}`
   window.history.replaceState(null, '', `/#${approvalPath}${window.location.search || ''}`)
 }
 
