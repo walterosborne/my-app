@@ -107,6 +107,16 @@ const Audit = () => {
     const [downloadingEvidenceNcId, setDownloadingEvidenceNcId] = React.useState(null);
     const [downloadingQuestionEvidenceId, setDownloadingQuestionEvidenceId] = React.useState(null);
     const [changingLifecycle, setChangingLifecycle] = React.useState(false);
+    const [pdfExportDialogOpen, setPdfExportDialogOpen] = React.useState(false);
+
+    React.useEffect(() => {
+        if (!pdfExportDialogOpen) return undefined;
+        const closeOnEscape = (event) => {
+            if (event.key === 'Escape') setPdfExportDialogOpen(false);
+        };
+        document.addEventListener('keydown', closeOnEscape);
+        return () => document.removeEventListener('keydown', closeOnEscape);
+    }, [pdfExportDialogOpen]);
 
     // Load all data from API on mount
     React.useEffect(() => {
@@ -1293,8 +1303,13 @@ const Audit = () => {
         XLSX.writeFile(wb, `Audit ${auditData.scheduleId}.xlsx`);
     };
 
-    const handleExportPdf = () => {
-        if (!auditData) return;
+    const handleExportPdf = (audience) => {
+        if (!auditData || !['internal', 'external'].includes(audience)) return;
+        const isExternal = audience === 'external';
+        const reportAudienceLabel = isExternal ? 'External Use — Nonconformities Only' : 'Internal Use — All Findings';
+        const selectedFindings = isExternal
+            ? nonconformances.filter((finding) => Number(finding.findingType) === 1)
+            : nonconformances;
 
         const additionalAuditorIds = Array.isArray(auditData.additionalAuditorIds)
             ? auditData.additionalAuditorIds
@@ -1376,12 +1391,12 @@ const Audit = () => {
         const carLinesHtml = carLines.map((line) => `<p>${escapeHtml(line)}</p>`).join('');
 
         const counts = {
-            nonconformities: nonconformances.filter((nc) => nc.findingType === 1).length,
-            ofis: nonconformances.filter((nc) => nc.findingType === 3).length,
-            observations: nonconformances.filter((nc) => nc.findingType === 4).length,
-            conformities: nonconformances.filter((nc) => nc.findingType === 2).length
+            nonconformities: selectedFindings.filter((finding) => Number(finding.findingType) === 1).length,
+            ofis: selectedFindings.filter((finding) => Number(finding.findingType) === 3).length,
+            observations: selectedFindings.filter((finding) => Number(finding.findingType) === 4).length,
+            conformities: selectedFindings.filter((finding) => Number(finding.findingType) === 2).length
         };
-        counts.total = counts.nonconformities + counts.ofis + counts.observations;
+        counts.total = selectedFindings.length;
 
         const summaryHtml = auditData.overview
             ? escapeHtml(auditData.overview)
@@ -1430,10 +1445,10 @@ const Audit = () => {
             ? `<div class="approver-rows">${approvalCards}</div>`
             : '<p class="muted">No approvers assigned.</p>';
 
-        const peqNcs = nonconformances.filter((nc) => nc.type === 'PEQ' && nc.findingType === 1);
-        const etqNcs = nonconformances.filter((nc) => nc.type === 'ETQ' && nc.findingType === 1);
-        const standardNcs = nonconformances.filter(
-            (nc) => nc.type !== 'PEQ' && nc.type !== 'ETQ' && nc.findingType === 1
+        const peqFindings = selectedFindings.filter((finding) => finding.type === 'PEQ');
+        const etqFindings = selectedFindings.filter((finding) => finding.type === 'ETQ');
+        const standardFindings = selectedFindings.filter(
+            (finding) => finding.type !== 'PEQ' && finding.type !== 'ETQ'
         );
 
         const renderNcEntry = (nc) => {
@@ -1451,7 +1466,10 @@ const Audit = () => {
             const propRowsHtml = `
                 <div class="nc-field"><strong>PrOPs:</strong> ${findingPropSummary ? escapeHtml(findingPropSummary) : '<span class="muted">No response provided.</span>'}</div>
             `;
-            const hasNcDetailContent = Boolean(nc.details || nc.AIN);
+            const isNonconformity = Number(nc.findingType) === 1;
+            const showDetails = Boolean(nc.details) || (isNonconformity && showNcDetailFallbacks);
+            const showCarNumber = Boolean(nc.AIN) || (isNonconformity && showNcDetailFallbacks);
+            const findingIdLabel = isNonconformity ? 'NGAT Nonconformity Identifier' : 'NGAT Finding Identifier';
             const detailsHtml = nc.details
                 ? escapeHtml(nc.details)
                 : (showNcDetailFallbacks ? '<span class="muted">No response provided.</span>' : '');
@@ -1461,17 +1479,15 @@ const Audit = () => {
             return `
                 <div class="nc-card">
                     <div class="nc-card-header">
-                        <span class="nc-id">Response ${escapeHtml(nc.responseNumber || 1)} · NGAT Nonconformity Identifier: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
+                        <span class="nc-id">Response ${escapeHtml(nc.responseNumber || 1)} · ${escapeHtml(getFindingTypeLabel(Number(nc.findingType)))} · ${findingIdLabel}: ${escapeHtml(formatNcIdentifier(nc.ncId))}</span>
                         ${clauseLabel ? `<span class="nc-clause">${escapeHtml(clauseLabel)}</span>` : ''}
                     </div>
                     ${severityHtml ? `<div class="nc-field"><strong>Severity:</strong> ${severityHtml}</div>` : ''}
                     <div class="nc-field"><strong>Auditee Response:</strong> ${responseHtml}</div>
                     <div class="nc-field"><strong>Auditor Comment:</strong> ${auditorCommentHtml}</div>
                     ${propRowsHtml}
-                    ${(showNcDetailFallbacks || hasNcDetailContent) ? `
-                    <div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>
-                    <div class="nc-field"><strong>Corrective Action Record Number:</strong> ${ainHtml}</div>
-                    ` : ''}
+                    ${showDetails ? `<div class="nc-field"><strong>Details:</strong> ${detailsHtml}</div>` : ''}
+                    ${showCarNumber ? `<div class="nc-field"><strong>Corrective Action Record Number:</strong> ${ainHtml}</div>` : ''}
                 </div>
             `;
         };
@@ -1504,7 +1520,7 @@ const Audit = () => {
                 return `
                     <div class="nc-section">
                         <h3>${escapeHtml(heading)}</h3>
-                        <p class="muted">No nonconformities recorded.</p>
+                        <p class="muted">${isExternal ? 'No nonconformities recorded.' : 'No findings recorded.'}</p>
                     </div>
                 `;
             }
@@ -1518,7 +1534,7 @@ const Audit = () => {
 
         const renderStandardNcGroups = (entries) => {
             if (entries.length === 0) {
-                return '<p class="muted">No nonconformities recorded.</p>';
+                return `<p class="muted">${isExternal ? 'No nonconformities recorded.' : 'No findings recorded.'}</p>`;
             }
 
             const order = { 1: 1, 3: 2, 4: 3, 2: 4 };
@@ -1559,13 +1575,13 @@ const Audit = () => {
         const standardSectionHtml = `
             <div class="nc-section">
                 <h3>Standard-Based Questions</h3>
-                ${renderStandardNcGroups(standardNcs)}
+                ${renderStandardNcGroups(standardFindings)}
             </div>
         `;
 
         const ncSectionsHtml = [
-            renderNcSection('Process Evaluation Questions (PEQs)', peqNcs),
-            renderNcSection('Every Time Questions (ETQs)', etqNcs),
+            renderNcSection('Process Evaluation Questions (PEQs)', peqFindings),
+            renderNcSection('Every Time Questions (ETQs)', etqFindings),
             standardSectionHtml
         ].join('');
 
@@ -1573,13 +1589,14 @@ const Audit = () => {
 <!DOCTYPE html>
 <html>
 <head>
-<title>Internal Audit Report ${escapeHtml(auditData.scheduleId)}</title>
+<title>Internal Audit Report ${escapeHtml(auditData.scheduleId)} — ${reportAudienceLabel}</title>
 <style>
   body { font-family: "Times New Roman", serif; margin: 0; padding: 0; }
   .pdf-page { page-break-after: always; }
   .pdf-page:last-child { page-break-after: auto; }
   .report-container { width: 800px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
   .report-header h1, .report-header h2 { text-align: center; margin: 0 0 12px; }
+  .report-audience { text-align: center; font-size: 13px; font-weight: 700; margin: 0 0 14px; }
   .info-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
   .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 14px; }
   .info-table td strong { font-weight: 700; }
@@ -1616,6 +1633,7 @@ const Audit = () => {
     <div class="report-container">
       <div class="report-header">
         <h1>Internal Audit Report</h1>
+        <p class="report-audience">${reportAudienceLabel}</p>
       </div>
       <table class="info-table">
         <tr>
@@ -1674,20 +1692,20 @@ const Audit = () => {
       <div class="report-header">
         <h2>Audit Results</h2>
       </div>
-      <div class="section-box">
+      ${isExternal ? '' : `<div class="section-box">
         <strong>Overall Observations</strong>
         <p>${summaryHtml}</p>
-      </div>
+      </div>`}
         <div class="counts-grid">
-        <div class="counts-card">
+        ${isExternal ? '' : `<div class="counts-card">
           <div class="counts-number">${counts.total}</div>
-          <div class="counts-label">Total</div>
-        </div>
+          <div class="counts-label">Total Findings</div>
+        </div>`}
         <div class="counts-card">
           <div class="counts-number">${counts.nonconformities}</div>
           <div class="counts-label">Nonconformities</div>
         </div>
-        <div class="counts-card">
+        ${isExternal ? '' : `<div class="counts-card">
           <div class="counts-number">${counts.ofis}</div>
           <div class="counts-label">OFIs</div>
         </div>
@@ -1698,7 +1716,7 @@ const Audit = () => {
         <div class="counts-card">
           <div class="counts-number">${counts.conformities}</div>
           <div class="counts-label">Conformities</div>
-        </div>
+        </div>`}
       </div>
       ${ncSectionsHtml}
       <div class="section-box">
@@ -2201,7 +2219,7 @@ const Audit = () => {
                         <div className="audit-action-group-controls">
                             <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
                             {isLocked && (
-                                <button className="action-btn export-pdf" onClick={handleExportPdf}>Export PDF</button>
+                                <button type="button" className="action-btn export-pdf" onClick={() => setPdfExportDialogOpen(true)}>Export PDF</button>
                             )}
                             {hasObjectiveEvidence && (
                                 <button
@@ -2594,6 +2612,53 @@ const Audit = () => {
                     </div>
                 )}
             </div>
+            {pdfExportDialogOpen && (
+                <div
+                    className="audit-pdf-dialog-backdrop"
+                    onMouseDown={(event) => {
+                        if (event.target === event.currentTarget) setPdfExportDialogOpen(false);
+                    }}
+                >
+                    <div
+                        className="audit-pdf-dialog"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="audit-pdf-dialog-title"
+                        aria-describedby="audit-pdf-dialog-description"
+                    >
+                        <h2 id="audit-pdf-dialog-title">Export PDF</h2>
+                        <p id="audit-pdf-dialog-description">Choose which findings to include in this report.</p>
+                        <div className="audit-pdf-dialog-options">
+                            <button
+                                type="button"
+                                className="audit-pdf-dialog-option"
+                                autoFocus
+                                onClick={() => {
+                                    setPdfExportDialogOpen(false);
+                                    handleExportPdf('internal');
+                                }}
+                            >
+                                <strong>Internal Use</strong>
+                                <span>All findings: nonconformities, conformities, observations, and OFIs.</span>
+                            </button>
+                            <button
+                                type="button"
+                                className="audit-pdf-dialog-option"
+                                onClick={() => {
+                                    setPdfExportDialogOpen(false);
+                                    handleExportPdf('external');
+                                }}
+                            >
+                                <strong>External Use</strong>
+                                <span>Nonconformities only. Other findings, their counts, and overall observations are excluded.</span>
+                            </button>
+                        </div>
+                        <button type="button" className="audit-pdf-dialog-cancel" onClick={() => setPdfExportDialogOpen(false)}>
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
