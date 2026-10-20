@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
 import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
+import { toPng } from 'html-to-image';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart, MarkElement } from '@mui/x-charts/LineChart';
 import {
@@ -1304,6 +1305,56 @@ const Metrics = () => {
     }
   };
 
+  const handleExportImage = async (card, filenameBase) => {
+    const chart = card?.querySelector('.metrics-card-body svg');
+
+    if (!chart) {
+      toast.info('No metric chart is currently displayed to export.', exportToastOptions);
+      return;
+    }
+
+    const toastId = toast.info('Now exporting metric image...', {
+      ...exportToastOptions,
+      autoClose: false,
+      closeButton: false
+    });
+
+    try {
+      const image = await toPng(card, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+        cacheBust: true,
+        filter: (node) => !(
+          node instanceof HTMLElement
+          && (node.classList.contains('metrics-card-actions')
+            || node.classList.contains('metrics-card-footer'))
+        )
+      });
+
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `${filenameBase}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      toast.update(toastId, {
+        render: 'Metric image exported.',
+        type: 'success',
+        autoClose: 2000,
+        closeButton: true
+      });
+    } catch (error) {
+      console.error('Metric image export failed:', error);
+      toast.update(toastId, {
+        render: 'Metric image export failed.',
+        type: 'error',
+        autoClose: 4000,
+        closeButton: true
+      });
+    }
+  };
+
   const MetricsTooltip = (props) => {
     const tooltipData = useAxesTooltip();
     if (!tooltipData) return null;
@@ -1640,20 +1691,30 @@ const Metrics = () => {
                       <div className="metrics-card-title">
                         <span>{`Audits by ${stageCategoryOption.label}`}</span>
                       </div>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'audits-by-stage',
-                          sheetName: `Audits by ${stageCategoryOption.label}`,
-                          labelKey: stageCategoryOption.label,
-                          labels: stageChartData.labels,
-                          series: stageChartData.series,
-                          totals: stageChartData.totals
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'audits-by-stage',
+                            sheetName: `Audits by ${stageCategoryOption.label}`,
+                            labelKey: stageCategoryOption.label,
+                            labels: stageChartData.labels,
+                            series: stageChartData.series,
+                            totals: stageChartData.totals
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'audits-by-stage')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={stageChartWrapperRef}>
                       <BarChart
@@ -1709,19 +1770,29 @@ const Metrics = () => {
                             : 'No audits with dates'}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'delay-causes',
-                          sheetName: 'Delay Causes',
-                          labelKey: 'Delay Cause',
-                          labels: delayChartData.labels,
-                          series: delayChartData.series
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'delay-causes',
+                            sheetName: 'Delay Causes',
+                            labelKey: 'Delay Cause',
+                            labels: delayChartData.labels,
+                            series: delayChartData.series
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'delay-causes')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={delayChartWrapperRef}>
                       <BarChart
@@ -1744,19 +1815,29 @@ const Metrics = () => {
                   <div className="metrics-card">
                     <div className="metrics-card-header">
                       <span>Audits Over Time</span>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'audits-over-time',
-                          sheetName: 'Audits Over Time',
-                          labelKey: 'Period',
-                          labels: monthlyChartData.labels,
-                          series: monthlyChartData.series
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'audits-over-time',
+                            sheetName: 'Audits Over Time',
+                            labelKey: 'Period',
+                            labels: monthlyChartData.labels,
+                            series: monthlyChartData.series
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'audits-over-time')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={monthlyChartWrapperRef}>
                       <LineChart
@@ -1809,19 +1890,29 @@ const Metrics = () => {
                       <div className="metrics-card-title">
                         <span>Finding Severities</span>
                       </div>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'finding-severities',
-                          sheetName: 'Finding Severities',
-                          labelKey: 'Period',
-                          labels: severityTrendData.labels,
-                          series: severityTrendData.series
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'finding-severities',
+                            sheetName: 'Finding Severities',
+                            labelKey: 'Period',
+                            labels: severityTrendData.labels,
+                            series: severityTrendData.series
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'finding-severities')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={severityChartWrapperRef}>
                       {hasSeverityData ? (
@@ -1858,20 +1949,30 @@ const Metrics = () => {
                       <div className="metrics-card-title">
                         <span>Findings by Function</span>
                       </div>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'findings-by-function',
-                          sheetName: 'Findings by Function',
-                          labelKey: 'Function',
-                          labels: findingsChartData.labels,
-                          series: findingsChartData.series,
-                          totals: findingsChartData.totals
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'findings-by-function',
+                            sheetName: 'Findings by Function',
+                            labelKey: 'Function',
+                            labels: findingsChartData.labels,
+                            series: findingsChartData.series,
+                            totals: findingsChartData.totals
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'findings-by-function')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={findingsChartWrapperRef}>
                       <BarChart
@@ -1911,21 +2012,31 @@ const Metrics = () => {
                             : 'No standard findings for the selected filters'}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="metrics-export-button"
-                        onClick={() => handleExport({
-                          filenameBase: 'findings-by-clause',
-                          sheetName: findingsByClauseData.selectedStandardLabel
-                            ? `Clause ${findingsByClauseData.selectedStandardLabel}`
-                            : 'Findings by Clause',
-                          labelKey: 'Clause',
-                          labels: findingsByClauseData.labels,
-                          series: findingsByClauseData.series
-                        })}
-                      >
-                        Export
-                      </button>
+                      <div className="metrics-card-actions">
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          onClick={() => handleExport({
+                            filenameBase: 'findings-by-clause',
+                            sheetName: findingsByClauseData.selectedStandardLabel
+                              ? `Clause ${findingsByClauseData.selectedStandardLabel}`
+                              : 'Findings by Clause',
+                            labelKey: 'Clause',
+                            labels: findingsByClauseData.labels,
+                            series: findingsByClauseData.series
+                          })}
+                        >
+                          Excel
+                        </button>
+                        <button
+                          type="button"
+                          className="metrics-export-button"
+                          title="Download chart as PNG image"
+                          onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'findings-by-clause')}
+                        >
+                          PNG
+                        </button>
+                      </div>
                     </div>
                     <div className="metrics-card-body" ref={findingsClauseChartWrapperRef}>
                       {hasFindingsByClauseData ? (
