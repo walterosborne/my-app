@@ -1306,7 +1306,6 @@ const Audit = () => {
     const handleExportPdf = (audience) => {
         if (!auditData || !['internal', 'external'].includes(audience)) return;
         const isExternal = audience === 'external';
-        const reportAudienceLabel = isExternal ? 'External Use — Nonconformities Only' : 'Internal Use — All Findings';
         const selectedFindings = isExternal
             ? nonconformances.filter((finding) => Number(finding.findingType) === 1)
             : nonconformances;
@@ -1589,14 +1588,13 @@ const Audit = () => {
 <!DOCTYPE html>
 <html>
 <head>
-<title>Internal Audit Report ${escapeHtml(auditData.scheduleId)} — ${reportAudienceLabel}</title>
+<title>Internal Audit Report ${escapeHtml(auditData.scheduleId)}</title>
 <style>
   body { font-family: "Times New Roman", serif; margin: 0; padding: 0; }
   .pdf-page { page-break-after: always; }
   .pdf-page:last-child { page-break-after: auto; }
   .report-container { width: 800px; margin: 0 auto; padding: 20px; box-sizing: border-box; }
   .report-header h1, .report-header h2 { text-align: center; margin: 0 0 12px; }
-  .report-audience { text-align: center; font-size: 13px; font-weight: 700; margin: 0 0 14px; }
   .info-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
   .info-table td { border: 1px solid #000; padding: 8px; vertical-align: top; font-size: 14px; }
   .info-table td strong { font-weight: 700; }
@@ -1633,7 +1631,6 @@ const Audit = () => {
     <div class="report-container">
       <div class="report-header">
         <h1>Internal Audit Report</h1>
-        <p class="report-audience">${reportAudienceLabel}</p>
       </div>
       <table class="info-table">
         <tr>
