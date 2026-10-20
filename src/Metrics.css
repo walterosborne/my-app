@@ -244,6 +244,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
 .metrics-card-title {
@@ -311,6 +312,15 @@
   color: #111827;
 }
 
+.metrics-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .metrics-export-button {
   border: none;
   background: #e5e7eb;
@@ -319,6 +329,7 @@
   border-radius: 999px;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .metrics-export-button:hover {
