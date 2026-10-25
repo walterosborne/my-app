@@ -9,7 +9,7 @@
 ## 🚀 NGAT 3.1 — Workflow Refinements, Performance, and Exports
 
 **Version window:** October 6–25, 2026 (changes after the NGAT 3.0 October 1 baseline)  
-**Source:** `dev` branch of `walterosborne/my-app`  
+**Development baseline:** `dev` branch  
 **Scope:** Incremental improvements to the existing Kubernetes/OpenShift generation; no new platform migration  
 **Release tracking:** This entry documents the 3.1 code on the development branch; it does not by itself indicate a production rollout.
 
@@ -570,7 +570,7 @@ NGAT 2.1 was the first wave after the original 2.0 documentation. It concentrate
 
 ## 🚀 NGAT 2.0
 
-**Status:** Current repo baseline  
+**Status:** Historical React / IIS baseline  
 **Frontend:** React 19 + Vite  
 **Backend:** Express + MSSQL  
 **Routing:** Hash-based SPA routing  
