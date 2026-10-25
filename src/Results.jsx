@@ -1306,9 +1306,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .sort((a, b) => (a.standardName || '').localeCompare(b.standardName || ''))
       .map(s => ({
         value: s.standardId,
-        label: s.standardName
+        label: s.standardName,
+        standardScope: s.standardScope || null
       }));
   }, [standardsList]);
+
+  const groupedStandardOptions = useMemo(() => [
+    { label: 'Internal Standards', options: standards.filter((s) => s.standardScope === 'Internal') },
+    { label: 'External Standards', options: standards.filter((s) => s.standardScope === 'External') },
+    { label: 'Unclassified Standards', options: standards.filter((s) => !['Internal', 'External'].includes(s.standardScope)) }
+  ].filter((group) => group.options.length > 0), [standards]);
+
+  const selectedStandardsByScope = useMemo(() => {
+    const selectedIds = new Set((selectedStandardIds || []).map(Number));
+    return groupedStandardOptions
+      .map((group) => ({
+        label: group.label,
+        options: group.options.filter((standard) => selectedIds.has(Number(standard.value)))
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [groupedStandardOptions, selectedStandardIds]);
 
   const delayCauses = useMemo(() => {
     return [...causesList]
@@ -2164,7 +2181,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                               isClearable
                               isMulti
                               closeMenuOnSelect={false}
-                              options={standards}
+                              options={groupedStandardOptions}
                               styles={customStyles}
                               placeholder="Standard(s)"
                               value={field.value ? standards.filter(s => field.value.includes(s.value)) : []}
@@ -2173,6 +2190,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           )}
                         />
                         {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
+                        {selectedStandardsByScope.length > 0 && (
+                          <div style={{ marginTop: '10px', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            {selectedStandardsByScope.map((group) => (
+                              <div key={group.label} style={{ marginBottom: '4px' }}>
+                                <strong>{group.label}:</strong>{' '}
+                                {group.options.map((standard) => standard.label).join(', ')}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
                         <label>Interviewees</label>

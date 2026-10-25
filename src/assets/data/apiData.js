@@ -336,6 +336,24 @@ export async function getStandards() {
     return await getReferenceList('standards', 'standards');
 }
 
+export async function updateStandardScope(standardId, standardScope) {
+    const response = await fetch(buildApiUrl(`standards/${standardId}/scope`), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ standardScope })
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Could not update standard classification.');
+    }
+    // Classification affects all reference-data bundles containing standards.
+    delete cache.standards;
+    Object.keys(cache).forEach((key) => {
+        if (key.startsWith('reference-data?')) delete cache[key];
+    });
+    return await response.json();
+}
+
 export async function getStandardTexts() {
     // Standard text is comparatively large and Conduct Audit is the main
     // consumer, so keep it outside the general reference-data bundle.

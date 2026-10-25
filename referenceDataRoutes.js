@@ -107,7 +107,9 @@ const mapIntExt = (row) => ({
 
 const mapStandard = (row) => ({
     standardId: row.standardid,
-    standardName: row.standardname
+    standardName: row.standardname,
+    // NULL indicates an existing standard that has not been classified yet.
+    standardScope: row.standardscope ?? null
 });
 
 const mapSeverity = (row) => ({

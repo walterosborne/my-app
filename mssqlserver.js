@@ -4102,12 +4102,50 @@ app.get('/api/standards', async (req, res) => {
         const result = await pool.query('SELECT * FROM standards_r ORDER BY standardId');
         const data = result.rows.map(row => ({
             standardId: row.standardid,
-            standardName: row.standardname
+            standardName: row.standardname,
+            standardScope: row.standardscope ?? null
         }));
         res.json(data);
     } catch (error) {
         console.error('Error fetching standards:', error);
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Admin-only classification for existing standards. No standard names or audit
+// assignments are changed by this endpoint.
+app.put('/api/standards/:standardId/scope', async (req, res) => {
+    const standardId = Number(req.params.standardId);
+    const standardScope = req.body?.standardScope;
+    if (!Number.isSafeInteger(standardId) || standardId <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid standard ID.' });
+    }
+    if (standardScope !== 'Internal' && standardScope !== 'External') {
+        return res.status(400).json({ success: false, error: 'Choose Internal or External.' });
+    }
+
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (Number(userInfo?.admin ?? 0) !== 1) {
+            return res.status(403).json({ success: false, error: 'Admin access is required.' });
+        }
+
+        const result = await pool.query(
+            'UPDATE standards_r SET standardScope = $1 WHERE standardId = $2 RETURNING standardId, standardName, standardScope',
+            [standardScope, standardId]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Standard not found.' });
+        }
+        const row = result.rows[0];
+        res.json({
+            standardId: row.standardid,
+            standardName: row.standardname,
+            standardScope: row.standardscope
+        });
+    } catch (error) {
+        console.error('Error updating standard classification:', error);
+        res.status(500).json({ success: false, error: 'Unable to update standard classification. Verify the NGAT 3.2 database migration has run.' });
     }
 });
 

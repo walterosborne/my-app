@@ -18,6 +18,11 @@ Important:
 - After copying NGAT audit tables, run sql/archive/kubernetes-script.sql against the target
   schema to restore Kubernetes-era constraints/defaults and verify normalized
   question/finding data.
+- When populating a dev schema for NGAT 3.2, run
+  sql/3.2-standard-classification.sql after the copy and Kubernetes migration.
+  This recreates the classification column when the source lacks it. Because
+  this script replaces target tables, dev-only standard classifications will
+  be lost on a subsequent refresh unless also stored in the source schema.
 - It overwrites any existing target table by dropping it first.
 - It refuses to create non-backup tables in dbo.
 

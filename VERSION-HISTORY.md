@@ -6,6 +6,20 @@
 
 ---
 
+## 🛠️ NGAT 3.2 — Standards Classification (In Development)
+
+**Development work:** October 2026  
+**Database migration:** `sql/3.2-standard-classification.sql` (defaults to `dev`; targeting `dbo` requires an explicit override bit)  
+**Status:** Code prepared; database migration and deployment must be performed separately.
+
+- Added an administrator-managed **Internal / External** classification to existing standards.
+- Classified standards are grouped in the Process Evaluation Introduction (Step 1) standards selector, and selected standards are summarized by category.
+- Older standards remain **Unclassified** until explicitly marked, rather than being assumed to be external.
+- Added a rerunnable migration for `standards_r.standardScope` with dev-default behavior and a guarded production override.
+- Standard selection IDs, existing audit associations, and clause data remain unchanged.
+
+---
+
 ## 🚀 NGAT 3.1 — Workflow Refinements, Performance, and Exports
 
 **Version window:** October 6–25, 2026 (changes after the NGAT 3.0 October 1 baseline)  

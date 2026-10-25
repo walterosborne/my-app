@@ -18,6 +18,7 @@ import SitesSection from './components/admin/SitesSection';
 import PropsSection from './components/admin/PropsSection';
 import TrainingRequirementsSection from './components/admin/TrainingRequirementsSection';
 import SafetyEquipmentSection from './components/admin/SafetyEquipmentSection';
+import StandardsSection from './components/admin/StandardsSection';
 
 const DROPDOWN_OPTIONS = [
     'Auditors',
@@ -33,6 +34,7 @@ const DROPDOWN_OPTIONS = [
     'Safety Equipment',
     'Severity',
     'Sites',
+    'Standards',
     'Training Requirements'
 ];
 
@@ -3007,6 +3009,9 @@ const AdminMenu = () => {
                         message={functionMessage}
                         error={functionError}
                     />
+                )}
+                {selectedOption === 'Standards' && (
+                    <StandardsSection />
                 )}
                 {selectedOption === 'Programs' && (
                     <ProgramsSection
