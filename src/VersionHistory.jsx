@@ -4,9 +4,67 @@ import './VersionHistory.css';
 
 const releases = [
   {
-    version: '3.0',
+    version: '3.1',
     date: 'October 2026',
     current: true,
+    title: 'Faster workflows and more flexible exports',
+    summary: 'Refinements since NGAT 3.0 make common pages faster, standard clauses easier to read, and audit reports and metrics easier to export.',
+    sections: [
+      {
+        title: 'Conduct Audit and standards',
+        items: [
+          {
+            text: 'Standard sections and unanswered subsections now stay collapsed until you need them.',
+            children: [
+              'Sections still show questions with saved work, even when the rest of the section is closed.',
+              'Standard section titles are displayed when available from imported clause text.'
+            ]
+          },
+          'Read more / Read less works outside the clipped text area.',
+          'Lettered requirements and notes are formatted more clearly for easier reading.'
+        ]
+      },
+      {
+        title: 'Individual Audit PDF reports',
+        items: [
+          {
+            text: 'Choose between Internal and External PDF exports.',
+            children: [
+              'Internal reports include all finding types.',
+              'External reports include only nonconformities.'
+            ]
+          },
+          'The export dialog matches the rest of NGAT, and report titles stay clean.'
+        ]
+      },
+      {
+        title: 'Metrics exports',
+        items: [
+          'Export individual metric charts as PNG images as well as Excel files.',
+          'Export controls have a more consistent appearance.'
+        ]
+      },
+      {
+        title: 'Speed and responsiveness',
+        items: [
+          'The Home audit lookahead uses a smaller, dedicated data request.',
+          'Metrics, Entry, and reports load less unnecessary data.',
+          'Pages and lookup data load more selectively, with improved loading states.'
+        ]
+      },
+      {
+        title: 'Approvals and reliability',
+        items: [
+          'Improved handling of direct approval links.',
+          'Refined mail configuration and diagnostics for deployment troubleshooting.',
+          'Admin status filters better match the values displayed on screen.'
+        ]
+      }
+    ]
+  },
+  {
+    version: '3.0',
+    date: 'October 2026',
     title: 'A more capable audit workflow',
     summary: 'The current NGAT experience brings major improvements to audit entry, findings, reporting, FOE, and the tools you use throughout the audit lifecycle.',
     sections: [

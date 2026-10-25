@@ -1,10 +1,14 @@
-# 📘 NGAT 2.0 README
+# 📘 NGAT Developer README
 
 > Internal developer-facing application guide for the Northrop Grumman Audit Tool.
 >
 > This README covers what NGAT is, how it is structured, how to run it locally, how configuration works, and the minimum test flow expected before shipping changes.
 
 ---
+
+> **Current documented version: NGAT 3.1 (October 2026).** See [VERSION-HISTORY.md](./VERSION-HISTORY.md) for 3.1 changes and [OPENSHIFT-NGAT.md](./OPENSHIFT-NGAT.md) for the current Kubernetes/OpenShift runtime.
+>
+> **Legacy guide:** The Windows/IIS setup and development procedures below describe the earlier NGAT 2.x deployment model, not the current Kubernetes production deployment.
 
 ## 📚 Table of Contents
 
@@ -28,7 +32,7 @@
 <a id="overview"></a>
 ## 🚀 Overview
 
-NGAT 2.0 is a React + Node audit-management application that supports the full audit lifecycle:
+The legacy NGAT 2.0 runtime was a React + Node audit-management application that supports the full audit lifecycle:
 
 - Scheduling audits
 - Planning audits

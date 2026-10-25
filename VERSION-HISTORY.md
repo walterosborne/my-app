@@ -6,6 +6,58 @@
 
 ---
 
+## 🚀 NGAT 3.1 — Workflow Refinements, Performance, and Exports
+
+**Version window:** October 6–25, 2026 (changes after the NGAT 3.0 October 1 baseline)  
+**Source:** `dev` branch of `walterosborne/my-app`  
+**Scope:** Incremental improvements to the existing Kubernetes/OpenShift generation; no new platform migration  
+**Release tracking:** This entry documents the 3.1 code on the development branch; it does not by itself indicate a production rollout.
+
+### 🌟 Release Summary
+
+NGAT 3.1 groups the work completed since the 3.0 baseline: faster loading of frequently used pages and reports, clearer Conduct Audit standards presentation, expanded chart and PDF export choices, and fixes and diagnostics for approval-link routing and SMTP configuration. The underlying NGAT 3.0 architecture, normalized question/finding model, and audit lifecycle remain in place.
+
+### 🔎 Conduct Audit and Standard Clauses
+
+- Standard sections and unanswered subsections now start collapsed; sections still surface subsections containing saved work (or newly added content) without requiring the parent section to open.
+- Standard section headers can use the extracted subsection 0 text to display a descriptive heading alongside the section number, such as **Standard Section 4 — Context of the Organization**.
+- Fixed the **Read more / Read less** presentation so the expansion control is not trapped inside clipped standard text.
+- Improved rendering of extracted clause text, including indentation for lettered requirements, notes, and Markdown content.
+- Added a standards-processing utility under `tools/standard-clauses/`: a constrained PDF-extraction prompt and a Python notebook to transform extracted clause data into reviewable NGAT CSVs. The prompt targets standard sections 4–10.
+
+### 📄 Individual Audit PDF Exports
+
+- PDF export now prompts for **Internal** or **External** use.
+- **Internal** PDFs include all finding types; **External** PDFs include nonconformities only.
+- The export selection dialog follows NGAT styling; the report title was restored without an extra audience subtitle.
+- This selection is a finding-type filter for the PDF, **not** a general redaction or CUI-sanitization mechanism.
+
+### 📊 Metrics and Reporting Exports
+
+- Added per-chart **PNG image export** for metrics cards, alongside the existing Excel exports.
+- Refined styling and placement of Excel and image export actions.
+- The image export captures the chart card while omitting interactive export controls and footer controls.
+
+### ⚡ Loading and Data-Access Performance
+
+- Added a focused Home-page audit lookahead endpoint and loading state instead of fetching full audit and auditor datasets for that widget.
+- Introduced lightweight Metrics endpoints and reduced redundant authentication-data lookups.
+- Split route modules to separate NGAT read operations from FOE code and centralize route registration.
+- Added lightweight audit/Entry listing queries; fetches full individual-report details only for the selected audit.
+- Lazy-loaded heavy Entry and other pages, kept shared styling available during loading, and split supporting routes into page-oriented bundles.
+- Bundled common reference/lookup requests, preloaded related Entry data together, and parallelized reporting reads where possible.
+- Scoped Risk Analysis rating reads by year and improved report loading efficiency.
+
+### 🔐 Approval Links, Email, and Operational Fixes
+
+- Fixed links into approvals for the app's `HashRouter`, including root-hash link normalization.
+- Added server-side approval-route diagnostics to help troubleshoot deployment-specific failures.
+- Updated SMTP configuration so an explicit `tls=false` disables opportunistic STARTTLS for the configured relay; also refined dev handling of the internal SMTP certificate.
+- Clarified the new NGAT production URL in operational guidance.
+- Corrected admin edit filters to use the displayed status/value labels for common reference-data screens.
+
+---
+
 ## 🚀 NGAT 3.0 — Kubernetes / OpenShift Generation
 
 **Release baseline:** October 2026  
@@ -812,7 +864,7 @@ NGAT 2.0 includes a large admin surface for maintaining reference data and user 
 
 When adding the next version:
 
-1. Add the new version section **above** NGAT 2.0.
+1. Add each new version section **above the previous latest release**.
 2. Keep the summary focused on shipped functionality, not just tickets.
 3. Call out:
    - user-visible features
