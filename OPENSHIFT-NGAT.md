@@ -67,9 +67,9 @@ oc -n ngat-dev patch deployment/ngat --type=strategic --patch-file openshift/nga
 oc -n ngat-dev rollout status deployment/ngat
 ```
 
-Do not paste secret VALUES into any YAML or chat. SMTP `secure=false` is
-correct when matching your existing configuration; `tls` is separate and
-may be `true`, `false`, or a JSON object, depending on the existing setting.
+Keep secret values in approved secret management, not in source-controlled
+YAML or documentation. SMTP `secure=false` is appropriate when required
+by the relay; `tls` separately accepts `true`, `false`, or a JSON object.
 
 ## Later: authentication and Route cutover
 
