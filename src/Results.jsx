@@ -2587,38 +2587,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         </div>
                                         {!isSubsectionCollapsed && (
                                           <div style={{ width: '100%', padding: '10px 0' }}>
-                                            <div style={{
-                                              width: '100%',
-                                              minHeight: '50px',
-                                              padding: '10px',
-                                              backgroundColor: '#f9f9f9',
-                                              borderRadius: '4px',
-                                              marginBottom: '15px',
-                                              overflowWrap: 'anywhere',
-                                              wordBreak: 'break-word',
-                                              maxHeight: !isTextExpanded && requiresTruncation ? '220px' : 'none',
-                                              overflow: !isTextExpanded && requiresTruncation ? 'hidden' : 'visible'
-                                            }}>
-                                              <div
-                                                className="standard-markdown-rendered"
-                                                dangerouslySetInnerHTML={{ __html: markdownHtml }}
-                                              />
+                                            <div className="standard-clause-text-panel">
+                                              <div className={`standard-clause-text-viewport${requiresTruncation && !isTextExpanded ? ' standard-clause-text-preview' : ''}`}>
+                                                <div
+                                                  className="standard-markdown-rendered"
+                                                  dangerouslySetInnerHTML={{ __html: markdownHtml }}
+                                                />
+                                              </div>
                                               {requiresTruncation && (
                                                 <button
                                                   type="button"
+                                                  className="standard-clause-read-toggle"
+                                                  aria-expanded={Boolean(isTextExpanded)}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
                                                     setExpandedTexts(prev => ({ ...prev, [textKey]: !prev[textKey] }));
-                                                  }}
-                                                  style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    color: '#1976d2',
-                                                    cursor: 'pointer',
-                                                    textDecoration: 'underline',
-                                                    padding: 0,
-                                                    marginTop: '5px',
-                                                    fontSize: '14px'
                                                   }}
                                                 >
                                                   {isTextExpanded ? 'Read less' : 'Read more'}
