@@ -49,9 +49,8 @@ No real credentials belong in Git.
    a JSON object of Node TLS options. Ensure appropriate CA trust and
    network access to Graph, SQL and SMTP.
 5. Include the original `src/assets/NG.png` and `src/assets/placeholder.jpg`
-   in the INTERNAL `ngat-ops` Git source: a file only on a workstation will
-   NOT be available to an OpenShift Git build. The app again imports NG.png,
-   not the temporary SVG. Restore private FOE links configuration or populate
+   in the OpenShift build source so those assets are included in the image.
+   The app imports NG.png rather than the temporary SVG. Restore private FOE links configuration or populate
    VITE_FOE_* at build time, then rebuild; runtime Secret values cannot
    change a Vite browser bundle.
 
@@ -126,22 +125,19 @@ create/edit/submit audits; approval; evidence upload/download/archive;
 nonconformities; metrics/Excel export; FOE embedded links; SMTP; and
 generated mail URLs, on a CONTROLLED TEST DATABASE/schema first.
 Keep IIS available for rollback until live parity is verified.
-This commit cannot establish corporate image-pull access, actual
-SQL/Graph/SMTP connectivity, consent, certificate trust, or visual
-parity for private untracked assets.
+A source update alone does not verify registry access, SQL/Graph/SMTP
+connectivity, authentication consent, certificate trust, or assets
+included in the deployed image.
 
-## Current build-source note
+## OpenShift build-source requirements
 
-The OpenShift BuildConfig clones
-`https://github.northgrum.com/EnterpriseKubernetes/ngat-ops.git`,
-branch `main`. Updating public `walterosborne/my-app` branch
-`kubernetes` **does not** modify that internal Git repository or cause
-a rebuild. Copy/cherry-pick these changes into the internal build source
-(including its Dockerfile and aligned package.json/package-lock.json)
-before running `oc start-build ngat --follow`. The previous `npm ci`
-failure was the unused `concurrently` devDependency appearing only in
-package.json; it is removed to match the existing lockfile. The Dockerfile
-installs Vite before setting NODE_ENV=production.
+The OpenShift BuildConfig targets the configured internal Git branch.
+Image builds use the files on that branch, including Dockerfile and aligned
+package.json/package-lock.json. Start a new build with
+`oc start-build ngat --follow` after the intended source is ready.
+The earlier `npm ci` failure resulted from an unused `concurrently`
+dependency in package.json without a matching lockfile entry. The
+Dockerfile installs Vite before setting NODE_ENV=production.
 
 ## Entra registration confirmed: corporate callback; dev Route is different
 
@@ -240,7 +236,7 @@ ALLOW_HARDCODED_IDENTITY_FALLBACK is needed.
 The local `mssqlserver.js` server loads the repository-root `.env` after
 other local dotenv files, and **overrides inherited Windows/system environment
 variables for keys defined in .env**. The backend uses
-`loadRuntimeEnv({mode:'development'})` on a workstation, not the previous
+`loadRuntimeEnv({mode:'development'})` for local development, rather than the previous
 hard-coded `mode:'production'`. It logs only which files were loaded and
 whether the local fallback is enabled, never the database password or the
 employee ID. Existing OS env values for keys NOT defined in .env still apply.
