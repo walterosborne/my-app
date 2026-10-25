@@ -15,6 +15,7 @@ Output one valid JSON object in exactly this shape:
 }
 
 Rules:
+- Only include sections 4 through 10 inclusive (exclude 1,2,3, 11, annexs)
 - Extract every numbered section, clause, and nested subclause in document order, including parent clauses. Do not summarize, paraphrase, rewrite, or invent text.
 - Keep the full numbering (for example, 8, 8.4, 8.4.2). Put only the heading in "title" and the rest of the clause in "text"; if a clause has no separate text, use an empty string.
 - Continue clauses across page boundaries into a single record, with "page" set to the PDF page where each clause begins. Use null if the starting page cannot be determined.
