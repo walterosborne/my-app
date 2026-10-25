@@ -156,9 +156,47 @@ const convertMarkdownTablesToHtml = (markdown) => {
   return output.join('\n');
 };
 
-const renderStandardMarkdown = (value) => micromark(convertMarkdownTablesToHtml(normalizeMarkdownText(value)), {
+// Keep extracted PDF lettered clauses and notes indented, with Markdown support.
+const formatStandardClauseText = (value) => {
+  const output = [];
+  normalizeMarkdownText(value).split('\n').forEach((line) => {
+    const trimmed = line.trim();
+    const lettered = trimmed.match(/^(\(?[a-z]\)|[a-z]\.)\s+(.+)$/i);
+    const note = trimmed.match(/^(NOTE(?:\s+\d+)?)\s*:\s*(.*)$/i);
+    if (lettered) {
+      output.push('', '<div class="standard-clause-list-item"><span class="standard-clause-list-marker">' + escapeHtml(lettered[1]) + '</span><span>' + renderInlineMarkdown(lettered[2]) + '</span></div>', '');
+    } else if (note) {
+      output.push('', '<div class="standard-clause-note"><strong>' + escapeHtml(note[1]) + ':</strong> ' + renderInlineMarkdown(note[2]) + '</div>', '');
+    } else {
+      output.push(line);
+    }
+  });
+  return output.join('\n');
+};
+
+const renderStandardMarkdown = (value) => micromark(convertMarkdownTablesToHtml(formatStandardClauseText(value)), {
   allowDangerousHtml: true
 });
+
+// Subsection 0 from a PDF extraction carries the parent section heading.
+const getStandardSectionTitle = (sectionNumber, rows) => {
+  const parentRow = rows.find((row) => Number(row.subsection) === 0);
+  if (!parentRow?.text) return '';
+  const firstLine = normalizeMarkdownText(parentRow.text).split('\n').find((line) => line.trim());
+  if (!firstLine) return '';
+  const raw = firstLine.trim();
+  const markdownHeading = /^#{1,6}\s+/.test(raw);
+  const heading = raw.replace(/^#{1,6}\s+/, '').replace(/^\*\*(.*?)\*\*$/, '$1').trim();
+  const parsed = heading.match(/^(\d+)(?:\.0)?(?:\s+|\s*[-–—:.]\s*)(.+)$/);
+  const title = (parsed && Number(parsed[1]) === Number(sectionNumber))
+    ? parsed[2]
+    : (markdownHeading && !/^\d/.test(heading) ? heading : '');
+  if (!title) return '';
+  const clean = title.trim().replace(/\*\*/g, '');
+  return clean === clean.toUpperCase()
+    ? clean.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    : clean;
+};
 
 
 function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
@@ -1108,7 +1146,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
         });
 
-        sectionDefaults[sectionKey] = false;
+        sectionDefaults[sectionKey] = true;
       });
     });
 
@@ -1147,7 +1185,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const standardId = Number(standardIdValue);
       Object.entries(sections).forEach(([sectionNumValue, questions]) => {
         const sectionNum = Number(sectionNumValue);
-        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = false;
+        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = true;
 
         questions.forEach((question) => {
           nextSubsectionDefaults[`subsection_${standardId}_${sectionNum}_${question.subsection}`] = true;
@@ -2485,12 +2523,22 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             {Object.entries(sections).map(([sectionNumValue, questions]) => {
                               const sectionNum = Number(sectionNumValue);
                               const sectionKey = `section_${standardId}_${sectionNum}`;
-                              const isSectionCollapsed = collapsedSections[sectionKey] ?? false;
+                              const isSectionCollapsed = collapsedSections[sectionKey] ?? true;
+                              const sectionTitle = getStandardSectionTitle(sectionNum, questions);
+                              // Keep saved or newly added questions visible even when the
+                              // parent section is closed; hide the unfilled subsections.
+                              const visibleQuestions = isSectionCollapsed
+                                ? questions.filter((question) => {
+                                  const key = [standardId, sectionNum, question.subsection].join('_');
+                                  return Array.from({ length: standardAdditional[key] || 0 }, (_, index) => index)
+                                    .some((index) => !deletedStandardQuestions[key]?.has(index));
+                                })
+                                : questions;
 
                               return (
                                 <div key={`${standardId}_${sectionNum}`} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                   <div
-                                    onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                                    onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !(prev[sectionKey] ?? true) }))}
                                     style={{
                                       cursor: 'pointer',
                                       width: '96%',
@@ -2503,10 +2551,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       {isSectionCollapsed ? '▶' : '▼'}
                                     </span>
                                     <label className='sectiontitle' style={{ fontSize: '16px', margin: 0, cursor: 'pointer' }}>
-                                      Standard Section {sectionNum}
+                                      Standard Section {sectionNum}{sectionTitle ? ` - ${sectionTitle}` : ''}
                                     </label>
                                   </div>
-                                  {!isSectionCollapsed && questions.map((question, qIndex) => {
+                                  {visibleQuestions.map((question, qIndex) => {
                                     const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
                                     const isSubsectionCollapsed = collapsedSubsections[subsectionKey] ?? true;
                                     const textKey = `text_${standardId}_${sectionNum}_${question.subsection}`;
