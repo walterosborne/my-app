@@ -1,0 +1,24 @@
+Read the attached standard PDF and extract every numbered clause and subclause into a single UTF-8 JSON file named standard_clauses.json.
+
+Output one valid JSON object in exactly this shape:
+{
+  "standard": "standard name, number, and edition shown in the PDF",
+  "clauses": [
+    {
+      "number": "8.4.2",
+      "title": "Exact clause heading",
+      "text": "Complete clause body text, including requirements and lettered/numbered items",
+      "page": 12
+    }
+  ],
+  "issues": []
+}
+
+Rules:
+- Extract every numbered section, clause, and nested subclause in document order, including parent clauses. Do not summarize, paraphrase, rewrite, or invent text.
+- Keep the full numbering (for example, 8, 8.4, 8.4.2). Put only the heading in "title" and the rest of the clause in "text"; if a clause has no separate text, use an empty string.
+- Continue clauses across page boundaries into a single record, with "page" set to the PDF page where each clause begins. Use null if the starting page cannot be determined.
+- Preserve requirements, lists, notes, exceptions, and tables within their relevant clauses as readable plain text. Retain meaningful line breaks using JSON escape sequences.
+- Do not duplicate material, mix clauses together, or include running headers/footers as clause text.
+- If content is unreadable or ambiguous, record its page and description in the "issues" array. Do not silently guess or omit it.
+- Return only the complete JSON document, with no Markdown fences or explanatory text. Ensure it parses as JSON.
