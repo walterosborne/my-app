@@ -423,7 +423,7 @@ NGAT 3.0 substantially expands the SQL migration tooling.
 
 ### Guarded Kubernetes migration
 
-- Added `sql/kubernetes-script.sql` as the consolidated migration path for the Kubernetes-era data-model changes.
+- Added `sql/archive/kubernetes-script.sql` (now archived) as the consolidated migration path for the Kubernetes-era data-model changes.
 - The script defaults to development-oriented operation and contains explicit protections around `dbo`.
 - Added / consolidated migrations for:
   - audit lifecycle state

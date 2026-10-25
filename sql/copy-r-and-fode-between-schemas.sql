@@ -15,7 +15,7 @@ Important:
 - The target schema must already exist.
 - This creates target tables and copies data in one step.
 - It does NOT copy indexes, keys, foreign keys, triggers, defaults, or permissions.
-- After copying NGAT audit tables, run sql/kubernetes-script.sql against the target
+- After copying NGAT audit tables, run sql/archive/kubernetes-script.sql against the target
   schema to restore Kubernetes-era constraints/defaults and verify normalized
   question/finding data.
 - It overwrites any existing target table by dropping it first.
