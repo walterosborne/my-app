@@ -3011,7 +3011,11 @@ const AdminMenu = () => {
                     />
                 )}
                 {selectedOption === 'Standards' && (
-                    <StandardsSection />
+                    <StandardsSection
+                        actionOptions={ACTION_OPTIONS}
+                        selectedAction={selectedAction}
+                        onActionChange={(event) => setSelectedAction(event.target.value)}
+                    />
                 )}
                 {selectedOption === 'Programs' && (
                     <ProgramsSection

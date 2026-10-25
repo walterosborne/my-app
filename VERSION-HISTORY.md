@@ -13,6 +13,8 @@
 **Status:** Code prepared; database migration and deployment must be performed separately.
 
 - Added an administrator-managed **Internal / External** classification to existing standards.
+- Standards Management now supports **New** and **Edit**, including adding a named standard with a classification and renaming existing standards without changing their IDs or saved audit associations.
+- Standard names are validated for blanks, 100-character length, and case-insensitive duplicates; standard creation and editing require admin authorization.
 - Classified standards are grouped in the Process Evaluation Introduction (Step 1) standards selector, and selected standards are summarized by category.
 - Older standards remain **Unclassified** until explicitly marked, rather than being assumed to be external.
 - Added a rerunnable migration for `standards_r.standardScope` with dev-default behavior and a guarded production override.

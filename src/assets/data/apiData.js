@@ -336,22 +336,43 @@ export async function getStandards() {
     return await getReferenceList('standards', 'standards');
 }
 
-export async function updateStandardScope(standardId, standardScope) {
-    const response = await fetch(buildApiUrl(`standards/${standardId}/scope`), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ standardScope })
-    });
-    if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.error || 'Could not update standard classification.');
-    }
-    // Classification affects all reference-data bundles containing standards.
+const invalidateStandardsCache = () => {
+    // Names and classifications are used by schedule, metrics, and audit pages.
     delete cache.standards;
     Object.keys(cache).forEach((key) => {
         if (key.startsWith('reference-data?')) delete cache[key];
     });
+};
+
+const saveStandardRequest = async (path, method, payload) => {
+    const response = await fetch(buildApiUrl(path), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to save standard.');
+    }
+    invalidateStandardsCache();
     return await response.json();
+};
+
+export async function createStandard(payload) {
+    return await saveStandardRequest('standards', 'POST', payload);
+}
+
+export async function updateStandard(standardId, payload) {
+    return await saveStandardRequest(`standards/${encodeURIComponent(standardId)}`, 'PUT', payload);
+}
+
+// Preserve the classification-only endpoint for existing integrations.
+export async function updateStandardScope(standardId, standardScope) {
+    return await saveStandardRequest(
+        `standards/${encodeURIComponent(standardId)}/scope`,
+        'PUT',
+        { standardScope }
+    );
 }
 
 export async function getStandardTexts() {

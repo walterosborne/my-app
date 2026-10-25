@@ -4112,6 +4112,90 @@ app.get('/api/standards', async (req, res) => {
     }
 });
 
+// Validate input used for both create and edit, independently of UI checks.
+// Old unclassified records can be renamed without forcing a classification.
+const validateStandardWrite = (body, { creating = false } = {}) => {
+    const standardName = typeof body?.standardName === 'string'
+        ? body.standardName.trim()
+        : '';
+    const standardScope = body?.standardScope;
+    if (!standardName) return { error: 'Standard name is required.' };
+    if (standardName.length > 100) {
+        return { error: 'Standard name must be 100 characters or fewer.' };
+    }
+    if (!['Internal', 'External'].includes(standardScope) && !(standardScope === null && !creating)) {
+        return { error: 'Choose Internal or External.' };
+    }
+    return { standardName, standardScope };
+};
+
+const toStandardApiRow = (row) => ({
+    standardId: row.standardid,
+    standardName: row.standardname,
+    standardScope: row.standardscope ?? null
+});
+
+app.post('/api/standards', async (req, res) => {
+    const input = validateStandardWrite(req.body, { creating: true });
+    if (input.error) return res.status(400).json({ success: false, error: input.error });
+
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (Number(userInfo?.admin ?? 0) !== 1) {
+            return res.status(403).json({ success: false, error: 'Admin access is required.' });
+        }
+        const duplicate = await pool.query(
+            'SELECT TOP 1 standardId FROM standards_r WHERE LOWER(LTRIM(RTRIM(standardName))) = LOWER(LTRIM(RTRIM($1)))',
+            [input.standardName]
+        );
+        if (duplicate.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'A standard with that name already exists.' });
+        }
+        const result = await pool.query(
+            'INSERT INTO standards_r (standardName, standardScope) VALUES ($1, $2) RETURNING standardId, standardName, standardScope',
+            [input.standardName, input.standardScope]
+        );
+        res.status(201).json(toStandardApiRow(result.rows[0]));
+    } catch (error) {
+        console.error('Error creating standard:', error);
+        res.status(500).json({ success: false, error: 'Unable to create standard. Verify the NGAT 3.2 database migration has run.' });
+    }
+});
+
+app.put('/api/standards/:standardId', async (req, res) => {
+    const standardId = Number(req.params.standardId);
+    if (!Number.isSafeInteger(standardId) || standardId <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid standard ID.' });
+    }
+    const input = validateStandardWrite(req.body);
+    if (input.error) return res.status(400).json({ success: false, error: input.error });
+
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (Number(userInfo?.admin ?? 0) !== 1) {
+            return res.status(403).json({ success: false, error: 'Admin access is required.' });
+        }
+        const duplicate = await pool.query(
+            'SELECT TOP 1 standardId FROM standards_r WHERE LOWER(LTRIM(RTRIM(standardName))) = LOWER(LTRIM(RTRIM($1))) AND standardId <> $2',
+            [input.standardName, standardId]
+        );
+        if (duplicate.rowCount > 0) {
+            return res.status(409).json({ success: false, error: 'A standard with that name already exists.' });
+        }
+        const result = await pool.query(
+            'UPDATE standards_r SET standardName = $1, standardScope = $2 WHERE standardId = $3 RETURNING standardId, standardName, standardScope',
+            [input.standardName, input.standardScope, standardId]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, error: 'Standard not found.' });
+        }
+        res.json(toStandardApiRow(result.rows[0]));
+    } catch (error) {
+        console.error('Error updating standard:', error);
+        res.status(500).json({ success: false, error: 'Unable to update standard. Verify the NGAT 3.2 database migration has run.' });
+    }
+});
+
 // Admin-only classification for existing standards. No standard names or audit
 // assignments are changed by this endpoint.
 app.put('/api/standards/:standardId/scope', async (req, res) => {
