@@ -1349,7 +1349,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   // Corporate PrOP options - always all corporate props (propTypeId 1)
   const corporatePrOPOptions = useMemo(() => {
     return propsList
-      .filter(prop => prop.propTypeId === 1 && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 1 && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1360,8 +1360,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   // Sector PrOP options - props matching the audit's sectorId
   const sectorPrOPOptions = useMemo(() => {
     if (!selectedAudit?.sectorId) return [];
+    const sectorId = Number(selectedAudit.sectorId);
     return propsList
-      .filter(prop => prop.propTypeId === 2 && prop.sectorId === selectedAudit.sectorId && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 2 && Number(prop.sectorId) === sectorId && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1376,7 +1377,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .filter((id) => Number.isFinite(id));
     if (divisionIds.length === 0) return [];
     return propsList
-      .filter(prop => prop.propTypeId === 3 && divisionIds.includes(Number(prop.divisionId)) && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 3 && divisionIds.includes(Number(prop.divisionId)) && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1388,41 +1389,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const otherPrOPOptions = useMemo(() => {
     if (!selectedAudit) return [];
 
-    const matchingSiteProps = propsList.filter(prop =>
-      prop.propTypeId === 4 &&
-      prop.siteId &&
-      selectedAudit.siteIds?.includes(prop.siteId) &&
-      prop.active === 1
+    // Audit IDs arrive as arrays, while PrOP targets are individual IDs.
+    // Compare normalized numeric values so legacy string IDs also match.
+    const toIdSet = (values) => new Set(
+      normalizeIdArray(values).map(Number).filter(Number.isFinite)
     );
+    const siteIds = toIdSet(selectedAudit.siteIds);
+    const businessUnitIds = toIdSet(selectedAudit.businessUnitIds);
+    const operatingUnitIds = toIdSet(selectedAudit.operatingUnitIds);
+    const programIds = toIdSet(selectedAudit.programIds);
 
-    const matchingBUProps = propsList.filter(prop =>
-      prop.propTypeId === 5 &&
-      prop.buId &&
-      selectedAudit.businessUnitIds?.includes(prop.buId) &&
-      prop.active === 1
-    );
-
-    const matchingOUProps = propsList.filter(prop =>
-      prop.propTypeId === 6 &&
-      prop.ouId &&
-      selectedAudit.operatingUnitIds?.includes(prop.ouId) &&
-      prop.active === 1
-    );
-
-    const matchingProgramProps = propsList.filter(prop =>
-      prop.propTypeId === 7 &&
-      prop.programId &&
-      selectedAudit.programIds?.includes(prop.programId) &&
-      prop.active === 1
-    );
-
-    // Combine all matching props
-    const allOtherProps = [
-      ...matchingSiteProps,
-      ...matchingBUProps,
-      ...matchingOUProps,
-      ...matchingProgramProps
-    ];
+    const allOtherProps = propsList.filter(prop => {
+      if (Number(prop.active) !== 1) return false;
+      switch (Number(prop.propTypeId)) {
+        case 4: return siteIds.has(Number(prop.siteId));
+        case 5: return businessUnitIds.has(Number(prop.buId));
+        case 6: return operatingUnitIds.has(Number(prop.ouId));
+        case 7: return programIds.has(Number(prop.programId));
+        default: return false;
+      }
+    });
 
     return allOtherProps
       .map(prop => ({

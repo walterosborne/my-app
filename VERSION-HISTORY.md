@@ -6,11 +6,11 @@
 
 ---
 
-## 🛠️ NGAT 3.2 — Standards Classification (In Development)
+## 🛠️ NGAT 3.1.1 — Standards Management and Conduct Audit PrOP Fix
 
 **Development work:** October 2026  
-**Database migration:** `sql/3.2-standard-classification.sql` (defaults to `dev`; targeting `dbo` requires an explicit override bit)  
-**Status:** Code prepared; database migration and deployment must be performed separately.
+**Database migration:** `sql/3.1.1-standard-classification.sql` (defaults to `dev`; targeting `dbo` requires an explicit override bit)  
+**Status:** Code prepared on the development branch; database migration and deployment must be performed separately.
 
 - Added an administrator-managed **Internal / External** classification to existing standards.
 - Standards Management now supports **New** and **Edit**, including adding a named standard with a classification and renaming existing standards without changing their IDs or saved audit associations.
@@ -19,6 +19,8 @@
 - Older standards remain **Unclassified** until explicitly marked, rather than being assumed to be external.
 - Added a rerunnable migration for `standards_r.standardScope` with dev-default behavior and a guarded production override.
 - Standard selection IDs, existing audit associations, and clause data remain unchanged.
+- Fixed Conduct Audit PrOP dropdowns missing **Sector, Site, Business Unit, and Operating Unit** options: the lightweight `results` audit payload now includes the organizational IDs needed to match those PrOPs.
+- Normalized numeric ID comparisons for **Corporate, Sector, Division, Site, Business Unit, Operating Unit, and Program** PrOP options so string-versus-number differences do not hide matching records.
 
 ---
 

@@ -199,7 +199,9 @@ const ENTRY_FIELDS_BY_TYPE = {
     results: [
         'standardids', 'expectedstartdate', 'startdate', 'intervieweeids',
         'overview', 'evaluator', 'relateditems', 'programmanager', 'maleadmanager',
-        'cui', 'delaycause', 'auditorstime'
+        'cui', 'delaycause', 'auditorstime',
+        // Conduct Audit PrOP dropdowns match against these audit hierarchy IDs.
+        'sectorid', 'siteids', 'businessunitids', 'operatingunitids'
     ],
     nonconformities: []
 };

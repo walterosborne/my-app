@@ -1,5 +1,5 @@
 /*
-NGAT 3.2 — Internal / External standards classification.
+NGAT 3.1.1 — Internal / External standards classification.
 
 Run manually against the NGAT audit database.
 Defaults to [dev].[standards_r]. Production changes require BOTH:
@@ -18,7 +18,7 @@ DECLARE @TargetSchema SYSNAME = N'dev';
 DECLARE @AllowDbo BIT = 0;
 
 IF @TargetSchema NOT IN (N'dev', N'dbo')
-    THROW 50320, 'NGAT 3.2 supports only dev and dbo schemas.', 1;
+    THROW 50320, 'NGAT 3.1.1 supports only dev and dbo schemas.', 1;
 
 IF @TargetSchema = N'dbo' AND @AllowDbo <> 1
     THROW 50321, 'Production changes require explicit @AllowDbo = 1.', 1;

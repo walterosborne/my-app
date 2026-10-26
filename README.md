@@ -6,7 +6,7 @@
 
 ---
 
-> **Current documented version: NGAT 3.1 (October 2026).** See [VERSION-HISTORY.md](./VERSION-HISTORY.md) for 3.1 changes and [OPENSHIFT-NGAT.md](./OPENSHIFT-NGAT.md) for the current Kubernetes/OpenShift runtime.
+> **Current documented version: NGAT 3.1.1 (October 2026).** See [VERSION-HISTORY.md](./VERSION-HISTORY.md) for 3.1.1 changes and [OPENSHIFT-NGAT.md](./OPENSHIFT-NGAT.md) for the current Kubernetes/OpenShift runtime.
 >
 > **Legacy guide:** The Windows/IIS setup and development procedures below describe the earlier NGAT 2.x deployment model, not the current Kubernetes production deployment.
 

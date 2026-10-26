@@ -4,9 +4,33 @@ import './VersionHistory.css';
 
 const releases = [
   {
-    version: '3.1',
+    version: '3.1.1',
     date: 'October 2026',
     current: true,
+    title: 'Standards management and Conduct Audit PrOP fix',
+    summary: 'Administrators can classify and maintain standards, while Conduct Audit again displays the organizational PrOPs relevant to each audit.',
+    sections: [
+      {
+        title: 'Standards',
+        items: [
+          'Classify standards as Internal or External from Admin Menu → Standards.',
+          'Add new standards and edit existing standard names or classifications.',
+          'Conduct Audit Step 1 groups standards by Internal, External, and Unclassified.',
+          'Existing audits and standard clause text remain linked to their original standard IDs.'
+        ]
+      },
+      {
+        title: 'Conduct Audit',
+        items: [
+          'Restored Sector, Site, Business Unit, and Operating Unit PrOP choices in finding responses.',
+          'PrOP matching now handles numeric IDs consistently across organizational levels.'
+        ]
+      }
+    ]
+  },
+  {
+    version: '3.1',
+    date: 'October 2026',
     title: 'Faster workflows and more flexible exports',
     summary: 'Refinements since NGAT 3.0 make common pages faster, standard clauses easier to read, and audit reports and metrics easier to export.',
     sections: [
