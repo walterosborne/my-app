@@ -1,3 +1,4 @@
+import { useExportTask } from './useExportTask.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
 import { DataGrid } from '@mui/x-data-grid';
@@ -45,6 +46,7 @@ const autofitWorksheet = (worksheet, rows) => {
 };
 
 const FoeReports = () => {
+  const { isExporting, runExport } = useExportTask();
   const [loading, setLoading] = useState(true);
   const [audits, setAudits] = useState([]);
   const [findings, setFindings] = useState([]);
@@ -149,7 +151,7 @@ const FoeReports = () => {
     { field: 'auditNote', headerName: 'Audit Note', minWidth: 220, flex: 1.4 }
   ];
 
-  const handleExport = () => {
+  const handleExport = () => runExport(async () => {
     const workbook = XLSX.utils.book_new();
 
     const auditHeaders = [
@@ -226,12 +228,8 @@ const FoeReports = () => {
     autofitWorksheet(findingsSheet, findingSheetRows);
     XLSX.utils.book_append_sheet(workbook, findingsSheet, 'Findings');
 
-    toast.info('Now exporting...', {
-      progressStyle: { backgroundColor: '#2196f3' },
-      style: { borderLeft: '4px solid #2196f3' }
-    });
     XLSX.writeFile(workbook, `FOE Audits ${normalizeDate(new Date())}.xlsx`);
-  };
+  });
 
   if (loading) {
     return (
@@ -270,8 +268,8 @@ const FoeReports = () => {
             >
               Refresh Data
             </button>
-            <button type="button" className="button export-button" onClick={handleExport}>
-              Export Excel
+            <button type="button" className="button export-button" onClick={handleExport} disabled={isExporting} aria-busy={isExporting}>
+              {isExporting ? 'Exporting…' : 'Export Excel'}
             </button>
           </div>
         </div>

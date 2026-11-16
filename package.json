@@ -16,7 +16,8 @@
     "prod": "echo NGAT_NPM_PROD_SCRIPT_REACHED && node scripts/prod-debug.js",
     "postprod": "echo NGAT_POSTPROD_LIFECYCLE_REACHED",
     "start": "node mssqlserver.js",
-    "test:identity": "node --test tests/entraIdentity.test.js"
+    "test:identity": "node --test tests/entraIdentity.test.js",
+    "test:exports": "node --test tests/exportTasks.test.js tests/allReportsExport.test.js"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

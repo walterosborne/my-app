@@ -1,3 +1,4 @@
+import { useExportTask } from './useExportTask.js';
 import { errorToast } from './errorToast.js';
 import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -33,7 +34,7 @@ import {
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
 import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
-const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, onDownloadZip }) => {
+const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, isExporting, onDownloadZip }) => {
     const files = Array.isArray(finding.evidenceFiles) ? finding.evidenceFiles : [];
     if (!files.length) return null;
 
@@ -60,7 +61,7 @@ const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, onDownload
                 type="button"
                 className="finding-evidence-zip"
                 onClick={() => onDownloadZip(finding.ncId)}
-                disabled={downloadingNcId === finding.ncId}
+                disabled={isExporting}
             >
                 {downloadingNcId === finding.ncId ? 'Downloading...' : 'Download ZIP'}
             </button>
@@ -69,6 +70,7 @@ const FindingEvidencePanel = ({ finding, scheduleId, downloadingNcId, onDownload
 };
 
 const Audit = () => {
+    const { isExporting, runExport } = useExportTask();
     const { id } = useParams();
     const navigate = useNavigate();
 
@@ -1094,7 +1096,7 @@ const Audit = () => {
         return null;
     };
 
-    const handleExportXlsx = () => {
+    const handleExportXlsx = () => runExport(async () => {
         const formatArray = (ids, list, idKey, nameKey) => {
             if (!ids || ids.length === 0) return '';
             return ids.map((id) => {
@@ -1301,9 +1303,9 @@ const Audit = () => {
         addSheet(wb, 'CARs', carHeaders, carRows);
 
         XLSX.writeFile(wb, `Audit ${auditData.scheduleId}.xlsx`);
-    };
+    });
 
-    const handleExportPdf = (audience) => {
+    const handleExportPdf = (audience) => runExport(async () => {
         if (!auditData || !['internal', 'external'].includes(audience)) return;
         const isExternal = audience === 'external';
         const selectedFindings = isExternal
@@ -1744,16 +1746,31 @@ const Audit = () => {
         printIframe.style.border = '0';
         printIframe.setAttribute('aria-hidden', 'true');
         printIframe.srcdoc = html;
-        document.body.appendChild(printIframe);
-        printIframe.onload = () => {
-            const printWindow = printIframe.contentWindow;
-            printWindow.focus();
-            printWindow.print();
-            setTimeout(() => {
-                document.body.removeChild(printIframe);
-            }, 500);
-        };
-    };
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                printIframe.remove();
+                reject(new Error('PDF preparation timed out. Please try again.'));
+            }, 30000);
+            printIframe.onerror = () => {
+                clearTimeout(timeout);
+                printIframe.remove();
+                reject(new Error('Unable to prepare PDF. Please try again.'));
+            };
+            printIframe.onload = () => {
+                clearTimeout(timeout);
+                try {
+                    const printWindow = printIframe.contentWindow;
+                    printWindow.focus();
+                    printWindow.print();
+                    setTimeout(() => { printIframe.remove(); resolve(); }, 500);
+                } catch (error) {
+                    printIframe.remove();
+                    reject(error);
+                }
+            };
+            document.body.appendChild(printIframe);
+        });
+    });
 
     const handleNudgeApprovers = async () => {
         if (!auditData?.scheduleId || nudgingApprovers) {
@@ -1835,7 +1852,7 @@ const Audit = () => {
         }
     };
 
-    const handleDownloadObjectiveEvidence = async () => {
+    const handleDownloadObjectiveEvidence = () => runExport(async () => {
         if (!auditData?.scheduleId) {
             errorToast('No audit selected.');
             return;
@@ -1880,7 +1897,7 @@ const Audit = () => {
         } finally {
             setDownloadingObjectiveEvidence(false);
         }
-    };
+    });
 
     const downloadEvidenceZip = async ({ query, filename, setBusy, errorMessage }) => {
         if (!auditData?.scheduleId) return;
@@ -1910,7 +1927,7 @@ const Audit = () => {
         }
     };
 
-    const handleDownloadFindingEvidence = async (findingId) => {
+    const handleDownloadFindingEvidence = (findingId) => runExport(async () => {
         if (!Number.isSafeInteger(Number(findingId))) return;
         setDownloadingEvidenceNcId(findingId);
         await downloadEvidenceZip({
@@ -1921,9 +1938,9 @@ const Audit = () => {
             },
             errorMessage: 'Failed to download response objective evidence.'
         });
-    };
+    });
 
-    const handleDownloadQuestionEvidence = async (questionId) => {
+    const handleDownloadQuestionEvidence = (questionId) => runExport(async () => {
         if (!Number.isSafeInteger(Number(questionId))) return;
         setDownloadingQuestionEvidenceId(questionId);
         await downloadEvidenceZip({
@@ -1934,7 +1951,7 @@ const Audit = () => {
             },
             errorMessage: 'Failed to download question objective evidence.'
         });
-    };
+    });
 
     const handleLifecycle = async (action) => {
         if (!auditData?.scheduleId || changingLifecycle) return;
@@ -2002,7 +2019,7 @@ const Audit = () => {
                             type="button"
                             className="question-evidence-zip"
                             onClick={() => handleDownloadQuestionEvidence(group.questionId)}
-                            disabled={downloadingQuestionEvidenceId === group.questionId}
+                            disabled={isExporting}
                         >
                             {downloadingQuestionEvidenceId === group.questionId
                                 ? 'Downloading...'
@@ -2078,6 +2095,7 @@ const Audit = () => {
                                     finding={finding}
                                     scheduleId={auditData.scheduleId}
                                     downloadingNcId={downloadingEvidenceNcId}
+                                    isExporting={isExporting}
                                     onDownloadZip={handleDownloadFindingEvidence}
                                 />
                             </div>
@@ -2214,16 +2232,16 @@ const Audit = () => {
                     >
                         <h2 className="audit-action-group-title">Downloads</h2>
                         <div className="audit-action-group-controls">
-                            <button className="action-btn export-xlsx" onClick={handleExportXlsx}>Export XLSX</button>
+                            <button className="action-btn export-xlsx" onClick={handleExportXlsx} disabled={isExporting}>{isExporting ? 'Exporting…' : 'Export XLSX'}</button>
                             {isLocked && (
-                                <button type="button" className="action-btn export-pdf" onClick={() => setPdfExportDialogOpen(true)}>Export PDF</button>
+                                <button type="button" className="action-btn export-pdf" disabled={isExporting} onClick={() => setPdfExportDialogOpen(true)}>Export PDF</button>
                             )}
                             {hasObjectiveEvidence && (
                                 <button
                                     type="button"
                                     className="action-btn objective-evidence-download"
                                     onClick={handleDownloadObjectiveEvidence}
-                                    disabled={downloadingObjectiveEvidence}
+                                    disabled={isExporting}
                                 >
                                     {downloadingObjectiveEvidence ? 'Downloading Objective Evidence...' : 'Download Objective Evidence (ZIP)'}
                                 </button>
@@ -2629,6 +2647,7 @@ const Audit = () => {
                             <button
                                 type="button"
                                 className="audit-pdf-dialog-option"
+                                disabled={isExporting}
                                 autoFocus
                                 onClick={() => {
                                     setPdfExportDialogOpen(false);
@@ -2641,6 +2660,7 @@ const Audit = () => {
                             <button
                                 type="button"
                                 className="audit-pdf-dialog-option"
+                                disabled={isExporting}
                                 onClick={() => {
                                     setPdfExportDialogOpen(false);
                                     handleExportPdf('external');

@@ -1,3 +1,4 @@
+import { useExportTask } from './useExportTask.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
 import { toast } from 'react-toastify';
@@ -54,6 +55,7 @@ const STAGE_LABELS = [
 ];
 
 const Metrics = () => {
+  const { isExporting, runExport } = useExportTask();
   const exportToastOptions = {
     progressStyle: { backgroundColor: '#2196f3' },
     style: { borderLeft: '4px solid #2196f3' }
@@ -1268,7 +1270,7 @@ const Metrics = () => {
     });
   };
 
-  const handleExport = ({ filenameBase, sheetName, labelKey, labels, series, totals = null }) => {
+  const handleExport = ({ filenameBase, sheetName, labelKey, labels, series, totals = null }) => runExport(async () => {
     const rows = buildMetricExportRows({ labels, series, labelKey, totals });
 
     if (rows.length === 0) {
@@ -1276,36 +1278,13 @@ const Metrics = () => {
       return;
     }
 
-    const toastId = toast.info('Now exporting metric data...', {
-      ...exportToastOptions,
-      autoClose: false,
-      closeButton: false
-    });
+    const workbook = XLSX.utils.book_new();
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, sheet, sanitizeWorksheetName(sheetName));
+    XLSX.writeFile(workbook, `${filenameBase}.xlsx`);
+  });
 
-    try {
-      const workbook = XLSX.utils.book_new();
-      const sheet = XLSX.utils.json_to_sheet(rows);
-      XLSX.utils.book_append_sheet(workbook, sheet, sanitizeWorksheetName(sheetName));
-      XLSX.writeFile(workbook, `${filenameBase}.xlsx`);
-
-      toast.update(toastId, {
-        render: 'Metric data exported.',
-        type: 'success',
-        autoClose: 2000,
-        closeButton: true
-      });
-    } catch (error) {
-      console.error('Metric export failed:', error);
-      toast.update(toastId, {
-        render: 'Metric export failed.',
-        type: 'error',
-        autoClose: 4000,
-        closeButton: true
-      });
-    }
-  };
-
-  const handleExportImage = async (card, filenameBase) => {
+  const handleExportImage = (card, filenameBase) => runExport(async () => {
     const chart = card?.querySelector('.metrics-card-body svg');
 
     if (!chart) {
@@ -1313,47 +1292,24 @@ const Metrics = () => {
       return;
     }
 
-    const toastId = toast.info('Now exporting metric image...', {
-      ...exportToastOptions,
-      autoClose: false,
-      closeButton: false
+    const image = await toPng(card, {
+      backgroundColor: '#ffffff',
+      pixelRatio: 2,
+      cacheBust: true,
+      filter: (node) => !(
+        node instanceof HTMLElement
+        && (node.classList.contains('metrics-card-actions')
+          || node.classList.contains('metrics-card-footer'))
+      )
     });
 
-    try {
-      const image = await toPng(card, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        cacheBust: true,
-        filter: (node) => !(
-          node instanceof HTMLElement
-          && (node.classList.contains('metrics-card-actions')
-            || node.classList.contains('metrics-card-footer'))
-        )
-      });
-
-      const link = document.createElement('a');
-      link.href = image;
-      link.download = `${filenameBase}.png`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-
-      toast.update(toastId, {
-        render: 'Metric image exported.',
-        type: 'success',
-        autoClose: 2000,
-        closeButton: true
-      });
-    } catch (error) {
-      console.error('Metric image export failed:', error);
-      toast.update(toastId, {
-        render: 'Metric image export failed.',
-        type: 'error',
-        autoClose: 4000,
-        closeButton: true
-      });
-    }
-  };
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `${filenameBase}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  });
 
   const MetricsTooltip = (props) => {
     const tooltipData = useAxesTooltip();
@@ -1695,6 +1651,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'audits-by-stage',
                             sheetName: `Audits by ${stageCategoryOption.label}`,
@@ -1709,6 +1667,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'audits-by-stage')}
                         >
@@ -1774,6 +1734,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'delay-causes',
                             sheetName: 'Delay Causes',
@@ -1787,6 +1749,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'delay-causes')}
                         >
@@ -1819,6 +1783,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'audits-over-time',
                             sheetName: 'Audits Over Time',
@@ -1832,6 +1798,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'audits-over-time')}
                         >
@@ -1894,6 +1862,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'finding-severities',
                             sheetName: 'Finding Severities',
@@ -1907,6 +1877,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'finding-severities')}
                         >
@@ -1953,6 +1925,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'findings-by-function',
                             sheetName: 'Findings by Function',
@@ -1967,6 +1941,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'findings-by-function')}
                         >
@@ -2016,6 +1992,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           onClick={() => handleExport({
                             filenameBase: 'findings-by-clause',
                             sheetName: findingsByClauseData.selectedStandardLabel
@@ -2031,6 +2009,8 @@ const Metrics = () => {
                         <button
                           type="button"
                           className="metrics-export-button"
+                          disabled={isExporting}
+                          aria-busy={isExporting}
                           title="Download chart as PNG image"
                           onClick={(event) => handleExportImage(event.currentTarget.closest('.metrics-card'), 'findings-by-clause')}
                         >

@@ -1,3 +1,4 @@
+import { useExportTask } from './useExportTask.js';
 import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -52,12 +53,9 @@ const getSiteLabel = (site) => {
 };
 
 const ThirtySixtyNinety = () => {
+  const { isExporting, runExport } = useExportTask();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const exportToastOptions = {
-    progressStyle: { backgroundColor: '#2196f3' },
-    style: { borderLeft: '4px solid #2196f3' }
-  };
   const reportType = searchParams.get('type') || '30-60-90';
   const [loading, setLoading] = useState(true);
   const [audits, setAudits] = useState([]);
@@ -987,11 +985,7 @@ const ThirtySixtyNinety = () => {
     }
   };
 
-  const handleExport = () => {
-    const notifyExportStarting = () => {
-      toast.info('Now exporting...', exportToastOptions);
-    };
-
+  const handleExport = () => runExport(async () => {
     if (!activeReport.ready) {
       toast.info('This report is not configured yet.');
       return;
@@ -1040,7 +1034,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Planned vs Completed');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'planned-vs-completed-report.xlsx');
       return;
     }
@@ -1100,7 +1094,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Results');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'rollup-audit-results.xlsx');
       return;
     }
@@ -1156,7 +1150,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Rollup Audit Schedule');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'rollup-audit-schedule.xlsx');
       return;
     }
@@ -1210,7 +1204,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Clauses Audited');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'clauses-audited-report.xlsx');
       return;
     }
@@ -1264,7 +1258,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Processes Audited');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'processes-audited-report.xlsx');
       return;
     }
@@ -1316,7 +1310,7 @@ const ThirtySixtyNinety = () => {
       });
       sheet['!cols'] = colWidths;
       XLSX.utils.book_append_sheet(wb, sheet, 'Schedule Comments');
-      notifyExportStarting();
+
       XLSX.writeFile(wb, 'schedule-comments-report.xlsx');
       return;
     }
@@ -1388,9 +1382,8 @@ const ThirtySixtyNinety = () => {
     addSheet(wb, 'Next 60 Days', headers, buildRows(60));
     addSheet(wb, 'Next 90 Days', headers, buildRows(90));
 
-    notifyExportStarting();
     XLSX.writeFile(wb, '30-60-90-report.xlsx');
-  };
+  });
 
   if (loading) {
     return (
@@ -1433,8 +1426,8 @@ const ThirtySixtyNinety = () => {
             </div>
             {!activeReport.ready && <p>This report is coming soon.</p>}
           </div>
-          <button className="button export-button" onClick={handleExport}>
-            Export Excel
+          <button className="button export-button" onClick={handleExport} disabled={isExporting} aria-busy={isExporting}>
+            {isExporting ? 'Exporting…' : 'Export Excel'}
           </button>
         </div>
 
