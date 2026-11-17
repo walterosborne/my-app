@@ -238,12 +238,12 @@ const AppEnvironmentBanner = () => {
   )
 }
 
-// React Router normally keeps the same component instance alive when only the
-// :id changes. Remount Audit for a new ID so its selected-audit detail request
-// runs again, while the compact report list and lookup caches remain reusable.
+// A new navigation, including clicking the same navbar link after a failed
+// load, starts a fresh report. Audit cancels requests from the previous instance.
 const AuditRoute = () => {
   const { id } = useParams()
-  return <Audit key={id || 'latest'} />
+  const location = useLocation()
+  return <Audit key={`${id || 'latest'}:${location.key}`} />
 }
 
 // NGAT uses HashRouter. Direct approval links can arrive as /approve/2468,

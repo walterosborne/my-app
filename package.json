@@ -17,6 +17,7 @@
     "postprod": "echo NGAT_POSTPROD_LIFECYCLE_REACHED",
     "start": "node mssqlserver.js",
     "test:identity": "node --test tests/entraIdentity.test.js",
+    "test:reports": "node --test tests/auditReportData.test.js",
     "test:exports": "node --test tests/exportTasks.test.js tests/allReportsExport.test.js"
   },
   "dependencies": {

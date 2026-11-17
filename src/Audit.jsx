@@ -6,31 +6,8 @@ import './Audit.css';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import {
-    buildApiUrl,
-    getAuditsReport,
-    getPrograms,
-    getDivisions,
-    getSectors,
-    getSites,
-    getBusinessUnits,
-    getOperatingUnits,
-    getAuditors,
-    getAuditTypes,
-    getFunctions,
-    getIntExt,
-    getStandards,
-    getSeverities,
-    getRosterByIds,
-    getSafetyEquipment,
-    getTrainingRequirements,
-    getCauses,
-    getProps,
-    getCurrentUser,
-    getRiskFactors,
-    getSubcategories,
-    getRiskRatings
-} from './assets/data/apiData';
+import { buildApiUrl, getRosterByIds } from './assets/data/apiData';
+import { loadReportPage, loadReportAudits, loadReportRiskRatings, requestReportJson, requireReportArray } from './assets/data/auditReportData.js';
 import { getOrgGroupLabel, getRiskToneLabel, getOrgTargetLabel } from './riskAnalysisUtils.js';
 import { formatDateForDisplay, formatRosterLabel, getDateParts } from './Utilities.jsx';
 
@@ -97,6 +74,12 @@ const Audit = () => {
     const [causesList, setCausesList] = React.useState([]);
     const [approvals, setApprovals] = React.useState([]);
     const [loading, setLoading] = React.useState(true);
+    const [loadError, setLoadError] = React.useState('');
+    const [loadAttempt, setLoadAttempt] = React.useState(0);
+    const [sectionErrors, setSectionErrors] = React.useState({});
+    const [riskStatus, setRiskStatus] = React.useState('loading');
+    const [riskError, setRiskError] = React.useState('');
+    const [riskAttempt, setRiskAttempt] = React.useState(0);
     const [propsList, setPropsList] = React.useState([]);
     const [riskFactorsList, setRiskFactorsList] = React.useState([]);
     const [riskSubcategoriesList, setRiskSubcategoriesList] = React.useState([]);
@@ -120,63 +103,53 @@ const Audit = () => {
         return () => document.removeEventListener('keydown', closeOnEscape);
     }, [pdfExportDialogOpen]);
 
-    // Load all data from API on mount
+    // Use the route parameter explicitly; never infer it from a changing global
+    // URL. Errors stay separate from legitimate empty/no-access states.
     React.useEffect(() => {
+        const controller = new AbortController();
         async function loadAllData() {
+            setLoading(true);
+            setLoadError('');
+            setAudits([]);
+            setAuditQuestions([]);
+            setNonconformances([]);
+            setCars([]);
+            setApprovals([]);
+            setRiskRatingsList([]);
+            setSectionErrors({});
+            setAccessErrorShown(false);
             try {
-                const [auditsData, programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, severities, safetyEquipment, trainingRequirements, props, causes, riskFactors, riskSubcategories, riskRatings, userData] = await Promise.all([
-                    getAuditsReport(true),
-                    getPrograms(),
-                    getDivisions(),
-                    getSectors(),
-                    getSites(),
-                    getBusinessUnits(),
-                    getOperatingUnits(),
-                    getAuditors(),
-                    getAuditTypes(),
-                    getFunctions(),
-                    getIntExt(),
-                    getStandards(),
-                    getSeverities(),
-                    getSafetyEquipment(),
-                    getTrainingRequirements(),
-                    getProps(),
-                    getCauses(),
-                    getRiskFactors(),
-                    getSubcategories(),
-                    getRiskRatings(),
-                    getCurrentUser()
-                ]);
-
-                setAudits(auditsData.filter((audit) => Number(audit?.stage) !== -2));
-                setCurrentUser(userData);
-                setProgramsList(programs);
-                setDivisionsList(divisions);
-                setSectorsList(sectors);
-                setSitesList(sites);
-                setBusinessUnitsList(businessUnits);
-                setOperatingUnitsList(operatingUnits);
-                setAuditorsList(auditors);
-                setAuditTypesList(auditTypes);
-                setFunctionsList(functions);
-                setIntExtList(intExt);
-                setStandardsList(standards);
-                setSeveritiesList(severities);
-                setSafetyEquipmentList(safetyEquipment);
-                setTrainingRequirementsList(trainingRequirements);
-                setCausesList(causes);
-                setRiskFactorsList(riskFactors);
-                setRiskSubcategoriesList(riskSubcategories);
-                setRiskRatingsList(riskRatings);
-                setLoading(false);
-                setPropsList(props);
+                const { audits: auditsData, references, user } = await loadReportPage(id, { signal: controller.signal });
+                if (controller.signal.aborted) return;
+                setAudits(auditsData);
+                setCurrentUser(user);
+                setProgramsList(references.programs);
+                setDivisionsList(references.divisions);
+                setSectorsList(references.sectors);
+                setSitesList(references.sites);
+                setBusinessUnitsList(references.businessUnits);
+                setOperatingUnitsList(references.operatingUnits);
+                setAuditorsList(references.auditors);
+                setAuditTypesList(references.auditTypes);
+                setFunctionsList(references.functions);
+                setIntExtList(references.intExt);
+                setStandardsList(references.standards);
+                setSeveritiesList(references.severities);
+                setSafetyEquipmentList(references.safetyEquipment);
+                setTrainingRequirementsList(references.trainingRequirements);
+                setCausesList(references.causes);
+                setRiskFactorsList(references.riskFactors);
+                setRiskSubcategoriesList(references.subcategories);
+                setPropsList(references.props);
             } catch (error) {
-                console.error('Error loading data:', error);
-                setLoading(false);
+                if (!controller.signal.aborted) setLoadError(error.message || 'Unable to load this report. Please try again.');
+            } finally {
+                if (!controller.signal.aborted) setLoading(false);
             }
         }
         loadAllData();
-    }, []);
+        return () => controller.abort();
+    }, [id, loadAttempt]);
 
     // Helper function to get program names from programIds
     const getProgramNames = (programIds) => {
@@ -716,6 +689,30 @@ const Audit = () => {
         return Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear();
     }, [auditData?.expectedStartDate, auditData?.actualStartDate, auditData?.expectedCompletionDate]);
 
+    React.useEffect(() => {
+        if (!auditData?.scheduleId || loading || loadError || isCuiAccessDenied) return;
+        const controller = new AbortController();
+        async function loadRiskRatings() {
+            setRiskStatus('loading');
+            setRiskError('');
+            setRiskRatingsList([]);
+            try {
+                const ratings = await loadReportRiskRatings(getAuditRiskYear, { signal: controller.signal });
+                if (!controller.signal.aborted) {
+                    setRiskRatingsList(ratings);
+                    setRiskStatus('ready');
+                }
+            } catch (error) {
+                if (!controller.signal.aborted) {
+                    setRiskError(error.message || 'Unable to load risk ratings.');
+                    setRiskStatus('error');
+                }
+            }
+        }
+        loadRiskRatings();
+        return () => controller.abort();
+    }, [auditData?.scheduleId, getAuditRiskYear, loading, loadError, isCuiAccessDenied, riskAttempt]);
+
     const auditRiskGroups = React.useMemo(() => {
         if (!auditData) return [];
 
@@ -824,6 +821,7 @@ const Audit = () => {
     // response-level evidence metadata. Keep a flattened finding view for
     // summaries, exports, metrics-style helpers, and PDF generation.
     React.useEffect(() => {
+        const controller = new AbortController();
         const flattenQuestions = (questions) => (questions || []).flatMap((question) =>
             (question.findings || []).map((finding, index) => ({
                 ...finding,
@@ -855,24 +853,24 @@ const Audit = () => {
             }
 
             try {
-                const response = await fetch(buildApiUrl(
-                    `audit-questions/${auditData.scheduleId}?includeEvidenceFiles=true`
-                ));
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data?.error || 'Failed to load audit questions and findings.');
-                }
-                const questions = Array.isArray(data) ? data : [];
+                const data = await requestReportJson(
+                    `audit-questions/${auditData.scheduleId}?includeEvidenceFiles=true`,
+                    { signal: controller.signal, label: 'audit questions and findings' }
+                );
+                const questions = requireReportArray(data, 'audit questions and findings');
+                if (controller.signal.aborted) return;
                 setAuditQuestions(questions);
                 setNonconformances(flattenQuestions(questions));
             } catch (error) {
-                console.error('Error loading audit questions and findings:', error);
+                if (controller.signal.aborted) return;
+                setSectionErrors((previous) => ({ ...previous, findings: error.message }));
                 setAuditQuestions([]);
                 setNonconformances([]);
             }
         }
 
         loadAuditQuestions();
+        return () => controller.abort();
     }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     const hasObjectiveEvidence = React.useMemo(() => {
@@ -888,54 +886,49 @@ const Audit = () => {
     }, [nonconformances]);
 
     React.useEffect(() => {
+        if (!auditData?.scheduleId || isCuiAccessDenied) return;
+        const controller = new AbortController();
         async function loadApprovals() {
-            if (isCuiAccessDenied) {
-                setApprovals([]);
-                return;
-            }
-            if (!auditData?.scheduleId) {
-                setApprovals([]);
-                return;
-            }
             try {
-                const response = await fetch(buildApiUrl(`approvals/${auditData.scheduleId}`));
-                if (!response.ok) {
-                    setApprovals([]);
-                    return;
-                }
-                const data = await response.json();
-                setApprovals(data.approvals || []);
+                const data = await requestReportJson(`approvals/${auditData.scheduleId}`, {
+                    signal: controller.signal, label: 'audit approvals'
+                });
+                const rows = requireReportArray(data?.approvals, 'audit approvals');
+                if (!controller.signal.aborted) setApprovals(rows);
             } catch (error) {
-                console.error('Error loading approvals:', error);
-                setApprovals([]);
+                if (!controller.signal.aborted) {
+                    setApprovals([]);
+                    setSectionErrors((previous) => ({ ...previous, approvals: error.message }));
+                }
             }
         }
         loadApprovals();
+        return () => controller.abort();
     }, [auditData?.scheduleId, isCuiAccessDenied]);
 
-    // Load CARs for the selected audit
     React.useEffect(() => {
+        if (!auditData?.scheduleId || isCuiAccessDenied) return;
+        const controller = new AbortController();
         async function loadCars() {
-            if (isCuiAccessDenied) {
-                setCars([]);
-                return;
-            }
-            if (auditData?.scheduleId) {
-                try {
-                    const response = await fetch(buildApiUrl(`cars/${auditData.scheduleId}`));
-                    const data = await response.json();
-                    setCars(data);
-                } catch (error) {
-                    console.error('Error loading CARs:', error);
+            try {
+                const data = await requestReportJson(`cars/${auditData.scheduleId}`, {
+                    signal: controller.signal, label: 'CARs'
+                });
+                const rows = requireReportArray(data, 'CARs');
+                if (!controller.signal.aborted) setCars(rows);
+            } catch (error) {
+                if (!controller.signal.aborted) {
                     setCars([]);
+                    setSectionErrors((previous) => ({ ...previous, cars: error.message }));
                 }
             }
         }
         loadCars();
+        return () => controller.abort();
     }, [auditData?.scheduleId, isCuiAccessDenied]);
 
     React.useEffect(() => {
-        if (loading) return;
+        if (loading || loadError) return;
         if (isCuiAccessDenied && !accessErrorShown) {
             errorToast('This audit is marked CUI. You are not CUI approved and cannot view it.');
             setAccessErrorShown(true);
@@ -946,7 +939,7 @@ const Audit = () => {
             errorToast('You either do not have access to this audit or it does not exist.');
             setAccessErrorShown(true);
         }
-    }, [auditNotFound, accessErrorShown, id, isCuiAccessDenied, loading]);
+    }, [auditNotFound, accessErrorShown, id, isCuiAccessDenied, loading, loadError]);
 
     // Show loading state while data is being fetched
     if (loading) {
@@ -956,6 +949,19 @@ const Audit = () => {
                     <div style={{ padding: '2rem', textAlign: 'center' }}>
                         Loading audit data...
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (loadError) {
+        return (
+            <div className="audit-page">
+                <div className="audit-container" role="alert">
+                    <h2>Unable to load audit report</h2>
+                    <p>{loadError}</p>
+                    <button type="button" className="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Retry</button>
+                    {id && <button type="button" className="button" onClick={() => navigate('/audit')}>Return to My Audits</button>}
                 </div>
             </div>
         );
@@ -1828,7 +1834,7 @@ const Audit = () => {
                 throw new Error(result.error || 'Failed to undo submission');
             }
 
-            const refreshedAudits = await getAuditsReport(true);
+            const refreshedAudits = await loadReportAudits(id);
             setAudits(refreshedAudits);
 
             try {
@@ -1970,7 +1976,7 @@ const Audit = () => {
             if (!response.ok || !result.success) {
                 throw new Error(result.error || 'Failed to change audit stage.');
             }
-            const refreshedAudits = await getAuditsReport(true);
+            const refreshedAudits = await loadReportAudits(action === 'archive' || action === 'cancel' ? null : id);
             const visibleAudits = refreshedAudits.filter((audit) => Number(audit?.stage) !== -2);
             setAudits(visibleAudits);
             if (action === 'archive' || action === 'cancel') {
@@ -2380,6 +2386,14 @@ const Audit = () => {
                     </div>
                 </div>
 
+                {Object.keys(sectionErrors).length > 0 && (
+                    <div className="audit-section" role="alert">
+                        <h2 className="section-title">Some report data could not be loaded</h2>
+                        {Object.entries(sectionErrors).map(([section, message]) => <p key={section}>{message}</p>)}
+                        <button type="button" className="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>Retry report data</button>
+                    </div>
+                )}
+
                 {/* Organization Section */}
                 <div className="audit-section">
                     <h2 className="section-title">Organization</h2>
@@ -2436,6 +2450,13 @@ const Audit = () => {
                 </div>
 
                 {/* Planning Details */}
+                {riskStatus !== 'ready' && (
+                    <div className="audit-section" role={riskStatus === 'error' ? 'alert' : 'status'}>
+                        <h2 className="section-title">Risk Factors</h2>
+                        <p>{riskStatus === 'error' ? riskError : 'Loading risk ratings…'}</p>
+                        {riskStatus === 'error' && <button type="button" className="button" onClick={() => setRiskAttempt((attempt) => attempt + 1)}>Retry risk ratings</button>}
+                    </div>
+                )}
                 {auditRiskGroups.length > 0 && (
                     <div className="audit-section">
                         <h2 className="section-title">Risk Factors</h2>

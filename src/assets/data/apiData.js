@@ -1,3 +1,5 @@
+import { loadReportAudits } from './auditReportData.js';
+
 // API data loader:
 // - during local Vite dev, /api is proxied to the backend on port 3001
 // - behind the OpenShift reverse proxy, /api is handled by the backend service
@@ -139,51 +141,12 @@ export async function getAuditsAll(skipCache = false) {
     return await fetchData(endpoint, skipCache);
 }
 
-const mergeSelectedAuditDetail = (summaries, selectedId, detail) => {
-    if (!Array.isArray(summaries)) return [];
-    if (!detail || Array.isArray(detail) || typeof detail !== 'object') {
-        return summaries;
-    }
-    return summaries.map((audit) => (
-        Number(audit?.scheduleId) === Number(selectedId)
-            ? { ...audit, ...detail }
-            : audit
-    ));
-};
-
 export async function getAuditsReport(skipCache = false) {
     const { pathname } = getHashRouteContext();
-    const isIndividualReport = pathname === '/audit' || pathname.startsWith('/audit/');
-    if (!isIndividualReport) {
-        return await fetchData('audits?report=true', skipCache);
+    if (pathname === '/audit' || pathname.startsWith('/audit/')) {
+        return await loadReportAudits(getAuditReportRouteId());
     }
-
-    // For an explicit /audit/:id URL we already know which full record is
-    // needed, so request it in parallel with the compact dropdown list.
-    const explicitSelectedId = getAuditReportRouteId();
-    if (explicitSelectedId) {
-        const [summaries, detail] = await Promise.all([
-            fetchData('report-audits', skipCache),
-            fetchData(`audits/${explicitSelectedId}?report=true`, skipCache)
-        ]);
-        return mergeSelectedAuditDetail(summaries, explicitSelectedId, detail);
-    }
-
-    // /audit without an ID keeps the historical behavior of opening the newest
-    // accessible audit. We need the compact list first to identify that ID.
-    const summaries = await fetchData('report-audits', skipCache);
-    if (!Array.isArray(summaries) || summaries.length === 0) {
-        return [];
-    }
-
-    const selectedId = summaries.reduce((highest, audit) => {
-        const scheduleId = Number(audit?.scheduleId);
-        return Number.isFinite(scheduleId) && scheduleId > highest ? scheduleId : highest;
-    }, 0) || null;
-
-    if (!selectedId) return summaries;
-    const detail = await fetchData(`audits/${selectedId}?report=true`, skipCache);
-    return mergeSelectedAuditDetail(summaries, selectedId, detail);
+    return await fetchData('audits?report=true', skipCache);
 }
 
 export async function getCurrentUser(skipCache = false) {
