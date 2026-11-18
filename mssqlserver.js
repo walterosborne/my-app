@@ -5571,6 +5571,7 @@ app.post('/api/save-audit-results', async (req, res) => {
 
 // The schedule's internal/external choice determines whether a lead auditor is mandatory.
 const needsInternalLeadAuditor = async (queryable, intExtId, leadAuditorId) => {
+    if (intExtId === null || intExtId === undefined || intExtId === '') return false;
     if (leadAuditorId !== null && leadAuditorId !== undefined && String(leadAuditorId).trim() !== '') {
         return false;
     }
