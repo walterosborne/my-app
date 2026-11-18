@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import './Entry.css';
 import './AuditStatuses.css';
-import { getAuditsAll, getAuditors, getCurrentUser, getPrograms, getSites } from './assets/data/apiData';
+import { getAuditsAll, getAuditors, getCurrentUser, getPrograms, getSites, getCustomers } from './assets/data/apiData';
 
 const getSiteLabel = (site) => {
   if (!site) return '';
@@ -24,23 +24,26 @@ const AuditStatuses = () => {
   const [auditorsList, setAuditorsList] = useState([]);
   const [programsList, setProgramsList] = useState([]);
   const [sitesList, setSitesList] = useState([]);
+  const [customersList, setCustomersList] = useState([]);
   const [includeCompleted, setIncludeCompleted] = useState(false);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [auditsData, userData, auditors, programs, sites] = await Promise.all([
+        const [auditsData, userData, auditors, programs, sites, customers] = await Promise.all([
           getAuditsAll(true),
           getCurrentUser(),
           getAuditors(),
           getPrograms(),
-          getSites()
+          getSites(),
+          getCustomers()
         ]);
         setAudits(auditsData);
         setCurrentUser(userData);
         setAuditorsList(auditors);
         setProgramsList(programs);
         setSitesList(sites);
+        setCustomersList(customers);
       } catch (error) {
         console.error('Error loading audit to-do list:', error);
       } finally {
@@ -160,6 +163,14 @@ const AuditStatuses = () => {
                 {formatSingle(audit.leadAuditorId, auditorsList, 'auditorId', 'auditorName') || 'No response provided'}
               </span>
             </div>
+            {audit.customerId && (
+              <div className="audit-status-field">
+                <span className="audit-status-label">Customer</span>
+                <span className="audit-status-value">
+                  {formatSingle(audit.customerId, customersList, 'customerId', 'customerName')}
+                </span>
+              </div>
+            )}
             <div className="audit-status-field">
               <span className="audit-status-label">Additional Auditors</span>
               <span className="audit-status-value">{additionalAuditors || 'None'}</span>

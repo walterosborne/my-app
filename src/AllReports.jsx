@@ -23,6 +23,7 @@ import {
   getAuditTypes,
   getFunctions,
   getIntExt,
+  getCustomers,
   getStandards,
   getCauses,
   getSafetyEquipment,
@@ -76,6 +77,7 @@ const AllReports = () => {
   const [auditTypesList, setAuditTypesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
+  const [customersList, setCustomersList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
   const [safetyEquipmentList, setSafetyEquipmentList] = useState([]);
   const [trainingRequirementsList, setTrainingRequirementsList] = useState([]);
@@ -84,6 +86,8 @@ const AllReports = () => {
 
   const [titleFilter, setTitleFilter] = useState('');
   const [includeCancelledAudits, setIncludeCancelledAudits] = useState(false);
+  const [includeExternalAudits, setIncludeExternalAudits] = useState(false);
+  const [customerFilter, setCustomerFilter] = useState(null);
   const [sectorFilter, setSectorFilter] = useState(null);
   const [divisionFilter, setDivisionFilter] = useState([]);
   const [programFilter, setProgramFilter] = useState([]);
@@ -94,7 +98,6 @@ const AllReports = () => {
   const [leadAuditorFilter, setLeadAuditorFilter] = useState(null);
   const [additionalAuditorsFilter, setAdditionalAuditorsFilter] = useState([]);
   const [functionFilter, setFunctionFilter] = useState([]);
-  const [intExtFilter, setIntExtFilter] = useState(null);
   const [standardsFilter, setStandardsFilter] = useState([]);
   const [expectedStartFrom, setExpectedStartFrom] = useState('');
   const [expectedStartTo, setExpectedStartTo] = useState('');
@@ -118,6 +121,7 @@ const AllReports = () => {
           auditTypes,
           functions,
           intExt,
+          customers,
           standards,
           safetyEquipment,
           trainingRequirements,
@@ -136,6 +140,7 @@ const AllReports = () => {
           getAuditTypes(),
           getFunctions(),
           getIntExt(),
+          getCustomers(),
           getStandards(),
           getSafetyEquipment(),
           getTrainingRequirements(),
@@ -155,6 +160,7 @@ const AllReports = () => {
         setAuditTypesList(auditTypes);
         setFunctionsList(functions);
         setIntExtList(intExt);
+        setCustomersList(customers);
         setStandardsList(standards);
         setSafetyEquipmentList(safetyEquipment);
         setTrainingRequirementsList(trainingRequirements);
@@ -227,7 +233,11 @@ const AllReports = () => {
   const businessUnitOptions = useMemo(() => buildSortedOptions(businessUnitsList, 'businessUnitId', 'businessUnitName'), [businessUnitsList]);
   const operatingUnitOptions = useMemo(() => buildSortedOptions(operatingUnitsList, 'operatingUnitId', 'operatingUnitName'), [operatingUnitsList]);
   const auditorOptions = useMemo(() => buildSortedOptions(auditorsList, 'auditorId', 'auditorName'), [auditorsList]);
-  const intExtOptions = useMemo(() => buildSortedOptions(intExtList, 'intExtId', 'intExtName'), [intExtList]);
+  const customerOptions = useMemo(() => buildSortedOptions(customersList, 'customerId', 'customerName'), [customersList]);
+  const externalAuditIds = useMemo(() => new Set(
+    intExtList.filter((item) => /^external\b/i.test(String(item.intExtName || '').trim()))
+      .map((item) => item.intExtId)
+  ), [intExtList]);
   const standardsOptions = useMemo(() => buildSortedOptions(standardsList, 'standardId', 'standardName'), [standardsList]);
 
   // Cancellation is the visible stage; the saved previous stage tells the
@@ -258,6 +268,8 @@ const AllReports = () => {
   const filteredAudits = useMemo(() => {
     return audits.filter((audit) => {
       if (!includeCancelledAudits && Number(audit?.stage) === -2) return false;
+      if (!includeExternalAudits && externalAuditIds.has(audit.intExtId)) return false;
+      if (includeExternalAudits && customerFilter && audit.customerId !== customerFilter.value) return false;
       if (titleFilter && !audit.title?.toLowerCase().includes(titleFilter.toLowerCase())) {
         return false;
       }
@@ -273,7 +285,6 @@ const AllReports = () => {
         const matchesFunction = functionFilter.some((option) => auditFunctionIds.includes(Number(option.value)));
         if (!matchesFunction) return false;
       }
-      if (intExtFilter && audit.intExtId !== intExtFilter.value) return false;
       if (leadAuditorFilter && audit.leadAuditorId !== leadAuditorFilter.value) return false;
 
       if (programFilter.length > 0 && !programFilter.some((p) => audit.programIds?.includes(p.value))) {
@@ -307,6 +318,9 @@ const AllReports = () => {
     audits,
     titleFilter,
     includeCancelledAudits,
+    includeExternalAudits,
+    customerFilter,
+    externalAuditIds,
     sectorFilter,
     divisionFilter,
     programFilter,
@@ -317,7 +331,6 @@ const AllReports = () => {
     leadAuditorFilter,
     additionalAuditorsFilter,
     functionFilter,
-    intExtFilter,
     standardsFilter,
     expectedStartFrom,
     expectedStartTo,
@@ -337,6 +350,7 @@ const AllReports = () => {
     division: formatArray(audit.divisionId, divisionsList, 'divisionId', 'divisionName'),
     programs: formatArray(audit.programIds, programsList, 'programId', 'programName'),
     auditType: formatSingle(audit.auditTypeId, auditTypesList, 'auditTypeId', 'auditTypeName'),
+    customer: formatSingle(audit.customerId, customersList, 'customerId', 'customerName'),
     expectedStartDate: formatDateForInput(audit.expectedStartDate),
     expectedCompletionDate: formatDateForInput(audit.expectedCompletionDate),
     submittedDate: formatDateForInput(audit.submittedAt),
@@ -350,6 +364,7 @@ const AllReports = () => {
     { field: 'division', headerName: 'Division', width: 160 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
     { field: 'auditType', headerName: 'Audit Type', width: 140 },
+    ...(includeExternalAudits ? [{ field: 'customer', headerName: 'Customer', width: 180 }] : []),
     { field: 'expectedStartDate', headerName: 'Expected Start', width: 140 },
     { field: 'expectedCompletionDate', headerName: 'Expected Completion', width: 170 },
     { field: 'submittedDate', headerName: 'Submitted Date', width: 150 },
@@ -479,7 +494,7 @@ const AllReports = () => {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Function', 'Comment', 'Stage',
+      'Function', ...(includeExternalAudits ? ['Customer'] : []), 'Comment', 'Stage',
       'Submission Date', 'Approval Date'
     ];
     const scheduleRows = exportAudits.map((audit) => ([
@@ -499,6 +514,7 @@ const AllReports = () => {
       formatSingle(audit.intExtId, intExtList, 'intExtId', 'intExtName'),
       formatArray(audit.standardIds, standardsList, 'standardId', 'standardName'),
       formatArray(audit.functionId, functionsList, 'functionId', 'functionName'),
+      ...(includeExternalAudits ? [formatSingle(audit.customerId, customersList, 'customerId', 'customerName')] : []),
       audit.comment || '',
       getStageLabel(audit),
       formatDateForInput(audit.submittedAt),
@@ -737,6 +753,14 @@ const AllReports = () => {
                 />
                 <span>Include cancelled audits</span>
               </label>
+              <label className="reports-title-checkbox">
+                <input type="checkbox" checked={includeExternalAudits}
+                  onChange={(event) => {
+                    setIncludeExternalAudits(event.target.checked);
+                    if (!event.target.checked) setCustomerFilter(null);
+                  }} />
+                <span>Include external audits</span>
+              </label>
             </div>
             <p>Filter audits below and export a consolidated Excel report.</p>
           </div>
@@ -838,6 +862,20 @@ const AllReports = () => {
                 onChange={(value) => setFunctionFilter(value || [])}
               />
             </div>
+            {includeExternalAudits && (
+              <div className="filter-field">
+                <label>Customer</label>
+                <Select
+                  isClearable
+                  className="reports-select"
+                  classNamePrefix="reports-select"
+                  options={customerOptions}
+                  styles={customStyles}
+                  value={customerFilter}
+                  onChange={setCustomerFilter}
+                />
+              </div>
+            )}
 
             {showAllFilters && (
               <>
@@ -893,19 +931,6 @@ const AllReports = () => {
                 styles={customStyles}
                 value={additionalAuditorsFilter}
                 onChange={(value) => setAdditionalAuditorsFilter(value || [])}
-              />
-                </div>
-
-                <div className="filter-field">
-                  <label>Int/Ext</label>
-                  <Select
-                    isClearable
-                className="reports-select"
-                classNamePrefix="reports-select"
-                options={intExtOptions}
-                styles={customStyles}
-                value={intExtFilter}
-                onChange={setIntExtFilter}
               />
                 </div>
 

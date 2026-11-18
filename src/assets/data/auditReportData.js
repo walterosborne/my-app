@@ -70,7 +70,7 @@ export async function loadReportAudits(selectedId = null, options = {}) {
 
 export const REPORT_REFERENCE_KEYS = [
     'programs', 'divisions', 'sectors', 'sites', 'businessUnits', 'operatingUnits',
-    'auditors', 'auditTypes', 'functions', 'intExt', 'standards', 'severities',
+    'auditors', 'auditTypes', 'functions', 'intExt', 'customers', 'standards', 'severities',
     'safetyEquipment', 'trainingRequirements', 'props', 'causes', 'riskFactors', 'subcategories'
 ];
 

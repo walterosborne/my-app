@@ -24,6 +24,7 @@ import {
   getAuditTypes,
   getFunctions,
   getIntExt,
+  getCustomers,
   getStandards,
   getCurrentUser
 } from './assets/data/apiData';
@@ -45,6 +46,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const [auditTypesList, setAuditTypesList] = useState([]);
   const [functionsList, setFunctionsList] = useState([]);
   const [intExtList, setIntExtList] = useState([]);
+  const [customersList, setCustomersList] = useState([]);
   const [standardsList, setStandardsList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitted, setSubmitted] = useState(false);
@@ -60,7 +62,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       try {
         const userData = await getCurrentUser();
         setUserInfo(userData?.name && userData.name !== 'User' ? userData : null);
-        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards] = await Promise.all([
+        const [programs, divisions, sectors, sites, businessUnits, operatingUnits, auditors, auditTypes, functions, intExt, standards, customers] = await Promise.all([
           getPrograms(),
           getDivisions(),
           getSectors(),
@@ -71,7 +73,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
           getAuditTypes(),
           getFunctions(),
           getIntExt(),
-          getStandards()
+          getStandards(),
+          getCustomers()
         ]);
 
         setProgramsList(programs);
@@ -85,6 +88,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         setFunctionsList(functions);
         setIntExtList(intExt);
         setStandardsList(standards);
+        setCustomersList(customers);
         setLoading(false);
       } catch (error) {
         console.error('Error loading lookup data:', error);
@@ -412,6 +416,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     { field: 'scheduleId', headerName: 'Schedule ID', width: 150 },
     { field: 'title', headerName: 'Title', width: 300 },
     { field: 'leadAuditor', headerName: 'Lead Auditor', width: 150 },
+    { field: 'customer', headerName: 'Customer', width: 170 },
     { field: 'division', headerName: 'Division', width: 200 },
     { field: 'programs', headerName: 'Program(s)', width: 200 },
   ], []);
@@ -426,6 +431,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     scheduleId: audit.scheduleId,
     title: audit.title,
     leadAuditor: getLeadAuditorName(audit.leadAuditorId),
+    customer: customersList.find(c => c.customerId === audit.customerId)?.customerName || '',
     division: getDivisionName(audit.divisionId),
     programs: getProgramNames(audit.programIds)
   }));
@@ -598,10 +604,16 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     label: ie.intExtName
   })).sort((a, b) => a.label.localeCompare(b.label));
 
+  const customerOptions = customersList.filter(c => Number(c.active) === 1).map(c => ({
+    value: c.customerId,
+    label: c.customerName
+  })).sort((a, b) => a.label.localeCompare(b.label));
+
   const selectedIntExt = watch('IntExt');
   const isInternalAudit = /^internal\b/i.test(
     String(intExtList.find(ie => ie.intExtId === selectedIntExt)?.intExtName || '').trim()
   );
+  const canSelectCustomer = selectedIntExt != null && !isInternalAudit;
 
   const standardsOptions = standardsList.map(s => ({
     value: s.standardId,
@@ -691,6 +703,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       if (selectedAudit && selectedAudit.intExtId) {
         setValue("IntExt", selectedAudit.intExtId);
       }
+      setValue("customer", selectedAudit?.customerId ?? null);
       // Set standards if available
       if (selectedAudit && selectedAudit.standardIds) {
         setValue("standards", selectedAudit.standardIds);
@@ -742,6 +755,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         title: data.title,
         auditTypeId: data.auditType,
         intExtId: data.IntExt,
+        customerId: canSelectCustomer ? data.customer || null : null,
         functionId: data.function || [],
         standardIds: data.standards || [],
         stage: computeStage(1),
@@ -930,7 +944,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
       'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
       'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-      'Function', 'Comment'
+      'Function', 'Customer', 'Comment'
     ];
 
     const values = [
@@ -950,6 +964,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       formatSingle(formData.IntExt, intExtList, 'intExtId', 'intExtName'),
       formatArray(formData.standards, standardsList, 'standardId', 'standardName'),
       formatArray(formData.function, functionsList, 'functionId', 'functionName'),
+      customersList.find(c => c.customerId === formData.customer)?.customerName || '',
       formData.comment || ''
     ];
 
@@ -1357,7 +1372,10 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     styles={customStyles}
                                     placeholder="Int/Ext Audit"
                                     value={field.value ? intExtOptions.find(i => i.value === field.value) : null}
-                                    onChange={(selectedOption) => field.onChange(selectedOption ? selectedOption.value : null)}
+                                    onChange={(selectedOption) => {
+                                      field.onChange(selectedOption ? selectedOption.value : null);
+                                      if (/^internal\b/i.test(String(selectedOption?.label || '').trim())) setValue('customer', null);
+                                    }}
                                   />
                                 )} />
                               {errors.IntExt && <p className='fielderror'>{errors.IntExt.message}</p>}
@@ -1386,7 +1404,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               />
                               {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
                             </div>
-
+                          </div>
+                          <div className='sectionrow'>
                             <div className="fieldboxhalf">
                               <label>Function(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
@@ -1411,6 +1430,27 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               />
                               {errors.function && <p className='fielderror'>{errors.function.message}</p>}
                             </div>
+                            {canSelectCustomer && (
+                              <div className="fieldboxhalf">
+                                <label>Customer</label>
+                                <Controller
+                                  name="customer"
+                                  control={control}
+                                  render={({ field }) => (
+                                    <Select
+                                      isClearable
+                                      options={customerOptions}
+                                      styles={customStyles}
+                                      placeholder="Customer"
+                                      value={customersList.find(c => c.customerId === field.value)
+                                        ? { value: field.value, label: customersList.find(c => c.customerId === field.value).customerName }
+                                        : null}
+                                      onChange={(option) => field.onChange(option?.value ?? null)}
+                                    />
+                                  )}
+                                />
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className='section'>

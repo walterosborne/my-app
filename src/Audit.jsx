@@ -63,6 +63,7 @@ const Audit = () => {
     const [auditTypesList, setAuditTypesList] = React.useState([]);
     const [functionsList, setFunctionsList] = React.useState([]);
     const [intExtList, setIntExtList] = React.useState([]);
+    const [customersList, setCustomersList] = React.useState([]);
     const [standardsList, setStandardsList] = React.useState([]);
     const [severitiesList, setSeveritiesList] = React.useState([]);
     const [rosterList, setRosterList] = React.useState([]);
@@ -133,6 +134,7 @@ const Audit = () => {
                 setAuditTypesList(references.auditTypes);
                 setFunctionsList(references.functions);
                 setIntExtList(references.intExt);
+                setCustomersList(references.customers);
                 setStandardsList(references.standards);
                 setSeveritiesList(references.severities);
                 setSafetyEquipmentList(references.safetyEquipment);
@@ -254,6 +256,11 @@ const Audit = () => {
     const getIntExtName = (intExtId) => {
         const intExtItem = intExtList.find(ie => ie.intExtId === intExtId);
         return intExtItem ? intExtItem.intExtName : intExtId;
+    };
+
+    const getCustomerName = (customerId) => {
+        if (!customerId) return '';
+        return customersList.find(c => c.customerId === customerId)?.customerName || String(customerId);
     };
 
     // Helper function to get standard names from standardIds
@@ -1161,7 +1168,7 @@ const Audit = () => {
             'Business Unit(s)', 'Operating Unit(s)', 'Audit Type',
             'Lead Auditor', 'Additional Auditors', 'Expected Start Date',
             'Expected Completion Date', 'Int/Ext Audit', 'Standard(s)',
-            'Function', 'Comment'
+            'Function', 'Customer', 'Comment'
         ];
         const scheduleValues = [
             auditData.scheduleId || '',
@@ -1180,6 +1187,7 @@ const Audit = () => {
             formatSingle(auditData.intExtId, intExtList, 'intExtId', 'intExtName'),
             formatArray(auditData.standardIds, standardsList, 'standardId', 'standardName'),
             formatArray(auditData.functionId, functionsList, 'functionId', 'functionName'),
+            getCustomerName(auditData.customerId),
             auditData.comment || ''
         ];
         addSheet(wb, 'Schedule', scheduleHeaders, [scheduleValues]);
@@ -1649,6 +1657,7 @@ const Audit = () => {
           <td><strong>Lead:</strong> ${escapeHtml(getLeadAuditorName(auditData.leadAuditorId))}</td>
           <td><strong>Audit Type:</strong> ${escapeHtml(getAuditTypeName(auditData.auditTypeId))}</td>
         </tr>
+        ${auditData.customerId ? `<tr><td colspan="2"><strong>Customer:</strong> ${escapeHtml(getCustomerName(auditData.customerId))}</td></tr>` : ''}
         <tr>
           <td colspan="2"><strong>Auditor(s):</strong> ${auditorsText}</td>
         </tr>
@@ -2334,6 +2343,12 @@ const Audit = () => {
                                 <div className="info-item">
                                     <label>Internal/External:</label>
                                     <span>{getIntExtName(auditData.intExtId)}</span>
+                                </div>
+                            )}
+                            {auditData.customerId && (
+                                <div className="info-item">
+                                    <label>Customer:</label>
+                                    <span>{getCustomerName(auditData.customerId)}</span>
                                 </div>
                             )}
                             {getStandardNames(auditData.standardIds || []) && (

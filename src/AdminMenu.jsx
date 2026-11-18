@@ -19,11 +19,13 @@ import PropsSection from './components/admin/PropsSection';
 import TrainingRequirementsSection from './components/admin/TrainingRequirementsSection';
 import SafetyEquipmentSection from './components/admin/SafetyEquipmentSection';
 import StandardsSection from './components/admin/StandardsSection';
+import CustomersSection from './components/admin/CustomersSection';
 
 const DROPDOWN_OPTIONS = [
     'Auditors',
     'Audit Types',
     'Business Units',
+    'Customers',
     'Delay Causes',
     'Divisions',
     'Every Time Questions',
@@ -3008,6 +3010,13 @@ const AdminMenu = () => {
                         submitting={functionSubmitting}
                         message={functionMessage}
                         error={functionError}
+                    />
+                )}
+                {selectedOption === 'Customers' && (
+                    <CustomersSection
+                        actionOptions={ACTION_OPTIONS}
+                        selectedAction={selectedAction}
+                        onActionChange={(event) => setSelectedAction(event.target.value)}
                     />
                 )}
                 {selectedOption === 'Standards' && (

@@ -100,6 +100,12 @@ const mapFunction = (row) => ({
     active: row.active
 });
 
+const mapCustomer = (row) => ({
+    customerId: row.customerid,
+    customerName: row.customername,
+    active: Number(row.active)
+});
+
 const mapIntExt = (row) => ({
     intExtId: row.intextid,
     intExtName: row.intextname
@@ -205,6 +211,10 @@ const REFERENCE_SPECS = {
         query: 'SELECT * FROM functions_r ORDER BY functionId',
         map: (rows) => rows.map(mapFunction)
     },
+    customers: {
+        query: 'SELECT customerId, customerName, active FROM customers_r ORDER BY customerName',
+        map: (rows) => rows.map(mapCustomer)
+    },
     intExt: {
         query: 'SELECT * FROM int_ext_r ORDER BY intExtId',
         map: (rows) => rows.map(mapIntExt)
@@ -252,13 +262,13 @@ const REFERENCE_KEYS_BY_PROFILE = {
     ],
     schedule: [
         'programs', 'divisions', 'sectors', 'sites', 'businessUnits',
-        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'standards'
+        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'customers', 'standards'
     ],
     planning: ['programs', 'divisions', 'auditors', 'safetyEquipment', 'trainingRequirements'],
     results: ['programs', 'divisions', 'auditors', 'standards', 'props', 'causes'],
     nonconformities: [
         'programs', 'divisions', 'sectors', 'sites', 'businessUnits',
-        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'standards', 'severities'
+        'operatingUnits', 'auditors', 'auditTypes', 'functions', 'intExt', 'customers', 'standards', 'severities'
     ]
 };
 

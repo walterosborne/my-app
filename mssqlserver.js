@@ -1559,6 +1559,7 @@ const AUDIT_SELECT_BASE_COLUMNS = [
     'title',
     'audittypeid',
     'intextid',
+    'customerid',
     'functionid',
     'standardids',
     'stage',
@@ -1661,6 +1662,7 @@ const parseAuditRow = (row) => {
         title: row.title,
         auditTypeId: row.audittypeid,
         intExtId: row.intextid,
+        customerId: row.customerid,
         functionId: normalizeNumberArray(row.functionid),
         standardIds: normalizeNumberArray(row.standardids),
         stage: row.stage,
@@ -4013,6 +4015,82 @@ app.put('/api/audit-types/:auditTypeId', async (req, res) => {
     }
 });
 
+// Customers remain available when archived so historical audits still display their names.
+const toCustomerApiRow = (row) => ({
+    customerId: row.customerid,
+    customerName: row.customername,
+    active: Number(row.active)
+});
+
+app.get('/api/customers', async (_req, res) => {
+    try {
+        const result = await pool.query('SELECT customerId, customerName, active FROM customers_r ORDER BY customerName');
+        res.json(result.rows.map(toCustomerApiRow));
+    } catch (error) {
+        console.error('Error fetching customers:', error);
+        res.status(500).json({ success: false, error: 'Unable to load customers. Run the NGAT 3.1.2 database script.' });
+    }
+});
+
+const validateCustomerWrite = (body) => {
+    const customerName = typeof body?.customerName === 'string' ? body.customerName.trim() : '';
+    if (!customerName || customerName.length > 200) return null;
+    return customerName;
+};
+
+app.post('/api/customers', async (req, res) => {
+    const customerName = validateCustomerWrite(req.body);
+    if (!customerName) return res.status(400).json({ success: false, error: 'Customer name must be 1 to 200 characters.' });
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (Number(userInfo?.admin ?? 0) !== 1) {
+            return res.status(403).json({ success: false, error: 'Admin access is required.' });
+        }
+        const duplicate = await pool.query(
+            'SELECT TOP 1 customerId FROM customers_r WHERE LOWER(LTRIM(RTRIM(customerName))) = LOWER(LTRIM(RTRIM($1)))',
+            [customerName]
+        );
+        if (duplicate.rowCount) return res.status(409).json({ success: false, error: 'A customer with that name already exists.' });
+        const result = await pool.query(
+            'INSERT INTO customers_r (customerName, active) VALUES ($1, 1) RETURNING customerId, customerName, active',
+            [customerName]
+        );
+        res.status(201).json(toCustomerApiRow(result.rows[0]));
+    } catch (error) {
+        console.error('Error creating customer:', error);
+        res.status(500).json({ success: false, error: 'Unable to create customer. Run the NGAT 3.1.2 database script.' });
+    }
+});
+
+app.put('/api/customers/:customerId', async (req, res) => {
+    const customerId = Number(req.params.customerId);
+    const customerName = validateCustomerWrite(req.body);
+    const active = Number(req.body?.active);
+    if (!Number.isSafeInteger(customerId) || customerId <= 0 || !customerName || ![0, 1].includes(active)) {
+        return res.status(400).json({ success: false, error: 'Valid customer ID, name, and active status are required.' });
+    }
+    try {
+        const userInfo = await getCurrentUserInfo(req);
+        if (Number(userInfo?.admin ?? 0) !== 1) {
+            return res.status(403).json({ success: false, error: 'Admin access is required.' });
+        }
+        const duplicate = await pool.query(
+            'SELECT TOP 1 customerId FROM customers_r WHERE LOWER(LTRIM(RTRIM(customerName))) = LOWER(LTRIM(RTRIM($1))) AND customerId <> $2',
+            [customerName, customerId]
+        );
+        if (duplicate.rowCount) return res.status(409).json({ success: false, error: 'A customer with that name already exists.' });
+        const result = await pool.query(
+            'UPDATE customers_r SET customerName = $1, active = $2 WHERE customerId = $3 RETURNING customerId, customerName, active',
+            [customerName, active, customerId]
+        );
+        if (!result.rowCount) return res.status(404).json({ success: false, error: 'Customer not found.' });
+        res.json(toCustomerApiRow(result.rows[0]));
+    } catch (error) {
+        console.error('Error updating customer:', error);
+        res.status(500).json({ success: false, error: 'Unable to update customer. Run the NGAT 3.1.2 database script.' });
+    }
+});
+
 // Get all int/ext
 app.get('/api/int-ext', async (req, res) => {
     try {
@@ -5463,7 +5541,7 @@ app.get('/api/audits', async (req, res) => {
 
 const stageColumnGroups = {
     1: [
-        'title', 'auditTypeId', 'intExtId', 'functionId', 'standardIds',
+        'title', 'auditTypeId', 'intExtId', 'customerId', 'functionId', 'standardIds',
         'expectedStartDate', 'expectedCompletionDate',
         'startDate', 'divisionId', 'programIds', 'sectorId', 'siteIds',
         'businessUnitIds', 'operatingUnitIds', 'leadAuditorId', 'additionalAuditorIds',
@@ -5582,6 +5660,19 @@ const needsInternalLeadAuditor = async (queryable, intExtId, leadAuditorId) => {
     return /^internal\b/i.test(String(result.rows[0]?.intextname || '').trim());
 };
 
+const validateScheduleCustomer = async (queryable, intExtId, customerId) => {
+    if (customerId === null || customerId === undefined || customerId === '') return null;
+    const id = Number(customerId);
+    if (!Number.isSafeInteger(id) || id <= 0) return 'Choose a valid customer.';
+    const type = await queryable.query('SELECT intExtName FROM int_ext_r WHERE intExtId = $1', [intExtId]);
+    if (/^internal\b/i.test(String(type.rows[0]?.intextname || '').trim())) {
+        return 'Internal audits cannot have a customer.';
+    }
+    const customer = await queryable.query('SELECT customerId FROM customers_r WHERE customerId = $1', [id]);
+    if (!customer.rowCount) return 'Customer not found.';
+    return null;
+};
+
 // Update specific audit fields (for Planning, Results, etc.)
 app.put('/api/audits/:scheduleId', async (req, res) => {
     const client = await pool.connect();
@@ -5602,6 +5693,10 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
 
         if (targetStage === 1 && await needsInternalLeadAuditor(client, updates.intExtId, updates.leadAuditorId)) {
             return res.status(400).json({ success: false, error: 'Lead Auditor is required for internal audits.' });
+        }
+        if (targetStage === 1) {
+            const customerError = await validateScheduleCustomer(client, updates.intExtId, updates.customerId);
+            if (customerError) return res.status(400).json({ success: false, error: customerError });
         }
 
         await client.query('BEGIN');
@@ -5669,6 +5764,10 @@ app.post('/api/audits', async (req, res) => {
         if (Number(scheduleStage) === 1 && await needsInternalLeadAuditor(client, audit.intExtId, audit.leadAuditorId)) {
             return res.status(400).json({ success: false, error: 'Lead Auditor is required for internal audits.' });
         }
+        if (Number(scheduleStage) === 1) {
+            const customerError = await validateScheduleCustomer(client, audit.intExtId, audit.customerId);
+            if (customerError) return res.status(400).json({ success: false, error: customerError });
+        }
 
         await client.query('BEGIN');
 
@@ -5692,12 +5791,12 @@ app.post('/api/audits', async (req, res) => {
                     leadAuditorId, additionalAuditorIds, comment, scope, safety,
                     clearance, safetyEquipmentIds, trainingRequirementIds,
                     famaIds, intervieweeIds, specialConsiderations, overview, evaluator, relatedItems,
-                    programManager, maLeadManager, cui, delayCause, hash,
+                    programManager, maLeadManager, cui, delayCause, hash, customerId,
                     createdAt, updatedAt
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                     $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
-                    $26, $27, $28, $29, $30, $31, $32, $33, $34,
+                    $26, $27, $28, $29, $30, $31, $32, $33, $34, $35,
                     CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 );
                 SELECT CAST(SCOPE_IDENTITY() AS INT) AS scheduleId;`,
@@ -5712,7 +5811,7 @@ app.post('/api/audits', async (req, res) => {
                     JSON.stringify(audit.safetyEquipmentIds), JSON.stringify(audit.trainingRequirementIds), JSON.stringify(audit.famaIds),
                     JSON.stringify(audit.intervieweeIds), audit.specialConsiderations, audit.overview, audit.evaluator,
                     audit.relatedItems, audit.programManager, audit.maLeadManager, audit.cui, audit.delayCause,
-                    audit.hash
+                    audit.hash, audit.customerId ?? null
                 ]
             );
             audit.scheduleId = result.rows[0].scheduleid;

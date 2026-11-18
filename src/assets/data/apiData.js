@@ -295,6 +295,35 @@ export async function getIntExt() {
     return await getReferenceList('intExt', 'int-ext');
 }
 
+export async function getCustomers() {
+    return await getReferenceList('customers', 'customers');
+}
+
+const saveCustomerRequest = async (path, method, payload) => {
+    const response = await fetch(buildApiUrl(path), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to save customer.');
+    }
+    delete cache.customers;
+    Object.keys(cache).forEach((key) => {
+        if (key.startsWith('reference-data?')) delete cache[key];
+    });
+    return await response.json();
+};
+
+export async function createCustomer(payload) {
+    return await saveCustomerRequest('customers', 'POST', payload);
+}
+
+export async function updateCustomer(customerId, payload) {
+    return await saveCustomerRequest(`customers/${encodeURIComponent(customerId)}`, 'PUT', payload);
+}
+
 export async function getStandards() {
     return await getReferenceList('standards', 'standards');
 }

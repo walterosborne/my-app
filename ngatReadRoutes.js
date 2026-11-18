@@ -78,6 +78,7 @@ const mapEntryAuditRow = (row) => ({
     // Schedule Entry fields.
     auditTypeId: row.audittypeid,
     intExtId: row.intextid,
+    customerId: row.customerid,
     functionId: row.functionid === undefined ? undefined : parseNumberArray(row.functionid),
     standardIds: row.standardids === undefined ? undefined : parseNumberArray(row.standardids),
     expectedStartDate: row.expectedstartdate,
@@ -188,7 +189,7 @@ const ENTRY_COMMON_FIELDS = [
 
 const ENTRY_FIELDS_BY_TYPE = {
     schedule: [
-        'audittypeid', 'intextid', 'functionid', 'standardids',
+        'audittypeid', 'intextid', 'customerid', 'functionid', 'standardids',
         'expectedstartdate', 'expectedcompletiondate', 'sectorid', 'siteids',
         'businessunitids', 'operatingunitids', 'comment'
     ],
