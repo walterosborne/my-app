@@ -598,6 +598,11 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     label: ie.intExtName
   })).sort((a, b) => a.label.localeCompare(b.label));
 
+  const selectedIntExt = watch('IntExt');
+  const isInternalAudit = /^internal\b/i.test(
+    String(intExtList.find(ie => ie.intExtId === selectedIntExt)?.intExtName || '').trim()
+  );
+
   const standardsOptions = standardsList.map(s => ({
     value: s.standardId,
     label: s.standardName
@@ -748,7 +753,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
         siteIds: data.site || [],
         businessUnitIds: data.businessUnit || [],
         operatingUnitIds: data.operatingUnit || [],
-        leadAuditorId: data.leadAuditor,
+        leadAuditorId: data.leadAuditor || null,
         additionalAuditorIds: data.additionalAuditors || [],
         comment: data.comment || '',
         hash: hash
@@ -1270,11 +1275,11 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                           <label className='sectiontitle'>Auditors</label>
                           <div className='sectionrow'>
                             <div className="fieldboxhalf">
-                              <label>Lead Auditor<label style={{ color: 'red' }}>*</label></label>
+                              <label>Lead Auditor{isInternalAudit && <label style={{ color: 'red' }}>*</label>}</label>
                               <Controller
                                 name="leadAuditor"
                                 control={control}
-                                rules={{ required: "Lead Auditor is required" }}
+                                rules={{ validate: value => !isInternalAudit || !!value || "Lead Auditor is required for internal audits" }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
