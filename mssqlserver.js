@@ -5569,6 +5569,18 @@ app.post('/api/save-audit-results', async (req, res) => {
     }
 });
 
+// The schedule's internal/external choice determines whether a lead auditor is mandatory.
+const needsInternalLeadAuditor = async (queryable, intExtId, leadAuditorId) => {
+    if (leadAuditorId !== null && leadAuditorId !== undefined && String(leadAuditorId).trim() !== '') {
+        return false;
+    }
+    const result = await queryable.query(
+        'SELECT intExtName FROM int_ext_r WHERE intExtId = $1',
+        [intExtId]
+    );
+    return /^internal\b/i.test(String(result.rows[0]?.intextname || '').trim());
+};
+
 // Update specific audit fields (for Planning, Results, etc.)
 app.put('/api/audits/:scheduleId', async (req, res) => {
     const client = await pool.connect();
@@ -5586,6 +5598,10 @@ app.put('/api/audits/:scheduleId', async (req, res) => {
         delete updates.targetStage;
         delete updates.stage;
         delete updates.stageBeforeInactive;
+
+        if (targetStage === 1 && await needsInternalLeadAuditor(client, updates.intExtId, updates.leadAuditorId)) {
+            return res.status(400).json({ success: false, error: 'Lead Auditor is required for internal audits.' });
+        }
 
         await client.query('BEGIN');
 
@@ -5646,6 +5662,11 @@ app.post('/api/audits', async (req, res) => {
             if (!existingAudit || !userInfo || !canEditAudit({ audit: existingAudit, userInfo })) {
                 return res.status(403).json({ success: false, error: 'You are not assigned as an auditor on this audit.' });
             }
+        }
+
+        const scheduleStage = audit.targetStage ?? audit.stage ?? 1;
+        if (Number(scheduleStage) === 1 && await needsInternalLeadAuditor(client, audit.intExtId, audit.leadAuditorId)) {
+            return res.status(400).json({ success: false, error: 'Lead Auditor is required for internal audits.' });
         }
 
         await client.query('BEGIN');
