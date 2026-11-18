@@ -1,73 +1,209 @@
+import { loadReportAudits } from './auditReportData.js';
+
 // API data loader:
 // - during local Vite dev, /api is proxied to the backend on port 3001
-// - behind IIS/reverse proxy, /api is handled by the web.config rewrite
+// - behind the OpenShift reverse proxy, /api is handled by the backend service
 export const API_BASE = '/api';
 
 export const buildApiUrl = (path = '') => `${API_BASE}/${String(path).replace(/^\/+/, '')}`;
 
-// Cache for data to avoid repeated fetches
+// Cache for data to avoid repeated fetches. Keep in-flight reads too so two
+// components asking for the same endpoint at once share one request.
 const cache = {};
+const inFlight = {};
+let headerDiagnosticsCache = null;
+let headerDiagnosticsPromise = null;
+
+const getHashRouteContext = () => {
+    if (typeof window === 'undefined') {
+        return { pathname: '', searchParams: new URLSearchParams() };
+    }
+
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    const queryIndex = hash.indexOf('?');
+    const pathname = queryIndex >= 0 ? hash.slice(0, queryIndex) : hash;
+    const queryString = queryIndex >= 0 ? hash.slice(queryIndex + 1) : '';
+    return {
+        pathname,
+        searchParams: new URLSearchParams(queryString)
+    };
+};
+
+const isMetricsRoute = () => getHashRouteContext().pathname === '/metrics';
+
+const normalizeEntryReferenceProfile = (value) => {
+    const type = String(value || '').trim().toLowerCase();
+    if (type === 'nonconformaties') return 'nonconformities';
+    if (['schedule', 'planning', 'results', 'nonconformities'].includes(type)) return type;
+    return null;
+};
+
+const getReferenceDataEndpoint = () => {
+    const { pathname, searchParams } = getHashRouteContext();
+    if (pathname === '/audit' || pathname.startsWith('/audit/')) {
+        return 'reference-data?profile=audit';
+    }
+    if (pathname === '/metrics') {
+        return 'reference-data?profile=metrics';
+    }
+    if (pathname === '/entry') {
+        const profile = normalizeEntryReferenceProfile(searchParams.get('type'));
+        return profile ? `reference-data?profile=${profile}` : null;
+    }
+    if (pathname === '/schedule') return 'reference-data?profile=schedule';
+    if (pathname === '/planning') return 'reference-data?profile=planning';
+    if (pathname === '/results') return 'reference-data?profile=results';
+    if (pathname === '/nonconformaties' || pathname === '/nonconformities') {
+        return 'reference-data?profile=nonconformities';
+    }
+    return null;
+};
+
+const getAuditReportRouteId = () => {
+    const { pathname } = getHashRouteContext();
+    const match = pathname.match(/^\/audit\/(\d+)\/?$/);
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getYearFromDateValue = (value) => {
+    if (!value) return null;
+    const text = String(value);
+    const leadingYear = text.match(/^(\d{4})/);
+    if (leadingYear) return Number(leadingYear[1]);
+    const parsed = new Date(value);
+    const year = parsed.getFullYear();
+    return Number.isFinite(year) ? year : null;
+};
 
 async function fetchData(endpoint, skipCache = false) {
     if (cache[endpoint] && !skipCache) {
         return cache[endpoint];
     }
+    if (inFlight[endpoint] && !skipCache) {
+        return await inFlight[endpoint];
+    }
+
+    const request = (async () => {
+        try {
+            const response = await fetch(buildApiUrl(endpoint));
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            cache[endpoint] = data;
+            return data;
+        } catch (error) {
+            console.error(`Error fetching ${endpoint}:`, error);
+            return [];
+        }
+    })();
+
+    if (!skipCache) {
+        inFlight[endpoint] = request;
+    }
 
     try {
-        const response = await fetch(buildApiUrl(endpoint));
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        return await request;
+    } finally {
+        if (!skipCache) {
+            delete inFlight[endpoint];
         }
-        const data = await response.json();
-        cache[endpoint] = data;
-        return data;
-    } catch (error) {
-        console.error(`Error fetching ${endpoint}:`, error);
-        return [];
     }
 }
 
+const getReferenceList = async (key, endpoint) => {
+    const bundleEndpoint = getReferenceDataEndpoint();
+    if (bundleEndpoint) {
+        const bundle = await fetchData(bundleEndpoint);
+        if (bundle && !Array.isArray(bundle) && Array.isArray(bundle[key])) {
+            return bundle[key];
+        }
+    }
+    return await fetchData(endpoint);
+};
+
 // Export async functions for each data type
 export async function getAudits(skipCache = false) {
+    const { pathname, searchParams } = getHashRouteContext();
+    if (pathname === '/entry') {
+        const entryType = searchParams.get('type') || 'summary';
+        return await fetchData(`entry-audits?type=${encodeURIComponent(entryType)}`, skipCache);
+    }
     return await fetchData('audits', skipCache);
 }
 
 export async function getAuditsAll(skipCache = false) {
-    return await fetchData('audits?all=true', skipCache);
+    // Metrics only needs a narrow subset of the audit record. The dedicated
+    // endpoint avoids downloading the much wider general audit payload.
+    const endpoint = isMetricsRoute() ? 'metrics/audits' : 'audits?all=true';
+    return await fetchData(endpoint, skipCache);
 }
 
 export async function getAuditsReport(skipCache = false) {
+    const { pathname } = getHashRouteContext();
+    if (pathname === '/audit' || pathname.startsWith('/audit/')) {
+        return await loadReportAudits(getAuditReportRouteId());
+    }
     return await fetchData('audits?report=true', skipCache);
 }
 
-export async function getCurrentUser() {
-    return await fetchData('current-user', true);
+export async function getCurrentUser(skipCache = false) {
+    // AppBootstrapGate already resolves the user before routed pages render.
+    // Reuse that result unless a caller explicitly requests a refresh.
+    return await fetchData('current-user', skipCache);
 }
 
-export async function getHeaderDiagnostics() {
-    const response = await fetch(buildApiUrl('testheaders?format=json'), {
-        cache: 'no-store'
-    });
-    if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+export async function getHeaderDiagnostics(skipCache = false) {
+    // Header diagnostics are warmed at app bootstrap. Reuse both the completed
+    // value and an in-flight request instead of every page repeating the call.
+    if (headerDiagnosticsCache && !skipCache) {
+        return headerDiagnosticsCache;
     }
-    return await response.json();
+    if (headerDiagnosticsPromise && !skipCache) {
+        return await headerDiagnosticsPromise;
+    }
+
+    const request = (async () => {
+        const response = await fetch(buildApiUrl('testheaders?format=json'), {
+            cache: 'no-store'
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        headerDiagnosticsCache = data;
+        return data;
+    })();
+
+    if (!skipCache) {
+        headerDiagnosticsPromise = request;
+    }
+
+    try {
+        return await request;
+    } finally {
+        if (!skipCache) {
+            headerDiagnosticsPromise = null;
+        }
+    }
 }
 
 export async function getPrograms() {
-    return await fetchData('programs');
+    return await getReferenceList('programs', 'programs');
 }
 
 export async function getDivisions() {
-    return await fetchData('divisions');
+    return await getReferenceList('divisions', 'divisions');
 }
 
 export async function getSectors() {
-    return await fetchData('sectors');
+    return await getReferenceList('sectors', 'sectors');
 }
 
 export async function getSites() {
-    return await fetchData('sites');
+    return await getReferenceList('sites', 'sites');
 }
 
 export async function getFoeSites(skipCache = false) {
@@ -93,7 +229,6 @@ export async function getFoeDivisions(skipCache = false) {
 export async function getFoeShifts(skipCache = false) {
     return await fetchData('foe-shifts', skipCache);
 }
-
 
 async function parseFoeResponse(response, fallbackMessage) {
     let data = null;
@@ -137,34 +272,75 @@ export async function getFoeReportData() {
 }
 
 export async function getBusinessUnits() {
-    return await fetchData('business-units');
+    return await getReferenceList('businessUnits', 'business-units');
 }
 
 export async function getOperatingUnits() {
-    return await fetchData('operating-units');
+    return await getReferenceList('operatingUnits', 'operating-units');
 }
 
 export async function getAuditors() {
-    return await fetchData('auditors');
+    return await getReferenceList('auditors', 'auditors');
 }
 
 export async function getAuditTypes() {
-    return await fetchData('audit-types');
+    return await getReferenceList('auditTypes', 'audit-types');
 }
 
 export async function getFunctions() {
-    return await fetchData('functions');
+    return await getReferenceList('functions', 'functions');
 }
 
 export async function getIntExt() {
-    return await fetchData('int-ext');
+    return await getReferenceList('intExt', 'int-ext');
 }
 
 export async function getStandards() {
-    return await fetchData('standards');
+    return await getReferenceList('standards', 'standards');
+}
+
+const invalidateStandardsCache = () => {
+    // Names and classifications are used by schedule, metrics, and audit pages.
+    delete cache.standards;
+    Object.keys(cache).forEach((key) => {
+        if (key.startsWith('reference-data?')) delete cache[key];
+    });
+};
+
+const saveStandardRequest = async (path, method, payload) => {
+    const response = await fetch(buildApiUrl(path), {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Unable to save standard.');
+    }
+    invalidateStandardsCache();
+    return await response.json();
+};
+
+export async function createStandard(payload) {
+    return await saveStandardRequest('standards', 'POST', payload);
+}
+
+export async function updateStandard(standardId, payload) {
+    return await saveStandardRequest(`standards/${encodeURIComponent(standardId)}`, 'PUT', payload);
+}
+
+// Preserve the classification-only endpoint for existing integrations.
+export async function updateStandardScope(standardId, standardScope) {
+    return await saveStandardRequest(
+        `standards/${encodeURIComponent(standardId)}/scope`,
+        'PUT',
+        { standardScope }
+    );
 }
 
 export async function getStandardTexts() {
+    // Standard text is comparatively large and Conduct Audit is the main
+    // consumer, so keep it outside the general reference-data bundle.
     return await fetchData('standard-texts');
 }
 
@@ -259,15 +435,15 @@ export const getAuditorFileDownloadUrl = (fileId) => {
 };
 
 export async function getSafetyEquipment() {
-    return await fetchData('safety-equipment');
+    return await getReferenceList('safetyEquipment', 'safety-equipment');
 }
 
 export async function getTrainingRequirements() {
-    return await fetchData('training-requirements');
+    return await getReferenceList('trainingRequirements', 'training-requirements');
 }
 
 export async function getSeverities() {
-    return await fetchData('severities');
+    return await getReferenceList('severities', 'severities');
 }
 
 export async function getRoster() {
@@ -310,7 +486,7 @@ export async function getRosterByIds(ids = []) {
 }
 
 export async function getProps() {
-    return await fetchData('props');
+    return await getReferenceList('props', 'props');
 }
 
 export async function getNonconformances(scheduleId) {
@@ -324,18 +500,21 @@ export async function getNonconformances(scheduleId) {
         }
         return Array.isArray(data) ? data : [];
     }
+    // Metrics only needs schedule/type/clause/finding type/severity, not the
+    // full response text and evidence metadata returned by the legacy endpoint.
+    const endpoint = isMetricsRoute() ? 'metrics/findings' : 'nonconformances';
     // Findings change throughout Conduct Audit/Nonconformities, so a global
     // results read must not reuse stale session cache data.
-    const data = await fetchData('nonconformances', true);
+    const data = await fetchData(endpoint, true);
     return Array.isArray(data) ? data : [];
 }
 
 export async function getRiskFactors() {
-    return await fetchData('risk-factors');
+    return await getReferenceList('riskFactors', 'risk-factors');
 }
 
 export async function getSubcategories() {
-    return await fetchData('subcategories');
+    return await getReferenceList('subcategories', 'subcategories');
 }
 
 export async function getRiskRatings(riskTypeId, targetId = null, processArea = null, year = null) {
@@ -349,8 +528,31 @@ export async function getRiskRatings(riskTypeId, targetId = null, processArea = 
     if (processArea !== null && processArea !== undefined && String(processArea).trim() !== '') {
         params.set('processArea', String(processArea).trim());
     }
-    if (year !== null && year !== undefined && year !== '') {
-        params.set('year', String(year));
+
+    let effectiveYear = year;
+    // Individual Audit Report only displays ratings for the audit's year. Use
+    // the report summary to avoid downloading every year's risk rows when the
+    // caller did not explicitly request another scope/year.
+    if (
+        effectiveYear === null
+        && (riskTypeId === null || riskTypeId === undefined || riskTypeId === '')
+        && targetId === null
+        && processArea === null
+    ) {
+        const auditId = getAuditReportRouteId();
+        if (auditId) {
+            const summaries = await fetchData('report-audits');
+            const summary = Array.isArray(summaries)
+                ? summaries.find((audit) => Number(audit?.scheduleId) === Number(auditId))
+                : null;
+            effectiveYear = getYearFromDateValue(
+                summary?.expectedStartDate || summary?.expectedCompletionDate
+            );
+        }
+    }
+
+    if (effectiveYear !== null && effectiveYear !== undefined && effectiveYear !== '') {
+        params.set('year', String(effectiveYear));
     }
 
     const queryString = params.toString();
@@ -392,7 +594,7 @@ export async function deleteRiskRatings(payload) {
 }
 
 export async function getCauses() {
-    return await fetchData('causes');
+    return await getReferenceList('causes', 'causes');
 }
 
 export async function getEveryTimeQuestions(divisionId) {
@@ -403,4 +605,7 @@ export async function getEveryTimeQuestions(divisionId) {
 // Clear cache (useful for refreshing data)
 export function clearCache() {
     Object.keys(cache).forEach(key => delete cache[key]);
+    Object.keys(inFlight).forEach(key => delete inFlight[key]);
+    headerDiagnosticsCache = null;
+    headerDiagnosticsPromise = null;
 }

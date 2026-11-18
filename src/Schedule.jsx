@@ -1,3 +1,4 @@
+import { useExportTask } from './useExportTask.js';
 import { errorToast } from './errorToast.js';
 import { React, useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, Controller } from 'react-hook-form'
@@ -29,6 +30,7 @@ import {
 
 
 function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
+  const { isExporting, runExport } = useExportTask();
 
   const [userInfo, setUserInfo] = useState(null);
 
@@ -886,7 +888,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     });
   }
 
-  function handleExport() {
+  const handleExport = () => runExport(async () => {
     // Get current form values
     const formData = watch();
 
@@ -979,7 +981,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
       progressStyle: { backgroundColor: '#2196f3' },
       style: { borderLeft: '4px solid #2196f3' }
     });
-  }
+  });
 
   if (loading) {
     return <div className="entry-message">Loading schedule data...</div>;
@@ -1468,8 +1470,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             <button type="submit" disabled={isSubmitting} className='button' style={{ backgroundColor: 'green', width: '32%' }}>
                               {isSubmitting ? "Submitting..." : "Submit"}
                             </button>
-                            <button type="button" onClick={handleExport} disabled={isSubmitting} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
-                              Export(.xlsx)
+                            <button type="button" onClick={handleExport} disabled={isSubmitting || isExporting} className='button' style={{ backgroundColor: 'blue', width: '32%' }}>
+                              {isExporting ? 'Exporting…' : 'Export(.xlsx)'}
                             </button>
                             <button type="button" onClick={handleReset} disabled={isSubmitting} className='button' style={{ backgroundColor: 'white', color: 'black', border: '1px solid black', width: '32%' }}>
                               {mode === 'New' ? 'Clear' : 'Reset'}

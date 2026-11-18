@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>NGAT Has Moved</title>
+  <title>NGAT Production URL Has Changed</title>
 
   <meta
     http-equiv="refresh"
@@ -44,19 +44,23 @@
 
 <body>
   <div class="message">
-    <h1>NGAT Has Moved</h1>
+    <h1>NGAT Production Has Moved</h1>
 
     <p>
-      The production URL for NGAT has changed.
+      <strong>ngat.ds.northgrum.com is no longer the production NGAT site.</strong>
     </p>
 
     <p>
-      You will be redirected to the new NGAT in 5 seconds.
+      The production NGAT URL is now <strong>ngat.northgrum.com</strong>.
+    </p>
+
+    <p>
+      You will be redirected to the production NGAT site in 5 seconds.
     </p>
 
     <p>
       <a href="https://ngat.northgrum.com/">
-        Continue to NGAT
+        Continue to NGAT Production
       </a>
     </p>
   </div>

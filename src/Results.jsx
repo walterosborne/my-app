@@ -156,9 +156,47 @@ const convertMarkdownTablesToHtml = (markdown) => {
   return output.join('\n');
 };
 
-const renderStandardMarkdown = (value) => micromark(convertMarkdownTablesToHtml(normalizeMarkdownText(value)), {
+// Keep extracted PDF lettered clauses and notes indented, with Markdown support.
+const formatStandardClauseText = (value) => {
+  const output = [];
+  normalizeMarkdownText(value).split('\n').forEach((line) => {
+    const trimmed = line.trim();
+    const lettered = trimmed.match(/^(\(?[a-z]\)|[a-z]\.)\s+(.+)$/i);
+    const note = trimmed.match(/^(NOTE(?:\s+\d+)?)\s*:\s*(.*)$/i);
+    if (lettered) {
+      output.push('', '<div class="standard-clause-list-item"><span class="standard-clause-list-marker">' + escapeHtml(lettered[1]) + '</span><span>' + renderInlineMarkdown(lettered[2]) + '</span></div>', '');
+    } else if (note) {
+      output.push('', '<div class="standard-clause-note"><strong>' + escapeHtml(note[1]) + ':</strong> ' + renderInlineMarkdown(note[2]) + '</div>', '');
+    } else {
+      output.push(line);
+    }
+  });
+  return output.join('\n');
+};
+
+const renderStandardMarkdown = (value) => micromark(convertMarkdownTablesToHtml(formatStandardClauseText(value)), {
   allowDangerousHtml: true
 });
+
+// Subsection 0 from a PDF extraction carries the parent section heading.
+const getStandardSectionTitle = (sectionNumber, rows) => {
+  const parentRow = rows.find((row) => Number(row.subsection) === 0);
+  if (!parentRow?.text) return '';
+  const firstLine = normalizeMarkdownText(parentRow.text).split('\n').find((line) => line.trim());
+  if (!firstLine) return '';
+  const raw = firstLine.trim();
+  const markdownHeading = /^#{1,6}\s+/.test(raw);
+  const heading = raw.replace(/^#{1,6}\s+/, '').replace(/^\*\*(.*?)\*\*$/, '$1').trim();
+  const parsed = heading.match(/^(\d+)(?:\.0)?(?:\s+|\s*[-–—:.]\s*)(.+)$/);
+  const title = (parsed && Number(parsed[1]) === Number(sectionNumber))
+    ? parsed[2]
+    : (markdownHeading && !/^\d/.test(heading) ? heading : '');
+  if (!title) return '';
+  const clean = title.trim().replace(/\*\*/g, '');
+  return clean === clean.toUpperCase()
+    ? clean.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase())
+    : clean;
+};
 
 
 function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
@@ -1108,7 +1146,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
           subsectionDefaults[subsectionKey] = !subsectionHasSavedContent;
         });
 
-        sectionDefaults[sectionKey] = false;
+        sectionDefaults[sectionKey] = true;
       });
     });
 
@@ -1147,7 +1185,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       const standardId = Number(standardIdValue);
       Object.entries(sections).forEach(([sectionNumValue, questions]) => {
         const sectionNum = Number(sectionNumValue);
-        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = false;
+        nextSectionDefaults[`section_${standardId}_${sectionNum}`] = true;
 
         questions.forEach((question) => {
           nextSubsectionDefaults[`subsection_${standardId}_${sectionNum}_${question.subsection}`] = true;
@@ -1268,9 +1306,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .sort((a, b) => (a.standardName || '').localeCompare(b.standardName || ''))
       .map(s => ({
         value: s.standardId,
-        label: s.standardName
+        label: s.standardName,
+        standardScope: s.standardScope || null
       }));
   }, [standardsList]);
+
+  const groupedStandardOptions = useMemo(() => [
+    { label: 'Internal Standards', options: standards.filter((s) => s.standardScope === 'Internal') },
+    { label: 'External Standards', options: standards.filter((s) => s.standardScope === 'External') },
+    { label: 'Unclassified Standards', options: standards.filter((s) => !['Internal', 'External'].includes(s.standardScope)) }
+  ].filter((group) => group.options.length > 0), [standards]);
+
+  const selectedStandardsByScope = useMemo(() => {
+    const selectedIds = new Set((selectedStandardIds || []).map(Number));
+    return groupedStandardOptions
+      .map((group) => ({
+        label: group.label,
+        options: group.options.filter((standard) => selectedIds.has(Number(standard.value)))
+      }))
+      .filter((group) => group.options.length > 0);
+  }, [groupedStandardOptions, selectedStandardIds]);
 
   const delayCauses = useMemo(() => {
     return [...causesList]
@@ -1294,7 +1349,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   // Corporate PrOP options - always all corporate props (propTypeId 1)
   const corporatePrOPOptions = useMemo(() => {
     return propsList
-      .filter(prop => prop.propTypeId === 1 && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 1 && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1305,8 +1360,9 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   // Sector PrOP options - props matching the audit's sectorId
   const sectorPrOPOptions = useMemo(() => {
     if (!selectedAudit?.sectorId) return [];
+    const sectorId = Number(selectedAudit.sectorId);
     return propsList
-      .filter(prop => prop.propTypeId === 2 && prop.sectorId === selectedAudit.sectorId && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 2 && Number(prop.sectorId) === sectorId && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1321,7 +1377,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
       .filter((id) => Number.isFinite(id));
     if (divisionIds.length === 0) return [];
     return propsList
-      .filter(prop => prop.propTypeId === 3 && divisionIds.includes(Number(prop.divisionId)) && prop.active === 1)
+      .filter(prop => Number(prop.propTypeId) === 3 && divisionIds.includes(Number(prop.divisionId)) && Number(prop.active) === 1)
       .map(prop => ({
         value: prop.propId,
         label: prop.PrOP
@@ -1333,41 +1389,26 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
   const otherPrOPOptions = useMemo(() => {
     if (!selectedAudit) return [];
 
-    const matchingSiteProps = propsList.filter(prop =>
-      prop.propTypeId === 4 &&
-      prop.siteId &&
-      selectedAudit.siteIds?.includes(prop.siteId) &&
-      prop.active === 1
+    // Audit IDs arrive as arrays, while PrOP targets are individual IDs.
+    // Compare normalized numeric values so legacy string IDs also match.
+    const toIdSet = (values) => new Set(
+      normalizeIdArray(values).map(Number).filter(Number.isFinite)
     );
+    const siteIds = toIdSet(selectedAudit.siteIds);
+    const businessUnitIds = toIdSet(selectedAudit.businessUnitIds);
+    const operatingUnitIds = toIdSet(selectedAudit.operatingUnitIds);
+    const programIds = toIdSet(selectedAudit.programIds);
 
-    const matchingBUProps = propsList.filter(prop =>
-      prop.propTypeId === 5 &&
-      prop.buId &&
-      selectedAudit.businessUnitIds?.includes(prop.buId) &&
-      prop.active === 1
-    );
-
-    const matchingOUProps = propsList.filter(prop =>
-      prop.propTypeId === 6 &&
-      prop.ouId &&
-      selectedAudit.operatingUnitIds?.includes(prop.ouId) &&
-      prop.active === 1
-    );
-
-    const matchingProgramProps = propsList.filter(prop =>
-      prop.propTypeId === 7 &&
-      prop.programId &&
-      selectedAudit.programIds?.includes(prop.programId) &&
-      prop.active === 1
-    );
-
-    // Combine all matching props
-    const allOtherProps = [
-      ...matchingSiteProps,
-      ...matchingBUProps,
-      ...matchingOUProps,
-      ...matchingProgramProps
-    ];
+    const allOtherProps = propsList.filter(prop => {
+      if (Number(prop.active) !== 1) return false;
+      switch (Number(prop.propTypeId)) {
+        case 4: return siteIds.has(Number(prop.siteId));
+        case 5: return businessUnitIds.has(Number(prop.buId));
+        case 6: return operatingUnitIds.has(Number(prop.ouId));
+        case 7: return programIds.has(Number(prop.programId));
+        default: return false;
+      }
+    });
 
     return allOtherProps
       .map(prop => ({
@@ -2126,7 +2167,7 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                               isClearable
                               isMulti
                               closeMenuOnSelect={false}
-                              options={standards}
+                              options={groupedStandardOptions}
                               styles={customStyles}
                               placeholder="Standard(s)"
                               value={field.value ? standards.filter(s => field.value.includes(s.value)) : []}
@@ -2135,6 +2176,16 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                           )}
                         />
                         {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
+                        {selectedStandardsByScope.length > 0 && (
+                          <div style={{ marginTop: '10px', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                            {selectedStandardsByScope.map((group) => (
+                              <div key={group.label} style={{ marginBottom: '4px' }}>
+                                <strong>{group.label}:</strong>{' '}
+                                {group.options.map((standard) => standard.label).join(', ')}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className={isDelayed ? "fieldboxthird" : "fieldboxquarter"}>
                         <label>Interviewees</label>
@@ -2485,12 +2536,22 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                             {Object.entries(sections).map(([sectionNumValue, questions]) => {
                               const sectionNum = Number(sectionNumValue);
                               const sectionKey = `section_${standardId}_${sectionNum}`;
-                              const isSectionCollapsed = collapsedSections[sectionKey] ?? false;
+                              const isSectionCollapsed = collapsedSections[sectionKey] ?? true;
+                              const sectionTitle = getStandardSectionTitle(sectionNum, questions);
+                              // Keep saved or newly added questions visible even when the
+                              // parent section is closed; hide the unfilled subsections.
+                              const visibleQuestions = isSectionCollapsed
+                                ? questions.filter((question) => {
+                                  const key = [standardId, sectionNum, question.subsection].join('_');
+                                  return Array.from({ length: standardAdditional[key] || 0 }, (_, index) => index)
+                                    .some((index) => !deletedStandardQuestions[key]?.has(index));
+                                })
+                                : questions;
 
                               return (
                                 <div key={`${standardId}_${sectionNum}`} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                                   <div
-                                    onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !prev[sectionKey] }))}
+                                    onClick={() => setCollapsedSections(prev => ({ ...prev, [sectionKey]: !(prev[sectionKey] ?? true) }))}
                                     style={{
                                       cursor: 'pointer',
                                       width: '96%',
@@ -2503,10 +2564,10 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       {isSectionCollapsed ? '▶' : '▼'}
                                     </span>
                                     <label className='sectiontitle' style={{ fontSize: '16px', margin: 0, cursor: 'pointer' }}>
-                                      Standard Section {sectionNum}
+                                      Standard Section {sectionNum}{sectionTitle ? ` - ${sectionTitle}` : ''}
                                     </label>
                                   </div>
-                                  {!isSectionCollapsed && questions.map((question, qIndex) => {
+                                  {visibleQuestions.map((question, qIndex) => {
                                     const subsectionKey = `subsection_${standardId}_${sectionNum}_${question.subsection}`;
                                     const isSubsectionCollapsed = collapsedSubsections[subsectionKey] ?? true;
                                     const textKey = `text_${standardId}_${sectionNum}_${question.subsection}`;
@@ -2539,38 +2600,21 @@ function Results({ selectedAuditId, allAudits = [], reloadAudits }) {
                                         </div>
                                         {!isSubsectionCollapsed && (
                                           <div style={{ width: '100%', padding: '10px 0' }}>
-                                            <div style={{
-                                              width: '100%',
-                                              minHeight: '50px',
-                                              padding: '10px',
-                                              backgroundColor: '#f9f9f9',
-                                              borderRadius: '4px',
-                                              marginBottom: '15px',
-                                              overflowWrap: 'anywhere',
-                                              wordBreak: 'break-word',
-                                              maxHeight: !isTextExpanded && requiresTruncation ? '220px' : 'none',
-                                              overflow: !isTextExpanded && requiresTruncation ? 'hidden' : 'visible'
-                                            }}>
-                                              <div
-                                                className="standard-markdown-rendered"
-                                                dangerouslySetInnerHTML={{ __html: markdownHtml }}
-                                              />
+                                            <div className="standard-clause-text-panel">
+                                              <div className={`standard-clause-text-viewport${requiresTruncation && !isTextExpanded ? ' standard-clause-text-preview' : ''}`}>
+                                                <div
+                                                  className="standard-markdown-rendered"
+                                                  dangerouslySetInnerHTML={{ __html: markdownHtml }}
+                                                />
+                                              </div>
                                               {requiresTruncation && (
                                                 <button
                                                   type="button"
+                                                  className="standard-clause-read-toggle"
+                                                  aria-expanded={Boolean(isTextExpanded)}
                                                   onClick={(e) => {
                                                     e.stopPropagation();
                                                     setExpandedTexts(prev => ({ ...prev, [textKey]: !prev[textKey] }));
-                                                  }}
-                                                  style={{
-                                                    background: 'none',
-                                                    border: 'none',
-                                                    color: '#1976d2',
-                                                    cursor: 'pointer',
-                                                    textDecoration: 'underline',
-                                                    padding: 0,
-                                                    marginTop: '5px',
-                                                    fontSize: '14px'
                                                   }}
                                                 >
                                                   {isTextExpanded ? 'Read less' : 'Read more'}

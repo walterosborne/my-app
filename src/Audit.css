@@ -271,6 +271,91 @@
 .action-btn.lifecycle-archive:hover { background-color: #7f1d1d; }
 .action-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 
+/* Report audience selection when exporting a PDF. */
+.audit-pdf-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    box-sizing: border-box;
+    background: rgba(15, 23, 42, 0.6);
+}
+
+.audit-pdf-dialog {
+    width: min(100%, 520px);
+    box-sizing: border-box;
+    padding: 1.5rem;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #1f2937;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.24);
+}
+
+.audit-pdf-dialog h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.4rem;
+    color: #1e293b;
+}
+
+.audit-pdf-dialog p {
+    margin: 0 0 1.25rem;
+    color: #475569;
+}
+
+.audit-pdf-dialog-options {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.audit-pdf-dialog-option {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #f8fafc;
+    color: #1e293b;
+    text-align: left;
+    cursor: pointer;
+}
+
+.audit-pdf-dialog-option:hover,
+.audit-pdf-dialog-option:focus-visible {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+.audit-pdf-dialog-option strong {
+    font-size: 1rem;
+}
+
+.audit-pdf-dialog-option span {
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: #475569;
+}
+
+.audit-pdf-dialog-cancel {
+    display: block;
+    margin: 1.25rem 0 0 auto;
+    padding: 0.5rem 0.75rem;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #475569;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.audit-pdf-dialog-cancel:hover {
+    background: #f1f5f9;
+}
+
 /* Section Styles */
 .audit-section {
     margin-bottom: 2rem;

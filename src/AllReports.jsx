@@ -1,10 +1,11 @@
+import { fetchExportArray, mapExportItems } from './exportTasks.js';
+import { useExportTask } from './useExportTask.js';
 import { errorToast } from './errorToast.js';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Select from 'react-select';
 import { DataGrid } from '@mui/x-data-grid';
 import * as XLSX from 'xlsx';
-import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import './AllReports.css';
 import { customStyles, formatDateForInput, formatRosterLabel, parseCalendarDate } from './Utilities.jsx';
@@ -60,11 +61,8 @@ const formatNcIdentifier = (value) => {
 };
 
 const AllReports = () => {
+  const { isExporting, runExport } = useExportTask();
   const navigate = useNavigate();
-  const exportToastOptions = {
-    progressStyle: { backgroundColor: '#2196f3' },
-    style: { borderLeft: '4px solid #2196f3' }
-  };
   const [loading, setLoading] = useState(true);
   const [audits, setAudits] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
@@ -398,7 +396,7 @@ const AllReports = () => {
     return String(typeValue);
   };
 
-  const handleExport = async () => {
+  const handleExport = () => runExport(async (updateProgress) => {
     const exportAudits = sortedFilteredAudits;
     if (exportAudits.length === 0) {
       errorToast('No audits match the selected filters.');
@@ -424,15 +422,18 @@ const AllReports = () => {
       XLSX.utils.book_append_sheet(workbook, sheet, name);
     };
 
-    const auditIds = exportAudits.map((audit) => audit.scheduleId);
-    const [nonconformanceSets, carSets] = await Promise.all([
-      Promise.all(auditIds.map((scheduleId) =>
-        fetch(buildApiUrl(`nonconformances/${scheduleId}`)).then((res) => res.json())
-      )),
-      Promise.all(auditIds.map((scheduleId) =>
-        fetch(buildApiUrl(`cars/${scheduleId}`)).then((res) => res.json())
-      ))
-    ]);
+    const details = await mapExportItems(exportAudits, async (audit) => {
+      // Fetch sequentially within each worker: at most three requests in flight.
+      // Match the existing sheet rules, including cancelled audits' prior stage.
+      const stage = getStageValue(audit);
+      const findings = stage >= 3
+        ? await fetchExportArray(buildApiUrl(`nonconformances/${audit.scheduleId}`)) : [];
+      const cars = stage >= 4
+        ? await fetchExportArray(buildApiUrl(`cars/${audit.scheduleId}`)) : [];
+      return { findings, cars };
+    }, { onProgress: (done, total) => updateProgress(`Loading audits ${done} of ${total}…`) });
+    const nonconformanceSets = details.map((detail) => detail.findings);
+    const carSets = details.map((detail) => detail.cars);
 
     const rosterIds = [...new Set([
       ...exportAudits.flatMap((audit) => normalizeIdArray(audit.famaIds)),
@@ -440,7 +441,18 @@ const AllReports = () => {
       ...carSets.flatMap((auditCars) => (Array.isArray(auditCars) ? auditCars : []).map((car) => car?.reviewer))
     ].map((value) => String(value ?? '').trim()).filter(Boolean))];
 
-    const rosterRows = rosterIds.length > 0 ? await getRosterByIds(rosterIds) : [];
+    updateProgress('Loading export names…');
+    // Bound URL/SQL parameter sizes when a large report contains many people.
+    const rosterChunks = [];
+    for (let offset = 0; offset < rosterIds.length; offset += 100) {
+      rosterChunks.push(rosterIds.slice(offset, offset + 100));
+    }
+    const rosterRows = (await mapExportItems(rosterChunks, async (ids) => {
+      const rows = await getRosterByIds(ids);
+      if (!Array.isArray(rows)) throw new Error('Unable to load export names.');
+      return rows;
+    }, { concurrency: 1 })).flat();
+    updateProgress('Preparing Excel workbook…');
     const rosterLookup = new Map(
       rosterRows
         .filter((entry) => entry?.myId)
@@ -652,9 +664,8 @@ const AllReports = () => {
     });
     addSheet(wb, 'CARs', carHeaders, carRows);
 
-    toast.info('Now exporting...', exportToastOptions);
     XLSX.writeFile(wb, 'all-audit-reports.xlsx');
-  };
+  });
 
   if (loading) {
     return (
@@ -729,8 +740,8 @@ const AllReports = () => {
             </div>
             <p>Filter audits below and export a consolidated Excel report.</p>
           </div>
-          <button className="button export-button" onClick={handleExport}>
-            Export Excel
+          <button className="button export-button" onClick={handleExport} disabled={isExporting} aria-busy={isExporting}>
+            {isExporting ? 'Exporting…' : 'Export Excel'}
           </button>
         </div>
 
