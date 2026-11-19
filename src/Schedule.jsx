@@ -1383,7 +1383,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
 
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxhalf">
+                            <div className={canSelectCustomer ? 'fieldboxthird' : 'fieldboxhalf'}>
                               <label>Standard(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="standards"
@@ -1404,9 +1404,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               />
                               {errors.standards && <p className='fielderror'>{errors.standards.message}</p>}
                             </div>
-                          </div>
-                          <div className='sectionrow'>
-                            <div className="fieldboxhalf">
+                            <div className={canSelectCustomer ? 'fieldboxthird' : 'fieldboxhalf'}>
                               <label>Function(s)<label style={{ color: 'red' }}>*</label></label>
                               <Controller
                                 name="function"
@@ -1431,7 +1429,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               {errors.function && <p className='fielderror'>{errors.function.message}</p>}
                             </div>
                             {canSelectCustomer && (
-                              <div className="fieldboxhalf">
+                              <div className="fieldboxthird">
                                 <label>Customer</label>
                                 <Controller
                                   name="customer"
