@@ -1309,7 +1309,8 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                       const validStandards = (getValues('standards') || []).filter(id =>
                                         nextScope && standardsList.some(s => s.standardId === id && s.standardScope === nextScope)
                                       );
-                                      setValue('standards', validStandards, { shouldValidate: true });
+                                      setValue('standards', validStandards);
+                                      clearErrors('standards');
                                       if (nextScope === 'Internal') setValue('customer', null);
                                     }}
                                   />
@@ -1367,7 +1368,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                         <div className='section'>
                           <label className='sectiontitle'>Audit Requirements</label>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Expected Start Date<label style={{ color: 'red' }}>*</label></label>
                               <input className='datefield'
                                 {...register("StartDate", {
@@ -1379,7 +1380,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               />
                               {errors.StartDate && <p className='fielderror'>{errors.StartDate.message}</p>}
                             </div>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxhalf">
                               <label>Expected Completion Date<label style={{ color: 'red' }}>*</label></label>
                               <input className='datefield'
                                 {...register("ExpCompDate", {
