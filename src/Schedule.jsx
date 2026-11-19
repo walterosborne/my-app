@@ -613,6 +613,9 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   const isInternalAudit = /^internal\b/i.test(
     String(intExtList.find(ie => ie.intExtId === selectedIntExt)?.intExtName || '').trim()
   );
+  const isExternalAudit = /^external\b/i.test(
+    String(intExtList.find(ie => ie.intExtId === selectedIntExt)?.intExtName || '').trim()
+  );
   const canSelectCustomer = selectedIntExt != null && !isInternalAudit;
 
   const standardsOptions = standardsList.map(s => ({
@@ -1221,7 +1224,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
                           </div>
                           <div className='sectionrow'>
-                            <div className="fieldboxthird">
+                            <div className="fieldboxquarter">
                               <label>Business Unit(s)</label>
                               <Controller
                                 name="businessUnit"
@@ -1242,7 +1245,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               {errors.businessUnit && <p className='fielderror'>{errors.businessUnit.message}</p>}
                             </div>
 
-                            <div className="fieldboxthird">
+                            <div className="fieldboxquarter">
                               <label>Operating Unit(s)</label>
                               <Controller
                                 name="operatingUnit"
@@ -1263,7 +1266,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               {errors.operatingUnit && <p className='fielderror'>{errors.operatingUnit.message}</p>}
                             </div>
 
-                            <div className="fieldboxthird">
+                            <div className="fieldboxquarter">
                               <label>Program(s)</label>
                               <Controller
                                 name="program"
@@ -1282,6 +1285,27 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                 )}
                               />
                               {errors.program && <p className='fielderror'>{errors.program.message}</p>}
+                            </div>
+                            <div className="fieldboxquarter">
+                              <label>Int/Ext Audit<label style={{ color: 'red' }}>*</label></label>
+                              <Controller
+                                name="IntExt"
+                                control={control}
+                                rules={{ required: "Int/Ext Audit is required" }}
+                                render={({ field }) => (
+                                  <Select
+                                    isClearable
+                                    options={intExtOptions}
+                                    styles={customStyles}
+                                    placeholder="Int/Ext Audit"
+                                    value={field.value ? intExtOptions.find(i => i.value === field.value) : null}
+                                    onChange={(selectedOption) => {
+                                      field.onChange(selectedOption ? selectedOption.value : null);
+                                      if (/^internal\b/i.test(String(selectedOption?.label || '').trim())) setValue('customer', null);
+                                    }}
+                                  />
+                                )} />
+                              {errors.IntExt && <p className='fielderror'>{errors.IntExt.message}</p>}
                             </div>
 
                           </div>
@@ -1359,28 +1383,6 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               />
                               {errors.ExpCompDate && <p className='fielderror'>{errors.ExpCompDate.message}</p>}
                             </div>
-                            <div className="fieldboxthird">
-                              <label>Int/Ext Audit<label style={{ color: 'red' }}>*</label></label>
-                              <Controller
-                                name="IntExt"
-                                control={control}
-                                rules={{ required: "Int/Ext Audit is required" }}
-                                render={({ field }) => (
-                                  <Select
-                                    isClearable
-                                    options={intExtOptions}
-                                    styles={customStyles}
-                                    placeholder="Int/Ext Audit"
-                                    value={field.value ? intExtOptions.find(i => i.value === field.value) : null}
-                                    onChange={(selectedOption) => {
-                                      field.onChange(selectedOption ? selectedOption.value : null);
-                                      if (/^internal\b/i.test(String(selectedOption?.label || '').trim())) setValue('customer', null);
-                                    }}
-                                  />
-                                )} />
-                              {errors.IntExt && <p className='fielderror'>{errors.IntExt.message}</p>}
-                            </div>
-
                           </div>
                           <div className='sectionrow'>
                             <div className={canSelectCustomer ? 'fieldboxthird' : 'fieldboxhalf'}>
@@ -1430,10 +1432,11 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                             </div>
                             {canSelectCustomer && (
                               <div className="fieldboxthird">
-                                <label>Customer</label>
+                                <label>Customer{isExternalAudit && <label style={{ color: 'red' }}>*</label>}</label>
                                 <Controller
                                   name="customer"
                                   control={control}
+                                  rules={{ validate: value => !isExternalAudit || !!value || "Customer is required for external audits" }}
                                   render={({ field }) => (
                                     <Select
                                       isClearable
