@@ -248,6 +248,7 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
     control,
     reset,
     setValue,
+    getValues,
     watch,
     clearErrors
   } = useForm(
@@ -618,10 +619,11 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
   );
   const canSelectCustomer = selectedIntExt != null && !isInternalAudit;
 
-  const standardsOptions = standardsList.map(s => ({
-    value: s.standardId,
-    label: s.standardName
-  })).sort((a, b) => a.label.localeCompare(b.label));
+  const selectedStandardScope = isInternalAudit ? 'Internal' : isExternalAudit ? 'External' : null;
+  const standardsOptions = standardsList
+    .filter(s => selectedStandardScope && s.standardScope === selectedStandardScope)
+    .map(s => ({ value: s.standardId, label: s.standardName }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   useEffect(() => {
     if (mode === 'New') {
@@ -1301,7 +1303,14 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                                     value={field.value ? intExtOptions.find(i => i.value === field.value) : null}
                                     onChange={(selectedOption) => {
                                       field.onChange(selectedOption ? selectedOption.value : null);
-                                      if (/^internal\b/i.test(String(selectedOption?.label || '').trim())) setValue('customer', null);
+                                      const nextScope = /^internal\b/i.test(String(selectedOption?.label || '').trim())
+                                        ? 'Internal'
+                                        : /^external\b/i.test(String(selectedOption?.label || '').trim()) ? 'External' : null;
+                                      const validStandards = (getValues('standards') || []).filter(id =>
+                                        nextScope && standardsList.some(s => s.standardId === id && s.standardScope === nextScope)
+                                      );
+                                      setValue('standards', validStandards, { shouldValidate: true });
+                                      if (nextScope === 'Internal') setValue('customer', null);
                                     }}
                                   />
                                 )} />
@@ -1390,7 +1399,12 @@ function Schedule({ selectedAuditId, allAudits = [], reloadAudits }) {
                               <Controller
                                 name="standards"
                                 control={control}
-                                rules={{ required: "Standard(s) is required" }}
+                                rules={{ validate: value =>
+                                  Array.isArray(value) && value.length > 0 &&
+                                  value.every(id => standardsOptions.some(option => option.value === id))
+                                    ? true
+                                    : "Select standards classified for this audit type"
+                                }}
                                 render={({ field }) => (
                                   <Select
                                     isClearable
