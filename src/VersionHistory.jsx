@@ -4,9 +4,39 @@ import './VersionHistory.css';
 
 const releases = [
   {
+    version: '3.1.2',
+    date: 'November 2026',
+    current: true,
+    title: 'Internal and external audits, reports, and navigation',
+    summary: 'Schedule Entry now adapts to Internal and External audits, with customer management, more reliable Excel exports, and a corrected My Audits shortcut.',
+    sections: [
+      {
+        title: 'Internal and external audits',
+        items: [
+          'Internal schedules require a Lead Auditor; External schedules require a Customer.',
+          'The Standards dropdown shows only standards classified for the selected Internal or External audit type, and clears incompatible selections when that type changes.',
+          'External schedules can select a customer; administrators can add, edit, archive, and reactivate customer records.'
+        ]
+      },
+      {
+        title: 'Reports and Excel exports',
+        items: [
+          'All Reports excludes External audits by default. Include external audits adds them, a Customer filter, and a Customer column.',
+          'Customer details appear in the individual audit report and its exports.',
+          'Excel exports limit concurrent data requests, show progress, and disable repeat export clicks while an export is running.'
+        ]
+      },
+      {
+        title: 'Navigation',
+        items: [
+          'The Home page My Audits button now opens the audit list reliably.'
+        ]
+      }
+    ]
+  },
+  {
     version: '3.1.1',
     date: 'October 2026',
-    current: true,
     title: 'Standards management and Conduct Audit PrOP fix',
     summary: 'Administrators can classify and maintain standards, while Conduct Audit again displays the organizational PrOPs relevant to each audit.',
     sections: [
