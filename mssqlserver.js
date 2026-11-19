@@ -5661,13 +5661,15 @@ const needsInternalLeadAuditor = async (queryable, intExtId, leadAuditorId) => {
 };
 
 const validateScheduleCustomer = async (queryable, intExtId, customerId) => {
-    if (customerId === null || customerId === undefined || customerId === '') return null;
+    if (intExtId === null || intExtId === undefined || intExtId === '') return null;
+    const type = await queryable.query('SELECT intExtName FROM int_ext_r WHERE intExtId = $1', [intExtId]);
+    const scope = String(type.rows[0]?.intextname || '').trim();
+    if (customerId === null || customerId === undefined || customerId === '') {
+        return /^external\b/i.test(scope) ? 'Customer is required for external audits.' : null;
+    }
+    if (/^internal\b/i.test(scope)) return 'Internal audits cannot have a customer.';
     const id = Number(customerId);
     if (!Number.isSafeInteger(id) || id <= 0) return 'Choose a valid customer.';
-    const type = await queryable.query('SELECT intExtName FROM int_ext_r WHERE intExtId = $1', [intExtId]);
-    if (/^internal\b/i.test(String(type.rows[0]?.intextname || '').trim())) {
-        return 'Internal audits cannot have a customer.';
-    }
     const customer = await queryable.query('SELECT customerId FROM customers_r WHERE customerId = $1', [id]);
     if (!customer.rowCount) return 'Customer not found.';
     return null;
