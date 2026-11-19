@@ -1,9 +1,11 @@
 /*
-NGAT 3.1.2 — Customer selection for external audits.
+NGAT 3.1.2 — Customer selection and Internal/External standards classification.
 
 Run manually against the NGAT audit database. Defaults to [dev].
 Production changes require BOTH @TargetSchema = N'dbo' and @AllowDbo = 1.
-No existing audit is assigned a customer automatically. Rerunnable.
+No existing audit is assigned a customer automatically. Existing standard classifications
+are preserved; newly added standardScope values remain NULL until an admin classifies them.
+Rerunnable.
 */
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -20,9 +22,13 @@ IF SCHEMA_ID(@TargetSchema) IS NULL
 
 DECLARE @Audits NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[audits_r]';
 DECLARE @Customers NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[customers_r]';
+DECLARE @Standards NVARCHAR(260) = QUOTENAME(@TargetSchema) + N'.[standards_r]';
 DECLARE @AuditsId INT = OBJECT_ID(@Audits, N'U');
 IF @AuditsId IS NULL
     THROW 50333, 'audits_r does not exist in the selected schema.', 1;
+DECLARE @StandardsId INT = OBJECT_ID(@Standards, N'U');
+IF @StandardsId IS NULL
+    THROW 50336, 'standards_r does not exist in the selected schema.', 1;
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -69,6 +75,29 @@ BEGIN TRY
               N' WITH CHECK ADD CONSTRAINT [FK_audits_r_customers_r] FOREIGN KEY ([customerId]) REFERENCES ' +
               @Customers + N' ([customerId]);');
 
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = @StandardsId AND name = N'standardScope'
+    )
+        EXEC (N'ALTER TABLE ' + @Standards + N' ADD [standardScope] NVARCHAR(8) NULL;');
+
+    IF EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = @StandardsId AND name = N'standardScope'
+          AND (system_type_id <> TYPE_ID(N'nvarchar') OR max_length <> 16)
+    )
+        THROW 50337, 'Existing standardScope column has an unexpected type or length.', 1;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.check_constraints
+        WHERE parent_object_id = @StandardsId AND name = N'CK_standards_r_standardScope'
+    )
+        EXEC (
+            N'ALTER TABLE ' + @Standards +
+            N' WITH CHECK ADD CONSTRAINT [CK_standards_r_standardScope]' +
+            N' CHECK ([standardScope] IS NULL OR [standardScope] IN (N''Internal'', N''External''));'
+        );
+
     COMMIT TRANSACTION;
 END TRY
 BEGIN CATCH
@@ -77,3 +106,4 @@ BEGIN CATCH
 END CATCH;
 
 EXEC (N'SELECT [customerId], [customerName], [active] FROM ' + @Customers + N' ORDER BY [customerName];');
+EXEC (N'SELECT [standardId], [standardName], [standardScope] FROM ' + @Standards + N' ORDER BY [standardName];');
