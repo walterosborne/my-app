@@ -6,10 +6,33 @@
 
 ---
 
+## 🛠️ NGAT 3.1.2 — Internal/External Audit Scheduling and Report Reliability
+
+**Development work:** November 2026  
+**Database migration:** `sql/3.1.2-customer-selection.sql` (defaults to `dev`; `dbo` requires both an explicit target and override bit)  
+**Status:** Code prepared on the development branch; run the database script and deploy separately.
+
+### Schedule Entry and customer management
+
+- Internal audits require a Lead Auditor; External audits require a Customer. The schedule save API enforces both rules.
+- Internal/External moved to the Audit Location row beside Programs. The Customer field appears beside Standards and Functions when applicable.
+- Schedule Entry offers only standards classified for the selected Internal or External type. Switching type clears incompatible standards; existing unclassified standards need admin classification.
+- Added `customers_r` and a nullable `audits_r.customerId` link. Administrators can add, rename, archive, and reactivate customers while historical audit references keep their names.
+- The 3.1.2 script also ensures `standards_r.standardScope` exists if 3.1.1 has not yet been run, without changing existing classifications.
+
+### Reports, Excel exports, and navigation
+
+- All Reports excludes External audits until **Include external audits** is selected. That option also shows the Customer filter and column; the Int/Ext filter was removed.
+- Customer names appear on Schedule lists, audit status cards, individual audit reports, and their relevant Excel/PDF exports.
+- Excel report exports use bounded requests, progress feedback, and disabled buttons during an active export to prevent repeated clicks and excess server load.
+- Fixed the Home page **My Audits** shortcut so it opens the audit list reliably.
+
+---
+
 ## 🛠️ NGAT 3.1.1 — Standards Management and Conduct Audit PrOP Fix
 
 **Development work:** October 2026  
-**Database migration:** `sql/3.1.1-standard-classification.sql` (defaults to `dev`; targeting `dbo` requires an explicit override bit)  
+**Database migration:** `sql/archive/3.1.1-standard-classification.sql` (defaults to `dev`; targeting `dbo` requires an explicit override bit)  
 **Status:** Code prepared on the development branch; database migration and deployment must be performed separately.
 
 - Added an administrator-managed **Internal / External** classification to existing standards.
